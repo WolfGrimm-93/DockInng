@@ -39,7 +39,7 @@ Rust (stable), Node.js, `pnpm`, Docker, and the Tauri Linux dependencies (WebKit
 pnpm --dir frontend install
 
 # Desktop app (starts Vite and the Tauri shell)
-cd backend/app && ../../frontend/node_modules/.bin/tauri dev
+pnpm --dir frontend tauri dev
 
 # CLI
 cd backend && cargo run -p dockinng-cli -- doctor

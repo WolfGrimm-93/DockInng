@@ -10,7 +10,7 @@ Ver detalle y contexto en Obsidian: `Proyectos/DockInng/DockInng - Pendientes.md
 - [ ] Mover el listado de estados a `services` cuando haya más de un adaptador (GUI + CLI).
 
 ## Sin verificar
-- [ ] Confirmar visualmente que la app de escritorio lista contenedores reales por IPC (la CLI y la compilación sí están verificadas; la ventana de Tauri se lanzó pero no se comprobó lo que muestra).
+- [x] Verificado (2026-09-24): el webview de Tauri llama a `list_containers` y recibe los contenedores reales de Docker (34 en la prueba). Sigue sin haber una captura visual de la tabla renderizada.
 - [ ] Esquema real de `docker compose --progress json`.
 - [ ] Compose sobre contexto SSH.
 

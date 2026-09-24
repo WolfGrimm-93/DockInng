@@ -39,7 +39,7 @@ Rust (stable), Node.js, `pnpm`, Docker y las dependencias de Tauri para Linux (W
 pnpm --dir frontend install
 
 # App de escritorio (levanta Vite y el shell Tauri)
-cd backend/app && ../../frontend/node_modules/.bin/tauri dev
+pnpm --dir frontend tauri dev
 
 # CLI
 cd backend && cargo run -p dockinng-cli -- doctor

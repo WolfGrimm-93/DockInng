@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "tauri": "cd ../backend/app && ../../frontend/node_modules/.bin/tauri"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
