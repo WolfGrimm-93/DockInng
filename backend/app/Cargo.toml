@@ -1,0 +1,19 @@
+[package]
+name = "dockinng-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "dockinng_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+engine-core = { path = "../crates/engine-core" }
+engine-docker = { path = "../crates/engine-docker" }
+tauri = { version = "2", features = [] }
+serde.workspace = true

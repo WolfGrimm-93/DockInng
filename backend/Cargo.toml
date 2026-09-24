@@ -1,0 +1,19 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/engine-core",
+    "crates/engine-docker",
+    "crates/dockinng-cli",
+    "app",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[workspace.dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }

@@ -1,0 +1,16 @@
+# Fixtures de desarrollo para probar DockInng contra contenedores reales.
+# Bloque de puertos reservado: 54100-54110 (ver Obsidian: Estandar - Nomenclatura y Puertos).
+name: dockinng-dev
+
+services:
+  web:
+    image: nginx:alpine
+    container_name: dockinng-dev-web
+    ports:
+      - "54100:80"
+
+  redis:
+    image: redis:alpine
+    container_name: dockinng-dev-redis
+    ports:
+      - "54101:6379"

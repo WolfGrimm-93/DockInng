@@ -1,0 +1,30 @@
+# Rust
+backend/target/
+backend/app/gen/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+*.tsbuildinfo
+coverage/
+
+# Secretos y datos locales (nunca al repo)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+id_*
+*.sqlite
+*.sqlite3
+*.db
+
+# Logs
+*.log
+
+# Editor / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
