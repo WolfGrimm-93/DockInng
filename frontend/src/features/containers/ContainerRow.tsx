@@ -20,6 +20,8 @@ export interface ContainerRowProps {
   href: string
   index: number
   measure?: Ref<HTMLTableRowElement>
+  /** Es hijo de una cabecera de stack: se indenta para distinguirlo de los contenedores sin stack. */
+  grouped?: boolean
   onSelect(id: string, on: boolean): void
   onOp(c: Container, op: 'start' | 'stop' | 'restart'): void
   onDelete(c: Container): void
@@ -27,7 +29,7 @@ export interface ContainerRowProps {
 
 const MIB = 1024 * 1024
 
-function ContainerRowImpl({ c, selected, locked, href, index, measure, onSelect, onOp, onDelete }: ContainerRowProps) {
+function ContainerRowImpl({ c, selected, locked, href, index, measure, grouped, onSelect, onOp, onDelete }: ContainerRowProps) {
   const name = safeText(containerName(c), { singleLine: true })
   const image = safeText(c.image, { singleLine: true })
   const op = useRowOps(c.id)
@@ -43,6 +45,7 @@ function ContainerRowImpl({ c, selected, locked, href, index, measure, onSelect,
       ref={measure}
       data-index={index}
       data-name={name}
+      className={grouped ? 'in-group' : undefined}
       aria-rowindex={index + 2}
       aria-selected={selected}
       aria-busy={busy ? true : undefined}

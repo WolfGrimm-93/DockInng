@@ -29,7 +29,8 @@ describe('ContainersPage', () => {
     await loaded()
     expect(screen.getByRole('heading', { level: 1, name: 'Contenedores' })).toBeInTheDocument()
     expect(screen.getByText('13 en total · 7 en ejecución')).toBeInTheDocument()
-    expect(screen.getByRole('table')).toHaveAttribute('aria-rowcount', '14')
+    // Filas = cabecera de la tabla + una por contenedor + una por cabecera de grupo (agrupado por defecto).
+    expect(screen.getByRole('table')).toHaveAttribute('aria-rowcount', String(14 + document.querySelectorAll('tr.group-row').length))
     expect(within(rowOf('tienda-api-1')).getByText('En ejecución')).toBeInTheDocument()
     expect(within(rowOf('minio-dev')).getByText('Detenido')).toBeInTheDocument()
   })
@@ -141,10 +142,10 @@ describe('ContainersPage', () => {
     const u = userEvent.setup()
     renderView(<ContainersPage />)
     await loaded()
-    await u.click(screen.getByRole('button', { name: 'Agrupar por stack' }))
+    // Agrupado por defecto; los contenedores sin proyecto quedan fuera de los grupos, sin cabecera «Sin stack».
     const g = screen.getByRole('button', { name: /Stack tienda/ })
     expect(g).toHaveAttribute('aria-expanded', 'true')
-    expect(screen.getByRole('button', { name: /Sin stack/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Sin stack/ })).toBeNull()
     await u.click(g)
     expect(g).toHaveAttribute('aria-expanded', 'false')
     expect(screen.queryByRole('link', { name: 'tienda-api-1' })).toBeNull()
@@ -158,7 +159,44 @@ describe('ContainersPage', () => {
     const rows = document.querySelectorAll('tbody tr')
     expect(rows.length).toBeGreaterThan(5)
     expect(rows.length).toBeLessThan(80)
-    expect(screen.getByRole('table')).toHaveAttribute('aria-rowcount', '1014')
+    expect(screen.getByRole('table')).toHaveAttribute('aria-rowcount', String(1014 + new Set(api.sim.world.containers.map((c) => c.compose_project).filter(Boolean)).size))
+  })
+
+  it('la cabecera de grupo muestra el stack y su red (sin las de sistema)', async () => {
+    renderView(<ContainersPage />)
+    await loaded()
+    const head = screen.getByRole('button', { name: /Stack tienda/ }).closest('tr') as HTMLElement
+    // Red propia del proyecto visible como chip; «bridge» (sistema) nunca aparece.
+    expect(within(head).getByTitle('Red: tienda_default')).toBeInTheDocument()
+    expect(within(head).queryByTitle(/Red: bridge/)).toBeNull()
+    expect(within(head).getByText(/en ejecución/)).toBeInTheDocument()
+  })
+
+  it('los contenedores sin stack quedan fuera de los grupos, sin cabecera, y los que corren van primero', async () => {
+    renderView(<ContainersPage />)
+    await loaded()
+    const rows = Array.from(document.querySelectorAll('tbody tr')) as HTMLElement[]
+    const lastGroup = rows.map((r) => r.classList.contains('group-row')).lastIndexOf(true)
+    const after = rows.slice(lastGroup + 1)
+    // Tras el último grupo solo hay filas de contenedor (nunca otra cabecera).
+    expect(after.length).toBeGreaterThan(0)
+    expect(after.every((r) => !r.classList.contains('group-row'))).toBe(true)
+    // Dentro de cada tramo, ningún detenido va antes que uno en marcha.
+    const txt = (r: HTMLElement) => r.textContent ?? ''
+    const firstStopped = after.findIndex((r) => /Detenido|Muerto|Creado/.test(txt(r)))
+    if (firstStopped >= 0) expect(after.slice(firstStopped).some((r) => /En ejecución/.test(txt(r)))).toBe(false)
+  })
+
+  it('sin agrupar: los que están en marcha van antes que los detenidos', async () => {
+    const u = userEvent.setup()
+    renderView(<ContainersPage />)
+    await loaded()
+    await u.click(screen.getByRole('button', { name: 'Agrupar por stack' }))
+    expect(document.querySelectorAll('tr.group-row').length).toBe(0)
+    const txt = Array.from(document.querySelectorAll('tbody tr')).map((r) => r.textContent ?? '')
+    const firstStopped = txt.findIndex((x) => /Detenido/.test(x))
+    expect(firstStopped).toBeGreaterThan(0)
+    expect(txt.slice(firstStopped).some((x) => /En ejecución/.test(x))).toBe(false)
   })
 
   it('estado vacío, carga y error de lista', async () => {

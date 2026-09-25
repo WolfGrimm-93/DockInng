@@ -153,6 +153,7 @@ svg.i { display: inline; }
 }
 .btn { text-decoration: none; }
 .btn:active { transform: translateY(1px); }
+.btn[aria-pressed="true"] { background: color-mix(in oklch, var(--primary) 14%, var(--card)); border-color: color-mix(in oklch, var(--primary) 55%, var(--border)); }
 .btn.is-locked { opacity: 0.5; cursor: not-allowed; }
 .btn-primary { background: var(--primary); color: var(--primary-foreground); }
 .btn-primary:hover { background: color-mix(in oklch, var(--primary) 88%, var(--foreground)); }
@@ -235,7 +236,11 @@ tbody tr:hover { background: color-mix(in oklch, var(--accent) 45%, transparent)
 tbody tr[aria-selected="true"] { background: color-mix(in oklch, var(--accent) 85%, transparent); box-shadow: inset 2px 0 0 var(--primary); }
 tr.group-row td { height: 32px; background: color-mix(in oklch, var(--muted) 40%, var(--card)); font-weight: 600; font-size: var(--text-xs); }
 tr.group-row button { background: none; border: 0; display: inline-flex; gap: 6px; align-items: center; font-weight: 600; padding: 4px 0; }
+/* Hijos de un stack: barra lateral y sangría; los contenedores sin stack quedan al nivel de las cabeceras. */
+tr.in-group td:first-child { box-shadow: inset 3px 0 0 color-mix(in oklch, var(--primary) 45%, transparent); }
+tr.in-group td.cell-name { padding-left: 20px; }
 tr.group-row .chev { transition: transform var(--dur-fast); }
+tr.group-row .net-chip { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; padding: 1px 8px; border: 1px solid var(--border); border-radius: 999px; font-weight: 400; font-size: var(--text-xs); color: var(--muted-foreground); vertical-align: middle; }
 tr.group-row button[aria-expanded="false"] .chev { transform: rotate(-90deg); }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .col-check { width: 40px; padding-right: 0; }

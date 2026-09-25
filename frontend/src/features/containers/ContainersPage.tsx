@@ -17,8 +17,9 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { apiErrorMessage } from '@/data/errors'
 import { containerName } from '@/data/store/engineStore'
-import { useContainers, useEngineApi, useEngineStoreApi, useVolumes } from '@/data/store/hooks'
+import { useContainers, useEngineApi, useEngineStoreApi, useNetworks, useVolumes } from '@/data/store/hooks'
 import type { Container } from '@/data/types'
+import { safeText } from '@/lib/safeText'
 import { toast } from '@/lib/toastStore'
 import { isOn, isStoppedState, matchesContainer, type StateFilter } from '../common/containerUtils'
 import { useStartupOnce } from '../common/devOnce'
@@ -28,9 +29,9 @@ import { readRowHeight, useVirtualTable } from '../common/useVirtualTable'
 import { ContainerRow } from './ContainerRow'
 
 const COLS = 7
-const NO_STACK = '\u0000sin-stack'
-
-type Item = { type: 'group'; key: string; count: number } | { type: 'row'; c: Container }
+// Cabecera de grupo = proyecto de Compose (stack) + las redes propias que usan sus contenedores. Los contenedores sin proyecto
+// van fuera de los grupos, sin cabecera (como Docker Desktop).
+type Item = { type: 'group'; key: string; count: number; running: number; nets: string[] } | { type: 'row'; c: Container; grouped?: boolean }
 
 export default function ContainersPage() {
   const { list, status, counts, error } = useContainers()
@@ -40,12 +41,14 @@ export default function ContainersPage() {
   const guard = useGuardedAction()
   const gate = useViewGate(COLS, 8)
   const { list: volumes } = useVolumes()
+  const { list: networks } = useNetworks()
   // Tamaño de los volúmenes montados en el diálogo de eliminar: solo si el motor lo conoce (nunca se inventa).
   const volumeSize = useCallback((n: string) => { const v = volumes.find((x) => x.name === n); return v?.size_bytes != null ? formatBytes(v.size_bytes) : undefined }, [volumes])
   const preview = usePreviewState()
   const [filter, setFilter] = useState<StateFilter>('all')
   const [q, setQ] = useState('')
-  const [group, setGroup] = useState(() => getDevFlags().group)
+  // Agrupado por stack por defecto (como Docker Desktop); el botón lo desactiva.
+  const [group, setGroup] = useState(true)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
   const [refreshing, setRefreshing] = useState(false)
@@ -59,21 +62,42 @@ export default function ContainersPage() {
 
   const filtered = useMemo(() => list.filter((c) => matchesContainer(c, filter, q)), [list, filter, q])
   const stopped = useMemo(() => list.filter((c) => isStoppedState(c.state)).length, [list])
+  // Red(es) propia(s) de cada contenedor (nombre del contenedor → redes). Se omiten las de sistema (bridge, host, none).
+  const netsByContainer = useMemo(() => {
+    const m = new Map<string, string[]>()
+    for (const n of networks) {
+      if (n.system) continue
+      for (const cn of n.connected) m.set(cn, [...(m.get(cn) ?? []), n.name])
+    }
+    return m
+  }, [networks])
+  // Los que están en marcha primero (orden estable: dentro de cada mitad se conserva el orden del motor).
+  const ordered = useMemo(() => [...filtered].sort((a, b) => Number(!isOn(a.state)) - Number(!isOn(b.state))), [filtered])
   const items = useMemo<Item[]>(() => {
-    if (!group) return filtered.map((c) => ({ type: 'row', c }))
+    if (!group) return ordered.map((c) => ({ type: 'row', c }))
     const groups = new Map<string, Container[]>()
-    for (const c of filtered) {
-      const k = c.compose_project ?? NO_STACK
-      if (!groups.has(k)) groups.set(k, [])
-      groups.get(k)!.push(c)
+    const loose: Container[] = []
+    for (const c of ordered) {
+      if (c.compose_project == null) { loose.push(c); continue }
+      if (!groups.has(c.compose_project)) groups.set(c.compose_project, [])
+      groups.get(c.compose_project)!.push(c)
     }
+    // Grupos con algo en marcha primero; después por nombre.
+    const keys = [...groups.keys()].sort((a, b) => {
+      const ra = groups.get(a)!.some((c) => isOn(c.state)) ? 0 : 1
+      const rb = groups.get(b)!.some((c) => isOn(c.state)) ? 0 : 1
+      return ra - rb || a.localeCompare(b)
+    })
     const out: Item[] = []
-    for (const [key, cs] of groups) {
-      out.push({ type: 'group', key, count: cs.length })
-      if (!collapsed[key]) for (const c of cs) out.push({ type: 'row', c })
+    for (const key of keys) {
+      const cs = groups.get(key)!
+      const nets = [...new Set(cs.flatMap((c) => netsByContainer.get(containerName(c)) ?? []))]
+      out.push({ type: 'group', key, count: cs.length, running: cs.filter((c) => isOn(c.state)).length, nets })
+      if (!collapsed[key]) for (const c of cs) out.push({ type: 'row', c, grouped: true })
     }
+    for (const c of loose) out.push({ type: 'row', c })
     return out
-  }, [filtered, group, collapsed])
+  }, [ordered, group, collapsed, netsByContainer])
 
   const virt = useVirtualTable({ count: items.length, scrollRef, tableRef, estimate: (i) => (items[i]?.type === 'group' ? 32 : rowH) })
 
@@ -293,8 +317,11 @@ export default function ContainersPage() {
                           <td colSpan={COLS}>
                             <button type="button" aria-expanded={open} onClick={() => setCollapsed((s) => ({ ...s, [it.key]: !s[it.key] }))}>
                               <Icon name="chev-down" size="sm" className="chev" />
-                              {it.key === NO_STACK ? 'Sin stack' : `Stack ${it.key}`} <span className="muted" style={{ fontWeight: 400 }}>· {it.count}</span>
+                              Stack {safeText(it.key)} <span className="muted" style={{ fontWeight: 400 }}>· {it.count}{it.running ? ` · ${it.running} en ejecución` : ''}</span>
                             </button>
+                            {it.nets.map((n) => (
+                              <span key={n} className="net-chip mono" title={`Red: ${safeText(n)}`}><Icon name="network" size="sm" />{safeText(n)}</span>
+                            ))}
                           </td>
                         </tr>
                       )
@@ -303,6 +330,7 @@ export default function ContainersPage() {
                       <ContainerRow
                         key={it.c.id}
                         c={it.c}
+                        grouped={it.grouped}
                         index={v.index}
                         measure={virt.measure}
                         selected={selected.has(it.c.id)}
