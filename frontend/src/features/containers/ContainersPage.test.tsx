@@ -199,6 +199,24 @@ describe('ContainersPage', () => {
     expect(txt.slice(firstStopped).some((x) => /En ejecución/.test(x))).toBe(false)
   })
 
+  it('cada stack tiene su color: la cabecera y sus filas comparten matiz, y stacks distintos difieren', async () => {
+    renderView(<ContainersPage />)
+    await loaded()
+    const hue = (el: HTMLElement) => el.style.getPropertyValue('--grp-h')
+    const heads = Array.from(document.querySelectorAll('tr.group-row')) as HTMLElement[]
+    expect(heads.length).toBeGreaterThanOrEqual(2)
+    const hues = heads.map(hue)
+    expect(hues.every((h) => h !== '')).toBe(true)
+    expect(new Set(hues).size).toBe(heads.length)
+    const tienda = screen.getByRole('button', { name: /Stack tienda/ }).closest('tr') as HTMLElement
+    const child = rowOf('tienda-api-1') as HTMLElement
+    expect(hue(child)).toBe(hue(tienda))
+    // El color es decorativo: el nombre del stack sigue en texto.
+    expect(within(tienda).getByText(/Stack tienda/)).toBeInTheDocument()
+    // Los sueltos no llevan color de grupo.
+    expect(hue(rowOf('traefik-proxy') as HTMLElement)).toBe('')
+  })
+
   it('estado vacío, carga y error de lista', async () => {
     const api = makeApi()
     api.sim.world.containers = []

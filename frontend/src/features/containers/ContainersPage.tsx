@@ -1,7 +1,7 @@
 // Vista «Contenedores»: tabla virtualizada (filas de altura fija) con búsqueda, filtro por estado, agrupación por stack,
 // selección múltiple + barra masiva, acciones por fila con estado en curso/error y eliminación por el flujo de política.
 // Datos REALES (Docker vía la capa de datos): lista, iniciar/detener/reiniciar, eventos en vivo, CPU/memoria.
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { devFlagsEnabled, getDevFlags, usePreviewState } from '@/app/devFlags'
 import { useHashRoute } from '@/app/useHashRoute'
 import { describePlan } from '@/components/shared/planDescribe'
@@ -22,6 +22,7 @@ import type { Container } from '@/data/types'
 import { safeText } from '@/lib/safeText'
 import { toast } from '@/lib/toastStore'
 import { isOn, isStoppedState, matchesContainer, type StateFilter } from '../common/containerUtils'
+import { assignGroupHues } from '../common/groupColor'
 import { useStartupOnce } from '../common/devOnce'
 import { useViewGate } from '../common/gate'
 import { LinkButton } from '../common/LinkButton'
@@ -31,7 +32,7 @@ import { ContainerRow } from './ContainerRow'
 const COLS = 7
 // Cabecera de grupo = proyecto de Compose (stack) + las redes propias que usan sus contenedores. Los contenedores sin proyecto
 // van fuera de los grupos, sin cabecera (como Docker Desktop).
-type Item = { type: 'group'; key: string; count: number; running: number; nets: string[] } | { type: 'row'; c: Container; grouped?: boolean }
+type Item = { type: 'group'; key: string; count: number; running: number; nets: string[]; hue: number } | { type: 'row'; c: Container; hue?: number }
 
 export default function ContainersPage() {
   const { list, status, counts, error } = useContainers()
@@ -71,6 +72,8 @@ export default function ContainersPage() {
     }
     return m
   }, [networks])
+  // Color de cada stack: se calcula sobre TODOS los stacks (no solo los filtrados) para que un stack no cambie de color al filtrar.
+  const hueOf = useMemo(() => assignGroupHues(list.flatMap((c) => (c.compose_project != null ? [c.compose_project] : []))), [list])
   // Los que están en marcha primero (orden estable: dentro de cada mitad se conserva el orden del motor).
   const ordered = useMemo(() => [...filtered].sort((a, b) => Number(!isOn(a.state)) - Number(!isOn(b.state))), [filtered])
   const items = useMemo<Item[]>(() => {
@@ -92,12 +95,13 @@ export default function ContainersPage() {
     for (const key of keys) {
       const cs = groups.get(key)!
       const nets = [...new Set(cs.flatMap((c) => netsByContainer.get(containerName(c)) ?? []))]
-      out.push({ type: 'group', key, count: cs.length, running: cs.filter((c) => isOn(c.state)).length, nets })
-      if (!collapsed[key]) for (const c of cs) out.push({ type: 'row', c, grouped: true })
+      const hue = hueOf.get(key) ?? 175
+      out.push({ type: 'group', key, count: cs.length, running: cs.filter((c) => isOn(c.state)).length, nets, hue })
+      if (!collapsed[key]) for (const c of cs) out.push({ type: 'row', c, hue })
     }
     for (const c of loose) out.push({ type: 'row', c })
     return out
-  }, [ordered, group, collapsed, netsByContainer])
+  }, [ordered, group, collapsed, netsByContainer, hueOf])
 
   const virt = useVirtualTable({ count: items.length, scrollRef, tableRef, estimate: (i) => (items[i]?.type === 'group' ? 32 : rowH) })
 
@@ -313,10 +317,11 @@ export default function ContainersPage() {
                     if (it.type === 'group') {
                       const open = !collapsed[it.key]
                       return (
-                        <tr key={`g-${it.key}`} ref={virt.measure} data-index={v.index} aria-rowindex={v.index + 2} className="group-row">
+                        <tr key={`g-${it.key}`} ref={virt.measure} data-index={v.index} aria-rowindex={v.index + 2} className="group-row" style={{ '--grp-h': it.hue } as CSSProperties}>
                           <td colSpan={COLS}>
                             <button type="button" aria-expanded={open} onClick={() => setCollapsed((s) => ({ ...s, [it.key]: !s[it.key] }))}>
                               <Icon name="chev-down" size="sm" className="chev" />
+                              <span className="grp-dot" aria-hidden="true" />
                               Stack {safeText(it.key)} <span className="muted" style={{ fontWeight: 400 }}>· {it.count}{it.running ? ` · ${it.running} en ejecución` : ''}</span>
                             </button>
                             {it.nets.map((n) => (
@@ -330,7 +335,7 @@ export default function ContainersPage() {
                       <ContainerRow
                         key={it.c.id}
                         c={it.c}
-                        grouped={it.grouped}
+                        groupHue={it.hue}
                         index={v.index}
                         measure={virt.measure}
                         selected={selected.has(it.c.id)}

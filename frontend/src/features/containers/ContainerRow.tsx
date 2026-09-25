@@ -1,7 +1,7 @@
 // Fila de la tabla de contenedores (memoizada). Datos en vivo por fila: estado de operación (useRowOps) y muestreo (useStats).
 // Todo texto de Docker (nombre, imagen, puertos) se pinta como nodo de texto de React: nunca HTML.
 import { safeText } from '@/lib/safeText'
-import { memo, type Ref } from 'react'
+import { memo, type Ref, type CSSProperties } from 'react'
 import { Icon } from '@/components/shared/Icon'
 import { StatusBadge } from '@/components/shared/StatusBadge'
 import { Button } from '@/components/ui/button'
@@ -20,8 +20,8 @@ export interface ContainerRowProps {
   href: string
   index: number
   measure?: Ref<HTMLTableRowElement>
-  /** Es hijo de una cabecera de stack: se indenta para distinguirlo de los contenedores sin stack. */
-  grouped?: boolean
+  /** Matiz (OKLCH) del stack al que pertenece; si existe, la fila es hija de una cabecera y se indenta con la barra de ese color. */
+  groupHue?: number
   onSelect(id: string, on: boolean): void
   onOp(c: Container, op: 'start' | 'stop' | 'restart'): void
   onDelete(c: Container): void
@@ -29,7 +29,7 @@ export interface ContainerRowProps {
 
 const MIB = 1024 * 1024
 
-function ContainerRowImpl({ c, selected, locked, href, index, measure, grouped, onSelect, onOp, onDelete }: ContainerRowProps) {
+function ContainerRowImpl({ c, selected, locked, href, index, measure, groupHue, onSelect, onOp, onDelete }: ContainerRowProps) {
   const name = safeText(containerName(c), { singleLine: true })
   const image = safeText(c.image, { singleLine: true })
   const op = useRowOps(c.id)
@@ -45,7 +45,8 @@ function ContainerRowImpl({ c, selected, locked, href, index, measure, grouped, 
       ref={measure}
       data-index={index}
       data-name={name}
-      className={grouped ? 'in-group' : undefined}
+      className={groupHue != null ? 'in-group' : undefined}
+      style={groupHue != null ? ({ '--grp-h': groupHue } as CSSProperties) : undefined}
       aria-rowindex={index + 2}
       aria-selected={selected}
       aria-busy={busy ? true : undefined}
