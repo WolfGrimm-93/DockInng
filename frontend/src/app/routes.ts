@@ -33,6 +33,7 @@ export const TITLES: Record<RouteId, string> = {
 /** Parámetros que se conservan de la plantilla. Los marcados (dev) solo se interpretan en modo simulado/DEV. */
 export interface RouteParams {
   detail: { c?: string; tab?: 'logs' | 'terminal' | 'stats' | 'inspect'; focus?: '0' }
+  settings: { tab?: 'connections' | 'appearance' | 'groups' | 'security' | 'data' }
   create: { image?: string; remote?: '1' }
   pull: { image?: string; pull?: 'running' | 'done' | 'canceled' | 'error' } // pull= (dev)
   'stack-edit': { stack?: string; yaml?: 'broken'; run?: 'up' | 'done'; file?: 'env' } // yaml/run/file (dev)

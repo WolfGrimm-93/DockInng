@@ -204,28 +204,31 @@ describe('ConnNewPage (simulada)', () => {
 })
 
 describe('SettingsPage', () => {
-  it('conexiones (local activa, resto simuladas), niveles de seguridad y sondeo de respaldo apagado', async () => {
+  it('conexiones (local activa, resto simuladas), niveles de seguridad y sondeo de respaldo apagado, cada uno en su pestaña', async () => {
     const u = userEvent.setup()
     renderView(<SettingsPage />, { hash: '#settings' })
+    // Pestaña por defecto: Conexiones.
     expect(await screen.findByText('Activa')).toBeInTheDocument()
     expect(screen.getByText('3 conexiones')).toBeInTheDocument()
     expect(screen.getByText('prod-hetzner')).toBeInTheDocument()
     expect(screen.getAllByText('No conectado aún').length).toBeGreaterThan(0)
-    expect(screen.getByText('Confirmar con nombre')).toBeInTheDocument()
+    await u.click(screen.getByRole('tab', { name: 'Seguridad' }))
+    expect(await screen.findByText('Confirmar con nombre')).toBeInTheDocument()
     expect(screen.getByText('Bloqueado')).toBeInTheDocument()
-    const sw = screen.getByRole('switch', { name: 'Respaldo: sondeo cada 5 segundos' })
+    await u.click(screen.getByRole('tab', { name: 'Datos' }))
+    const sw = await screen.findByRole('switch', { name: 'Respaldo: sondeo cada 5 segundos' })
     expect(sw).not.toBeChecked()
     await u.click(sw)
     expect(sw).toBeChecked()
     await u.click(sw)
   })
-  it('incluye la sección de Apariencia de la base', async () => {
-    renderView(<SettingsPage />, { hash: '#settings' })
+  it('incluye la sección de Apariencia de la base (pestaña Apariencia)', async () => {
+    renderView(<SettingsPage />, { hash: '#settings?tab=appearance' })
     expect(await screen.findByRole('heading', { name: 'Apariencia' })).toBeInTheDocument()
   })
   it('«Limpiar todo el sistema» pasa por la política y se muestra BLOQUEADO', async () => {
     const u = userEvent.setup()
-    renderView(<SettingsPage />, { hash: '#settings' })
+    renderView(<SettingsPage />, { hash: '#settings?tab=security' })
     await u.click(await screen.findByRole('button', { name: 'Limpiar todo el sistema' }))
     const dlg = await screen.findByRole('alertdialog')
     expect(within(dlg).getByText('Limpiar todo el sistema está bloqueado')).toBeInTheDocument()
@@ -239,5 +242,49 @@ describe('SettingsPage', () => {
     act(() => api.sim.emit({ type: 'connection', status: { state: 'failed', endpoint: 'x', cause: 'other', message: 'x', steps: [] } }))
     expect(await screen.findByText('Sin conexión con el motor')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Añadir conexión' })).toHaveAttribute('href', '#conn-new')
+  })
+
+  describe('pestañas', () => {
+    it('hay 5 pestañas y solo se pinta el contenido de la activa', async () => {
+      renderView(<SettingsPage />, { hash: '#settings' })
+      const tabs = await screen.findAllByRole('tab')
+      expect(tabs.map((t) => t.textContent?.trim())).toEqual(['Conexiones', 'Apariencia', 'Grupos', 'Seguridad', 'Datos'])
+      expect(screen.getByRole('tab', { name: 'Conexiones' })).toHaveAttribute('aria-selected', 'true')
+      // Lo de otras pestañas no está en la página.
+      expect(screen.queryByRole('heading', { name: 'Niveles de seguridad' })).toBeNull()
+      expect(screen.queryByRole('heading', { name: 'Grupos propios' })).toBeNull()
+    })
+    it('enlace directo: ?tab=groups abre Grupos; un valor inválido cae a Conexiones', async () => {
+      const { unmount } = renderView(<SettingsPage />, { hash: '#settings?tab=groups' })
+      expect(await screen.findByRole('heading', { name: 'Grupos propios' })).toBeInTheDocument()
+      expect(screen.getByRole('tab', { name: 'Grupos' })).toHaveAttribute('aria-selected', 'true')
+      unmount()
+      renderView(<SettingsPage />, { hash: '#settings?tab=nope' })
+      expect(await screen.findByRole('tab', { name: 'Conexiones' })).toHaveAttribute('aria-selected', 'true')
+    })
+    it('teclado: las flechas y Home/End recorren las pestañas, y la elegida se guarda en la URL sin crear historial', async () => {
+      const u = userEvent.setup()
+      renderView(<SettingsPage />, { hash: '#settings' })
+      const first = await screen.findByRole('tab', { name: 'Conexiones' })
+      // Se mide DESPUÉS de montar (renderView fija el hash inicial): cambiar de pestaña no debe añadir entradas.
+      const before = window.history.length
+      first.focus()
+      await u.keyboard('{ArrowRight}')
+      expect(screen.getByRole('tab', { name: 'Apariencia' })).toHaveAttribute('aria-selected', 'true')
+      await u.keyboard('{End}')
+      expect(screen.getByRole('tab', { name: 'Datos' })).toHaveAttribute('aria-selected', 'true')
+      await u.keyboard('{Home}')
+      expect(screen.getByRole('tab', { name: 'Conexiones' })).toHaveAttribute('aria-selected', 'true')
+      await u.click(screen.getByRole('tab', { name: 'Seguridad' }))
+      expect(window.location.hash).toContain('tab=security')
+      expect(window.history.length).toBe(before)
+    })
+    it('«Añadir conexión» solo aparece en la pestaña Conexiones', async () => {
+      const u = userEvent.setup()
+      renderView(<SettingsPage />, { hash: '#settings' })
+      expect(await screen.findByRole('link', { name: 'Añadir conexión' })).toBeInTheDocument()
+      await u.click(screen.getByRole('tab', { name: 'Apariencia' }))
+      expect(screen.queryByRole('link', { name: 'Añadir conexión' })).toBeNull()
+    })
   })
 })

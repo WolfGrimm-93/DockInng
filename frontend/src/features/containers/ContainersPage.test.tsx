@@ -44,7 +44,8 @@ describe('ContainersPage', () => {
     expect(screen.getByRole('link', { name: 'minio-dev' })).toBeInTheDocument()
     await u.click(screen.getByRole('button', { name: /^Todos/ }))
     await u.type(screen.getByRole('searchbox'), 'redis')
-    expect(screen.getAllByRole('link').filter((a) => a.closest('tbody'))).toHaveLength(1)
+    // Solo filas de contenedor (la cabecera de grupo también lleva un enlace de «editar»).
+    expect(screen.getAllByRole('link').filter((a) => a.closest('tbody') && !a.closest('tr.group-row'))).toHaveLength(1)
     await u.clear(screen.getByRole('searchbox'))
     await u.type(screen.getByRole('searchbox'), 'zzzz-nada')
     expect(await screen.findByText('Ningún contenedor coincide')).toBeInTheDocument()

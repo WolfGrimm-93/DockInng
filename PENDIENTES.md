@@ -9,6 +9,13 @@ Ver detalle y contexto en Obsidian: `Proyectos/DockInng/DockInng - Lista de trab
 - [ ] Stacks Compose (listar, up/down, editor YAML, `.env`). `stack_down` devuelve `not_implemented`.
 - [ ] Conexiones SSH/TLS y selector de contexto remoto (hoy solo el motor local es real).
 
+## Grupos propios y consumo (rama `feature/containers-ux`)
+- [ ] Los grupos propios y los colores de stack se guardan en `localStorage` (por conexión y por nombre de contenedor). Migrar al crate `store` (SQLite) cuando exista (X2); mientras tanto no se sincronizan entre equipos ni se exportan.
+- [ ] Al crear un contenedor (hoy simulado) permitir elegir grupo desde el formulario.
+- [ ] Asignar arrastrando filas a una cabecera de grupo (hoy: menú de la fila o barra masiva).
+- [ ] Las asignaciones de contenedores que ya no existen no se limpian (quedan inertes en el almacenamiento).
+- [ ] Consumo por grupo: solo cuentan los contenedores en marcha; el disco por grupo es aproximado (capas de escritura + volúmenes, sin imágenes) y Docker solo informa la capa de escritura de parte de los contenedores. GPU solo global (NVIDIA, motor local).
+
 ## Riesgos aceptados y decisiones abiertas
 - [ ] Un webview comprometido puede llamar a `plan_action` + `execute_action` con el texto de confirmación (no hay diálogo nativo). La barrera real es la CSP y la ausencia de contenido remoto. Reabrir si se carga contenido externo.
 - [ ] Confirmar con el usuario: combinaciones de color, tono "bronce" de ámbar/naranja en claro, verde de estado "running" (matiz 128).

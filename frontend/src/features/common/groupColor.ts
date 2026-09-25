@@ -5,6 +5,9 @@
 
 export const GROUP_HUES = [175, 205, 240, 270, 300, 335, 55, 90] as const
 
+/** Nombre legible de cada matiz de la paleta (para lectores de pantalla y tooltips; un matiz fuera de la paleta no tiene nombre). */
+export const GROUP_HUE_NAMES: Readonly<Record<number, string>> = { 175: 'Verde azulado', 205: 'Cian', 240: 'Azul', 270: 'Índigo', 300: 'Violeta', 335: 'Rosa', 55: 'Naranja', 90: 'Amarillo' }
+
 /** Hash FNV-1a de 32 bits: estable entre sesiones para el mismo nombre. */
 function fnv1a(s: string): number {
   let h = 0x811c9dc5

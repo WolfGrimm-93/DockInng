@@ -4,8 +4,8 @@
 //   `dot` = SVG propio (círculo r9.5 + punto r4.2), el icono de «En ejecución» (▶ queda solo para la acción Iniciar).
 import {
   Activity, ArrowLeft, Ban, Box, Braces, Check, ChevronDown, ChevronRight, CircleAlert, CircleDashed, CircleX, Command, Copy, Cpu,
-  Database, Download, Ellipsis, FileText, FlaskConical, Globe, HardDrive, Info, Layers, LayoutGrid, LoaderCircle, Lock, Monitor, Moon, Network,
-  PanelLeft, Pause, Pencil, Play, Plus, RefreshCw, RotateCw, Search, Server, SlidersHorizontal, Square, Sun, Terminal, Trash2, TriangleAlert,
+  Database, Download, Ellipsis, FileText, FlaskConical, Folder, FolderPlus, Globe, HardDrive, Info, Layers, LayoutGrid, LoaderCircle, Lock, Monitor, Moon, Network,
+  Palette, PanelLeft, Pause, Pencil, Play, Plus, RefreshCw, RotateCw, Search, Server, SlidersHorizontal, Square, Sun, Terminal, Trash2, TriangleAlert,
   Upload, X, Zap, type LucideIcon,
 } from 'lucide-react'
 import type { SVGProps } from 'react'
@@ -27,7 +27,7 @@ const MAP: Record<IconName, LucideIcon | typeof DotIcon> = {
   terminal: Terminal, activity: Activity, file: FileText, braces: Braces, sun: Sun, moon: Moon, panel: PanelLeft, plus: Plus, refresh: RefreshCw,
   server: Server, monitor: Monitor, alert: CircleAlert, warn: TriangleAlert, check: Check, ban: Ban, copy: Copy, dots: Ellipsis, dashed: CircleDashed,
   download: Download, command: Command, back: ArrowLeft, info: Info, disk: HardDrive, lock: Lock, globe: Globe, cpu: Cpu, zap: Zap, dot: DotIcon,
-  loader: LoaderCircle, edit: Pencil, upload: Upload, flask: FlaskConical,
+  loader: LoaderCircle, edit: Pencil, upload: Upload, flask: FlaskConical, folder: Folder, 'folder-plus': FolderPlus, palette: Palette,
 }
 
 export interface IconProps { name: IconName; size?: 'sm' | 'md' | 'lg'; fill?: boolean; spin?: boolean; className?: string }

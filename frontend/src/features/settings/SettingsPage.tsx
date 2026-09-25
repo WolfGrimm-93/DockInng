@@ -1,8 +1,11 @@
-// Vista «Configuración» (siempre disponible, aun sin conexión al motor). Contiene:
-//   Conexiones (local REAL; el resto SIMULADAS y marcadas «No conectado aún») · Apariencia (<AppearanceSection/>, de la base) ·
-//   Datos (sondeo de respaldo, apagado por defecto: real) · Niveles de seguridad · Acción prohibida · Vista previa de estados (solo simulado/DEV).
+// Vista «Configuración» (siempre disponible, aun sin conexión al motor), dividida en pestañas (#settings?tab=…):
+//   Conexiones (local REAL; el resto SIMULADAS y marcadas «No conectado aún») · Apariencia (<AppearanceSection/>) · Grupos (grupos propios y color
+//   de los stacks) · Seguridad (niveles de política y acción prohibida) · Datos (sondeo de respaldo, apagado por defecto: real; vista previa de
+//   estados solo simulado/DEV). La pestaña activa se guarda en la URL sin añadir entradas al historial.
+import { useState } from 'react'
 import { safeText } from '@/lib/safeText'
 import { devFlagsEnabled, setComposeMissing, setPreviewState } from '@/app/devFlags'
+import { buildHref } from '@/app/routes'
 import { useHashRoute } from '@/app/useHashRoute'
 import { useGuardedAction } from '@/components/shared/ConfirmDialog'
 import { Icon } from '@/components/shared/Icon'
@@ -11,11 +14,23 @@ import { PageHeader } from '@/components/shared/PageHeader'
 import { AlertBox } from '@/components/shared/StateViews'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/checkbox'
+import { Tabs, TabsList, TabsPanel, TabsTab } from '@/components/ui/tabs'
 import { useConnection, useEngineApi, useEngineStore, useEngineStoreApi } from '@/data/store/hooks'
 import type { ConnectionIssue } from '@/data/types'
 import { policyDenied, toast } from '@/lib/toastStore'
 import { LinkButton } from '../common/LinkButton'
+import { GroupsManager } from '../groups/GroupsManager'
 import { AppearanceSection } from './AppearanceSection'
+
+const TABS = [
+  { id: 'connections', label: 'Conexiones', icon: 'server' },
+  { id: 'appearance', label: 'Apariencia', icon: 'palette' },
+  { id: 'groups', label: 'Grupos', icon: 'folder' },
+  { id: 'security', label: 'Seguridad', icon: 'lock' },
+  { id: 'data', label: 'Datos', icon: 'database' },
+] as const satisfies readonly { id: string; label: string; icon: IconName }[]
+export type SettingsTab = (typeof TABS)[number]['id']
+const isTab = (v: string | null): v is SettingsTab => TABS.some((t) => t.id === v)
 
 const LEVELS: { title: string; cls: 'libre' | 'confirmar' | 'bloqueado'; label: string; text: string; icon: IconName }[] = [
   { title: 'Iniciar, detener, reiniciar, ver logs', cls: 'libre', label: 'Libre', text: 'Allow: se ejecuta al instante, sin diálogo.', icon: 'check' },
@@ -52,6 +67,9 @@ export default function SettingsPage() {
   const guard = useGuardedAction()
   const polling = useEngineStore((s) => s.polling)
   const dev = devFlagsEnabled(api)
+  const [tab, setTabState] = useState<SettingsTab>(() => { const t = route.params.get('tab'); return isTab(t) ? t : 'connections' })
+  // Se guarda en la URL (enlace directo) con replaceState: cambiar de pestaña no llena el historial ni dispara `hashchange`.
+  const setTab = (t: SettingsTab) => { setTabState(t); window.history.replaceState(null, '', buildHref('settings', { tab: t })) }
 
   const applyPreview = (p: Preview) => {
     // AppShell limpia la vista previa al cambiar de ruta: se aplica justo después de navegar.
@@ -65,58 +83,61 @@ export default function SettingsPage() {
     else toast.err('No se pudo eliminar la red', { sub: 'La red «tienda_default» tiene contenedores conectados.' })
   }
 
+  const banner = conn.state.status === 'error' || conn.state.status === 'lost'
+    ? <AlertBox kind="error" icon="alert" title="Sin conexión con el motor" text="Puedes editar las conexiones desde aquí; el resto de vistas muestran el diagnóstico." />
+    : null
+
   return (
     <>
       <PageHeader
         title="Configuración"
-        count={`${conn.profiles.length} conexiones`}
-        primary={<LinkButton variant="primary" href={route.href('conn-new')}><Icon name="plus" />Añadir conexión</LinkButton>}
+        count={tab === 'connections' ? `${conn.profiles.length} conexiones` : null}
+        primary={tab === 'connections' ? <LinkButton variant="primary" href={route.href('conn-new')}><Icon name="plus" />Añadir conexión</LinkButton> : undefined}
       />
-      <div className="view-body">
-        {conn.state.status === 'error' || conn.state.status === 'lost' ? (
-          <AlertBox kind="error" icon="alert" title="Sin conexión con el motor" text="Puedes editar las conexiones desde aquí; el resto de vistas muestran el diagnóstico." />
-        ) : null}
+      <Tabs value={tab} onValueChange={(v) => setTab(v as SettingsTab)} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+        <TabsList aria-label="Secciones de configuración">
+          {TABS.map((t) => (
+            <TabsTab key={t.id} value={t.id}><Icon name={t.icon} />{t.label}</TabsTab>
+          ))}
+        </TabsList>
 
-        <section aria-labelledby="sConn">
-          <h2 className="section-title" id="sConn">Conexiones</h2>
-          <div className="card">
-            {conn.profiles.map((p) => {
-              const active = p.id === conn.profile.id
-              return (
-                <div className={`conn${active ? ' is-active' : ''}`} key={p.id}>
-                  <span className="conn-ico"><Icon name={p.icon} /></span>
-                  <div className="grow">
-                    <b>{safeText(p.name, { singleLine: true })}</b>{' '}
-                    {active ? <span className="tag tag-brand">Activa</span> : p.failsToConnect ? <span className="tag" style={{ color: 'var(--status-dead)' }}><Icon name="alert" size="sm" />Sin respuesta</span> : null}
-                    {p.simulated ? <> <span className="tag" title="Conexión de ejemplo: todavía no está conectada al motor."><Icon name="flask" size="sm" />No conectado aún</span></> : null}
-                    <small>{safeText(p.target, { singleLine: true })}</small>
+        <TabsPanel value="connections" className="view-body tabpanel">
+          {banner}
+          <section aria-labelledby="sConn">
+            <h2 className="section-title" id="sConn">Conexiones</h2>
+            <div className="card">
+              {conn.profiles.map((p) => {
+                const active = p.id === conn.profile.id
+                return (
+                  <div className={`conn${active ? ' is-active' : ''}`} key={p.id}>
+                    <span className="conn-ico"><Icon name={p.icon} /></span>
+                    <div className="grow">
+                      <b>{safeText(p.name, { singleLine: true })}</b>{' '}
+                      {active ? <span className="tag tag-brand">Activa</span> : p.failsToConnect ? <span className="tag" style={{ color: 'var(--status-dead)' }}><Icon name="alert" size="sm" />Sin respuesta</span> : null}
+                      {p.simulated ? <> <span className="tag" title="Conexión de ejemplo: todavía no está conectada al motor."><Icon name="flask" size="sm" />No conectado aún</span></> : null}
+                      <small>{safeText(p.target, { singleLine: true })}</small>
+                    </div>
+                    {active ? null : <Button variant="secondary" size="sm" onClick={() => conn.select(p.id)}>Conectar</Button>}
+                    <Button variant="ghost" size="icon-sm" aria-label={`Más opciones de ${safeText(p.name, { singleLine: true })}`} onClick={() => toast.warn('Simulado — no conectado aún', { sub: 'Las opciones por conexión todavía no están disponibles.' })}><Icon name="dots" /></Button>
                   </div>
-                  {active ? null : <Button variant="secondary" size="sm" onClick={() => conn.select(p.id)}>Conectar</Button>}
-                  <Button variant="ghost" size="icon-sm" aria-label={`Más opciones de ${safeText(p.name, { singleLine: true })}`} onClick={() => toast.warn('Simulado — no conectado aún', { sub: 'Las opciones por conexión todavía no están disponibles.' })}><Icon name="dots" /></Button>
-                </div>
-              )
-            })}
-          </div>
-        </section>
+                )
+              })}
+            </div>
+          </section>
+        </TabsPanel>
 
-        <div className="grid-2">
-          <div style={{ display: 'grid', gap: 16, alignContent: 'start', minWidth: 0 }}>
-            <AppearanceSection />
-            <section aria-labelledby="sData">
-              <h2 className="section-title" id="sData">Datos</h2>
-              <div className="card">
-                <div className="setting-row">
-                  <div className="grow"><b>Datos en tiempo real</b><small>La app se actualiza con los eventos del motor de Docker, sin sondear.</small></div>
-                  <span className="tag">Automático</span>
-                </div>
-                <div className="setting-row">
-                  <div className="grow"><b>Respaldo: sondeo cada 5 s</b><small>Solo si los eventos fallan (por ejemplo, a través de algunos túneles SSH).</small></div>
-                  <Switch aria-label="Respaldo: sondeo cada 5 segundos" checked={polling} onChange={(e) => store.getState().setPolling(e.target.checked)} />
-                </div>
-              </div>
-            </section>
-          </div>
+        <TabsPanel value="appearance" className="view-body tabpanel">
+          {banner}
+          <AppearanceSection />
+        </TabsPanel>
 
+        <TabsPanel value="groups" className="view-body tabpanel">
+          {banner}
+          <GroupsManager />
+        </TabsPanel>
+
+        <TabsPanel value="security" className="view-body tabpanel">
+          {banner}
           <section aria-labelledby="sSec">
             <h2 className="section-title" id="sSec">Niveles de seguridad</h2>
             <div className="card">
@@ -129,34 +150,51 @@ export default function SettingsPage() {
             </div>
             <p className="muted" style={{ fontSize: 'var(--text-xs)', marginTop: 6 }}>El caso «Denegado sin interacción» de la política solo existe en la línea de comandos; en la interfaz gráfica no aplica.</p>
           </section>
-        </div>
 
-        <section aria-labelledby="sRisk">
-          <h2 className="section-title" id="sRisk">Acción prohibida (demostración)</h2>
-          <div className="card">
-            <div className="setting-row">
-              <div className="grow">
-                <b>Limpiar todo el sistema</b>
-                <small>Equivale a <code>docker system prune</code>. Se muestra solo para explicar por qué no está disponible: borra contenedores, redes, imágenes y caché de una sola vez, sin poder revisar qué se pierde. Nunca se ejecuta.</small>
+          <section aria-labelledby="sRisk">
+            <h2 className="section-title" id="sRisk">Acción prohibida (demostración)</h2>
+            <div className="card">
+              <div className="setting-row">
+                <div className="grow">
+                  <b>Limpiar todo el sistema</b>
+                  <small>Equivale a <code>docker system prune</code>. Se muestra solo para explicar por qué no está disponible: borra contenedores, redes, imágenes y caché de una sola vez, sin poder revisar qué se pierde. Nunca se ejecuta.</small>
+                </div>
+                <Button variant="blocked" aria-haspopup="dialog" onClick={() => void guard({ type: 'prune_system' })}><Icon name="ban" />Limpiar todo el sistema</Button>
               </div>
-              <Button variant="blocked" aria-haspopup="dialog" onClick={() => void guard({ type: 'prune_system' })}><Icon name="ban" />Limpiar todo el sistema</Button>
-            </div>
-          </div>
-        </section>
-
-        {dev ? (
-          <section aria-labelledby="sPrev">
-            <h2 className="section-title" id="sPrev">Vista previa de estados <span className="tag">Solo plantilla</span></h2>
-            <div className="card card-pad" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {PREVIEWS.map((x) => <Button key={x.label} variant="secondary" size="sm" onClick={() => applyPreview(x.p)}>{x.label}</Button>)}
-              <LinkButton variant="secondary" size="sm" href={route.href('create')}>Nuevo contenedor</LinkButton>
-              <LinkButton variant="secondary" size="sm" href={route.href('pull', { pull: 'running' })}>Descarga en curso</LinkButton>
-              <LinkButton variant="secondary" size="sm" href={route.href('stack-edit', { yaml: 'broken', run: 'up' })}>Editor con errores</LinkButton>
-              <LinkButton variant="secondary" size="sm" href={route.href('conn-new', { test: 'fail' })}>Prueba de conexión fallida</LinkButton>
             </div>
           </section>
-        ) : null}
-      </div>
+        </TabsPanel>
+
+        <TabsPanel value="data" className="view-body tabpanel">
+          {banner}
+          <section aria-labelledby="sData">
+            <h2 className="section-title" id="sData">Datos</h2>
+            <div className="card">
+              <div className="setting-row">
+                <div className="grow"><b>Datos en tiempo real</b><small>La app se actualiza con los eventos del motor de Docker, sin sondear.</small></div>
+                <span className="tag">Automático</span>
+              </div>
+              <div className="setting-row">
+                <div className="grow"><b>Respaldo: sondeo cada 5 s</b><small>Solo si los eventos fallan (por ejemplo, a través de algunos túneles SSH).</small></div>
+                <Switch aria-label="Respaldo: sondeo cada 5 segundos" checked={polling} onChange={(e) => store.getState().setPolling(e.target.checked)} />
+              </div>
+            </div>
+          </section>
+
+          {dev ? (
+            <section aria-labelledby="sPrev">
+              <h2 className="section-title" id="sPrev">Vista previa de estados <span className="tag">Solo plantilla</span></h2>
+              <div className="card card-pad" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {PREVIEWS.map((x) => <Button key={x.label} variant="secondary" size="sm" onClick={() => applyPreview(x.p)}>{x.label}</Button>)}
+                <LinkButton variant="secondary" size="sm" href={route.href('create')}>Nuevo contenedor</LinkButton>
+                <LinkButton variant="secondary" size="sm" href={route.href('pull', { pull: 'running' })}>Descarga en curso</LinkButton>
+                <LinkButton variant="secondary" size="sm" href={route.href('stack-edit', { yaml: 'broken', run: 'up' })}>Editor con errores</LinkButton>
+                <LinkButton variant="secondary" size="sm" href={route.href('conn-new', { test: 'fail' })}>Prueba de conexión fallida</LinkButton>
+              </div>
+            </section>
+          ) : null}
+        </TabsPanel>
+      </Tabs>
     </>
   )
 }

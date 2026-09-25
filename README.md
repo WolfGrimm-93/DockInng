@@ -54,6 +54,12 @@ cd frontend && pnpm test && pnpm build && pnpm lint
 
 Settings > Appearance lets you pick light, dark or system mode, an accent color (presets or a custom hue), an independent surface tint and named combinations. Tokens are computed in OKLCH and validated for WCAG AA contrast across all hues. Status colors and the logo do not change with the accent.
 
+## Groups
+
+Containers are grouped by Compose stack automatically (each stack gets its own color, and the network(s) it uses are shown in the group header). You can also create your own groups (menu on each row, or the bulk bar), pick any color for a group or a stack, and manage them in Settings > Groups. Custom groups are stored only in the app, per connection, and never change anything in Docker.
+
+Settings is split into tabs: Connections, Appearance, Groups, Security and Data.
+
 ## Safety
 
 Destructive actions go through a `ConfirmationPolicy` in the core: reversible actions run directly, destructive ones ask for confirmation, and there is a floor of catastrophic actions that not even `--yes` can bypass. Without a TTY, anything that needs confirmation is denied. In the desktop app, destructive actions use a plan → one-time ticket → typed confirmation flow enforced by the backend (single-target actions require the exact name; prunes require the word `ELIMINAR`). Known accepted risk: a compromised webview could still call the plan/execute commands, so the strict CSP and the absence of remote content are the real barrier.

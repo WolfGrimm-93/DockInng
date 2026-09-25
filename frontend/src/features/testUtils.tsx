@@ -1,4 +1,5 @@
 // Utilidades de test de las vistas: proveedores reales (motor simulado en memoria, confirmaciones, toasts) y navegación por hash.
+import { resetGroupsStore } from './groups/groupsStore'
 import { render } from '@testing-library/react'
 import { StrictMode, type ReactElement } from 'react'
 import { ConfirmProvider } from '@/components/shared/ConfirmDialog'
@@ -32,6 +33,7 @@ export function renderView(ui: ReactElement, opts: { api?: SimEngineApi; hash?: 
 
 /** Limpia estado global entre tests (toasts, vista previa, hash). */
 export function resetGlobals(): void {
+  resetGroupsStore()
   toast.clear()
   setPreviewState(null)
   setComposeMissing(false)

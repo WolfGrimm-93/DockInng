@@ -12,6 +12,7 @@ import { useRowOps, useStats } from '@/data/store/hooks'
 import type { Container } from '@/data/types'
 import { statusTextEs } from '@/lib/format'
 import { isOn, portsText } from '../common/containerUtils'
+import { AssignGroupMenu } from '../groups/AssignGroupMenu'
 
 export interface ContainerRowProps {
   c: Container
@@ -100,6 +101,9 @@ function ContainerRowImpl({ c, selected, locked, href, index, measure, groupHue,
           <Button variant="ghost" size="icon" aria-label={`Reiniciar ${name}`} disabled={!on || blockedByBusy || locked} onClick={() => onOp(c, 'restart')}>
             <Icon name="rotate" />
           </Button>
+          <AssignGroupMenu names={[containerName(c)]} triggerClass="btn btn-ghost btn-icon" ariaLabel={`Mover ${name} a un grupo`}>
+            <Icon name="folder" />
+          </AssignGroupMenu>
           <span className="sep" aria-hidden="true" />
           <Button variant="ghost" size="icon" className="btn-del" locked={locked || blockedByBusy} aria-label={`Eliminar ${name}`} onClick={() => onDelete(c)}>
             <Icon name="trash" />

@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { apiErrorMessage } from '@/data/errors'
 import { containerName } from '@/data/store/engineStore'
-import { useAllStats, useContainers, useEngineApi, useEngineStoreApi, useNetworks, useSystemUsage, useVolumes } from '@/data/store/hooks'
+import { useAllStats, useConnection, useContainers, useEngineApi, useEngineStoreApi, useNetworks, useSystemUsage, useVolumes } from '@/data/store/hooks'
 import type { Container } from '@/data/types'
 import { safeText } from '@/lib/safeText'
 import { toast } from '@/lib/toastStore'
@@ -28,13 +28,18 @@ import { useViewGate } from '../common/gate'
 import { LinkButton } from '../common/LinkButton'
 import { readRowHeight, useVirtualTable } from '../common/useVirtualTable'
 import { ContainerRow } from './ContainerRow'
+import { AssignGroupMenu } from '../groups/AssignGroupMenu'
+import { assignKey, useGroupsStore } from '../groups/groupsStore'
 import { ResourceStrip } from './ResourceStrip'
 import { groupDiskBytes, sumConsumption } from './usage'
 
 const COLS = 7
-// Cabecera de grupo = proyecto de Compose (stack) + las redes propias que usan sus contenedores. Los contenedores sin proyecto
-// van fuera de los grupos, sin cabecera (como Docker Desktop).
-type Item = { type: 'group'; key: string; count: number; running: number; nets: string[]; hue: number } | { type: 'row'; c: Container; hue?: number }
+// Cabecera de grupo = un stack de Compose (automático) o un grupo propio del usuario (`g:<id>` / `s:<proyecto>`), con las redes propias
+// que usan sus contenedores. Un contenedor en un grupo propio deja de mostrarse en su stack. Los que no están en ninguno van fuera de
+// los grupos, sin cabecera (como Docker Desktop).
+type Item =
+  | { type: 'group'; key: string; kind: 'stack' | 'custom'; label: string; count: number; running: number; nets: string[]; hue: number }
+  | { type: 'row'; c: Container; hue?: number }
 
 export default function ContainersPage() {
   const { list, status, counts, error } = useContainers()
@@ -46,6 +51,10 @@ export default function ContainersPage() {
   const { list: volumes } = useVolumes()
   const { list: networks } = useNetworks()
   const allStats = useAllStats()
+  const profileId = useConnection().profile.id
+  const customGroups = useGroupsStore((s) => s.groups)
+  const assigned = useGroupsStore((s) => s.assign)
+  const stackHueOverride = useGroupsStore((s) => s.stackHue)
   const system = useSystemUsage()
   // Tamaño de los volúmenes montados en el diálogo de eliminar: solo si el motor lo conoce (nunca se inventa).
   const volumeSize = useCallback((n: string) => { const v = volumes.find((x) => x.name === n); return v?.size_bytes != null ? formatBytes(v.size_bytes) : undefined }, [volumes])
@@ -76,14 +85,28 @@ export default function ContainersPage() {
     }
     return m
   }, [networks])
-  // Color de cada stack: se calcula sobre TODOS los stacks (no solo los filtrados) para que un stack no cambie de color al filtrar.
-  const hueOf = useMemo(() => assignGroupHues(list.flatMap((c) => (c.compose_project != null ? [c.compose_project] : []))), [list])
-  // Consumo de cada stack (sobre TODOS sus contenedores, no solo los filtrados): CPU/RAM de los en marcha y disco aproximado.
+  // A qué grupo pertenece un contenedor: su grupo propio (si lo tiene y existe), si no su stack de Compose, si no ninguno (suelto).
+  const groupKeyOf = useCallback((c: Container): string | null => {
+    const gid = assigned[assignKey(profileId, containerName(c))]
+    if (gid !== undefined && customGroups.some((g) => g.id === gid)) return `g:${gid}`
+    return c.compose_project != null ? `s:${c.compose_project}` : null
+  }, [assigned, customGroups, profileId])
+  // Color automático de cada stack: se calcula sobre TODOS los stacks (no solo los filtrados) para que un stack no cambie de color al filtrar.
+  const stackAuto = useMemo(() => assignGroupHues(list.flatMap((c) => (c.compose_project != null ? [c.compose_project] : []))), [list])
+  const metaOf = useCallback((key: string): { kind: 'stack' | 'custom'; label: string; hue: number } => {
+    if (key.startsWith('g:')) {
+      const g = customGroups.find((x) => x.id === key.slice(2))
+      return { kind: 'custom', label: g?.name ?? '', hue: g?.hue ?? 175 }
+    }
+    const project = key.slice(2)
+    return { kind: 'stack', label: project, hue: stackHueOverride[project] ?? stackAuto.get(project) ?? 175 }
+  }, [customGroups, stackHueOverride, stackAuto])
+  // Consumo de cada grupo (sobre TODOS sus contenedores, no solo los filtrados): CPU/RAM de los en marcha y disco aproximado.
   const groupUse = useMemo(() => {
     const by = new Map<string, Container[]>()
-    for (const c of list) if (c.compose_project != null) by.set(c.compose_project, [...(by.get(c.compose_project) ?? []), c])
+    for (const c of list) { const k = groupKeyOf(c); if (k) by.set(k, [...(by.get(k) ?? []), c]) }
     return new Map([...by].map(([k, cs]) => [k, { sum: sumConsumption(cs, allStats), disk: groupDiskBytes(cs, volumes, system?.container_disk ?? [], !!system?.disk_known) }]))
-  }, [list, allStats, volumes, system])
+  }, [list, groupKeyOf, allStats, volumes, system])
   // Los que están en marcha primero (orden estable: dentro de cada mitad se conserva el orden del motor).
   const ordered = useMemo(() => [...filtered].sort((a, b) => Number(!isOn(a.state)) - Number(!isOn(b.state))), [filtered])
   const items = useMemo<Item[]>(() => {
@@ -91,27 +114,30 @@ export default function ContainersPage() {
     const groups = new Map<string, Container[]>()
     const loose: Container[] = []
     for (const c of ordered) {
-      if (c.compose_project == null) { loose.push(c); continue }
-      if (!groups.has(c.compose_project)) groups.set(c.compose_project, [])
-      groups.get(c.compose_project)!.push(c)
+      const k = groupKeyOf(c)
+      if (k === null) { loose.push(c); continue }
+      if (!groups.has(k)) groups.set(k, [])
+      groups.get(k)!.push(c)
     }
-    // Grupos con algo en marcha primero; después por nombre.
+    // Grupos con algo en marcha primero; luego los propios antes que los stacks; después por nombre.
     const keys = [...groups.keys()].sort((a, b) => {
       const ra = groups.get(a)!.some((c) => isOn(c.state)) ? 0 : 1
       const rb = groups.get(b)!.some((c) => isOn(c.state)) ? 0 : 1
-      return ra - rb || a.localeCompare(b)
+      const ma = metaOf(a)
+      const mb = metaOf(b)
+      return ra - rb || Number(ma.kind === 'stack') - Number(mb.kind === 'stack') || ma.label.localeCompare(mb.label)
     })
     const out: Item[] = []
     for (const key of keys) {
       const cs = groups.get(key)!
       const nets = [...new Set(cs.flatMap((c) => netsByContainer.get(containerName(c)) ?? []))]
-      const hue = hueOf.get(key) ?? 175
-      out.push({ type: 'group', key, count: cs.length, running: cs.filter((c) => isOn(c.state)).length, nets, hue })
-      if (!collapsed[key]) for (const c of cs) out.push({ type: 'row', c, hue })
+      const m = metaOf(key)
+      out.push({ type: 'group', key, kind: m.kind, label: m.label, count: cs.length, running: cs.filter((c) => isOn(c.state)).length, nets, hue: m.hue })
+      if (!collapsed[key]) for (const c of cs) out.push({ type: 'row', c, hue: m.hue })
     }
     for (const c of loose) out.push({ type: 'row', c })
     return out
-  }, [ordered, group, collapsed, netsByContainer, hueOf])
+  }, [ordered, group, collapsed, netsByContainer, groupKeyOf, metaOf])
 
   const virt = useVirtualTable({ count: items.length, scrollRef, tableRef, estimate: (i) => (items[i]?.type === 'group' ? 32 : rowH) })
 
@@ -215,6 +241,11 @@ export default function ContainersPage() {
         onStop={() => void bulk('stop')}
         onDelete={() => void deleteContainers(selIds)}
         onClear={() => setSelected(new Set())}
+        extra={
+          <AssignGroupMenu names={list.filter((c) => selIds.includes(c.id)).map((c) => containerName(c))} triggerClass="btn btn-secondary btn-sm" ariaLabel="Mover la selección a un grupo">
+            <Icon name="folder" size="sm" />Mover a grupo…
+          </AssignGroupMenu>
+        }
       />
       {bulkBusy ? (
         <span className="muted" role="status" aria-live="polite" style={{ alignSelf: 'center' }}>
@@ -334,11 +365,13 @@ export default function ContainersPage() {
                               <button type="button" aria-expanded={open} onClick={() => setCollapsed((s) => ({ ...s, [it.key]: !s[it.key] }))}>
                                 <Icon name="chev-down" size="sm" className="chev" />
                                 <span className="grp-dot" aria-hidden="true" />
-                                Stack {safeText(it.key)} <span className="muted" style={{ fontWeight: 400 }}>· {it.count}{it.running ? ` · ${it.running} en ejecución` : ''}</span>
+                                {it.kind === 'custom' ? <Icon name="folder" size="sm" /> : null}
+                                {it.kind === 'custom' ? 'Grupo' : 'Stack'} {safeText(it.label)} <span className="muted" style={{ fontWeight: 400 }}>· {it.count}{it.running ? ` · ${it.running} en ejecución` : ''}</span>
                               </button>
                               {it.nets.map((n) => (
                                 <span key={n} className="net-chip mono" title={`Red: ${safeText(n)}`}><Icon name="network" size="sm" />{safeText(n)}</span>
                               ))}
+                              <a className="group-edit" href={route.href('settings', { tab: 'groups' })} aria-label={`Editar el color o el nombre de ${it.kind === 'custom' ? 'el grupo' : 'el stack'} ${safeText(it.label)}`} title="Editar en Configuración > Grupos"><Icon name="palette" size="sm" /></a>
                               {(() => {
                                 const u = groupUse.get(it.key)
                                 if (!u) return null
