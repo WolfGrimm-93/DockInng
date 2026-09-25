@@ -4,7 +4,7 @@
 //   `dot` = SVG propio (círculo r9.5 + punto r4.2), el icono de «En ejecución» (▶ queda solo para la acción Iniciar).
 import {
   Activity, ArrowLeft, Ban, Box, Braces, Check, ChevronDown, ChevronRight, CircleAlert, CircleDashed, CircleX, Command, Copy, Cpu,
-  Database, Download, Ellipsis, FileText, FlaskConical, Folder, FolderPlus, Globe, HardDrive, Info, Layers, LayoutGrid, LoaderCircle, Lock, Monitor, Moon, Network,
+  Database, Download, Ellipsis, Eye, FileText, FlaskConical, Folder, FolderPlus, Globe, HardDrive, Info, Layers, LayoutGrid, LoaderCircle, Lock, Monitor, Moon, Network,
   Palette, PanelLeft, Pause, Pencil, Play, Plus, RefreshCw, RotateCw, Search, Server, SlidersHorizontal, Square, Sun, Terminal, Trash2, TriangleAlert,
   Upload, X, Zap, type LucideIcon,
 } from 'lucide-react'
@@ -15,8 +15,10 @@ import type { IconName } from './iconNames'
 function DotIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" {...props}>
+      {/* Halo: invisible salvo en `.status.is-live` (detalle), donde se expande y desvanece como un radar. */}
+      <circle className="dot-halo" cx="12" cy="12" r="9.5" fill="none" />
       <circle cx="12" cy="12" r="9.5" />
-      <circle cx="12" cy="12" r="4.2" fill="currentColor" stroke="none" />
+      <circle className="dot-core" cx="12" cy="12" r="4.2" fill="currentColor" stroke="none" />
     </svg>
   )
 }
@@ -27,7 +29,7 @@ const MAP: Record<IconName, LucideIcon | typeof DotIcon> = {
   terminal: Terminal, activity: Activity, file: FileText, braces: Braces, sun: Sun, moon: Moon, panel: PanelLeft, plus: Plus, refresh: RefreshCw,
   server: Server, monitor: Monitor, alert: CircleAlert, warn: TriangleAlert, check: Check, ban: Ban, copy: Copy, dots: Ellipsis, dashed: CircleDashed,
   download: Download, command: Command, back: ArrowLeft, info: Info, disk: HardDrive, lock: Lock, globe: Globe, cpu: Cpu, zap: Zap, dot: DotIcon,
-  loader: LoaderCircle, edit: Pencil, upload: Upload, flask: FlaskConical, folder: Folder, 'folder-plus': FolderPlus, palette: Palette,
+  loader: LoaderCircle, edit: Pencil, upload: Upload, flask: FlaskConical, folder: Folder, 'folder-plus': FolderPlus, palette: Palette, eye: Eye,
 }
 
 export interface IconProps { name: IconName; size?: 'sm' | 'md' | 'lg'; fill?: boolean; spin?: boolean; className?: string }

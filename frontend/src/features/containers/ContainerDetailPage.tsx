@@ -1,7 +1,7 @@
 // Vista «Contenedor» (#detail?c=<nombre>&tab=logs|terminal|stats|inspect). Cabecera con acciones, línea meta y 4 pestañas.
 //   Logs / Estadísticas / Inspeccionar: datos REALES.  Terminal: SIMULADA (marcada «No conectado aún»).
 import { safeText } from '@/lib/safeText'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useHashRoute } from '@/app/useHashRoute'
 import { describePlan } from '@/components/shared/planDescribe'
 import { formatBytes } from '@/lib/format'
@@ -19,7 +19,9 @@ import { containerName } from '@/data/store/engineStore'
 import { useContainer, useContainers, useEngineApi, useEngineStoreApi, useRowOps, useVolumes } from '@/data/store/hooks'
 import type { Container, ContainerDetail } from '@/data/types'
 import { statusTextEs } from '@/lib/format'
-import { isOn, portsText } from '../common/containerUtils'
+import { isOn } from '../common/containerUtils'
+import { hasMorePorts, mainPortsText, portEntries, totalPorts } from '../common/ports'
+import { PortsDialog } from './PortsDialog'
 import { useViewGate } from '../common/gate'
 import { LinkButton } from '../common/LinkButton'
 import { InspectTab } from './InspectTab'
@@ -78,6 +80,8 @@ function Detail({ c, initialTab }: { c: Container; initialTab: Tab }) {
   const [detail, setDetail] = useState<ContainerDetail | null>(null)
   const [detailError, setDetailError] = useState<string | null>(null)
   const name = safeText(containerName(c), { singleLine: true })
+  const portList = useMemo(() => portEntries(c.ports), [c.ports])
+  const [showPorts, setShowPorts] = useState(false)
   const on = isOn(c.state)
   const busy = op.busy
   const locked = gate.locked
@@ -108,7 +112,7 @@ function Detail({ c, initialTab }: { c: Container; initialTab: Tab }) {
         </div>
         <div className="detail-title">
           <h1 id="viewTitle" tabIndex={-1}>{name}</h1>
-          <StatusBadge state={c.state} busy={busy} />
+          <StatusBadge state={c.state} busy={busy} live />
           {c.compose_project ? <span className="tag tag-brand"><Icon name="grid" size="sm" />stack {safeText(c.compose_project, { singleLine: true })}</span> : null}
         </div>
         <div className="view-actions">
@@ -127,7 +131,14 @@ function Detail({ c, initialTab }: { c: Container; initialTab: Tab }) {
         <span>Imagen <span className="mono" title={safeText(c.image)}>{safeText(c.image, { singleLine: true })}</span></span>
         <span>ID <span className="mono">{c.id.slice(0, 12)}</span></span>
         <span>IP <span className="mono">{safeText(detail?.ip_address) || '—'}</span></span>
-        <span>Puertos <span className="mono">{safeText(portsText(c))}</span></span>
+        <span>
+          Puertos <span className="mono">{safeText(mainPortsText(portList))}</span>
+          {hasMorePorts(portList) ? (
+            <Button variant="ghost" size="icon-sm" className="ports-eye" aria-label={`Ver los ${totalPorts(portList)} puertos de ${name}`} aria-haspopup="dialog" onClick={() => setShowPorts(true)}>
+              <Icon name="eye" size="sm" />
+            </Button>
+          ) : null}
+        </span>
         <span>{statusTextEs(c.status, c.state)}</span>
       </div>
       <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
@@ -148,6 +159,7 @@ function Detail({ c, initialTab }: { c: Container; initialTab: Tab }) {
         <TabsPanel value="stats" className="view-body tabpanel">{gate.lostBanner}<StatsTab c={c} detail={detail} /></TabsPanel>
         <TabsPanel value="inspect" className="view-body tabpanel">{gate.lostBanner}<InspectTab name={name} detail={detail} error={detailError} /></TabsPanel>
       </Tabs>
+      <PortsDialog c={showPorts ? c : null} onClose={() => setShowPorts(false)} />
     </div>
   )
 }

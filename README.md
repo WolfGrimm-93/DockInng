@@ -54,6 +54,10 @@ cd frontend && pnpm test && pnpm build && pnpm lint
 
 Settings > Appearance lets you pick light, dark or system mode, an accent color (presets or a custom hue), an independent surface tint and named combinations. Tokens are computed in OKLCH and validated for WCAG AA contrast across all hues. Status colors and the logo do not change with the accent.
 
+## Ports
+
+The container table shows only the 2 main ports (published first, tcp before udp). When a container has more, an eye icon opens a dialog with all its open ports: IPv4/IPv6 bindings are merged and long runs of consecutive ports are shown as a range (e.g. `55110–55199/udp`).
+
 ## Groups
 
 Containers are grouped by Compose stack automatically (each stack gets its own color, and the network(s) it uses are shown in the group header). You can also create your own groups (menu on each row, or the bulk bar), pick any color for a group or a stack, and manage them in Settings > Groups. Custom groups are stored only in the app, per connection, and never change anything in Docker.

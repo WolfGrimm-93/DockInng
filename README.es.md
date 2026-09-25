@@ -54,6 +54,10 @@ cd frontend && pnpm test && pnpm build && pnpm lint
 
 Configuración > Apariencia permite elegir modo claro, oscuro o sistema, un color de acento (presets o matiz personalizado), un tinte de superficies independiente y combinaciones con nombre. Los tokens se calculan en OKLCH y se validan con contraste WCAG AA en todos los matices. Los colores de estado y el logo no cambian con el acento.
 
+## Puertos
+
+La tabla de contenedores muestra solo los 2 puertos principales (primero los publicados, tcp antes que udp). Cuando un contenedor tiene más, un icono de ojo abre un modal con todos sus puertos abiertos: se unen los enlaces IPv4/IPv6 y las tiradas largas de puertos consecutivos se muestran como un rango (p. ej. `55110–55199/udp`).
+
 ## Grupos
 
 Los contenedores se agrupan automáticamente por stack de Compose (cada stack tiene su color y en la cabecera del grupo se muestran las redes que usa). También puedes crear tus propios grupos (menú de cada fila o barra masiva), elegir cualquier color para un grupo o un stack y gestionarlos en Configuración > Grupos. Los grupos propios se guardan solo en la app, por conexión, y no cambian nada en Docker.

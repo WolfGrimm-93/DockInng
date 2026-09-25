@@ -65,6 +65,8 @@ function AlertDialogContent({ className, initialFocus, ...props }: AlertPrimitiv
 }
 
 const Dialog = DialogPrimitive.Root
+const DialogTitle = DialogPrimitive.Title
+const DialogDescription = DialogPrimitive.Description
 function DialogContent({ className, initialFocus, ...props }: DialogPrimitive.Popup.Props) {
   return (
     <DialogPrimitive.Portal>
@@ -77,4 +79,4 @@ function DialogContent({ className, initialFocus, ...props }: DialogPrimitive.Po
   )
 }
 
-export { AlertDialog, AlertDialogContent, AlertDialogTitle, AlertDialogDescription, Dialog, DialogContent }
+export { AlertDialog, AlertDialogContent, AlertDialogTitle, AlertDialogDescription, Dialog, DialogContent, DialogTitle, DialogDescription }

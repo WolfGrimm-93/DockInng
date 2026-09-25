@@ -30,10 +30,11 @@ import { readRowHeight, useVirtualTable } from '../common/useVirtualTable'
 import { ContainerRow } from './ContainerRow'
 import { AssignGroupMenu } from '../groups/AssignGroupMenu'
 import { assignKey, useGroupsStore } from '../groups/groupsStore'
+import { PortsDialog } from './PortsDialog'
 import { ResourceStrip } from './ResourceStrip'
 import { groupDiskBytes, sumConsumption } from './usage'
 
-const COLS = 7
+const COLS = 8
 // Cabecera de grupo = un stack de Compose (automático) o un grupo propio del usuario (`g:<id>` / `s:<proyecto>`), con las redes propias
 // que usan sus contenedores. Un contenedor en un grupo propio deja de mostrarse en su stack. Los que no están en ninguno van fuera de
 // los grupos, sin cabecera (como Docker Desktop).
@@ -66,6 +67,9 @@ export default function ContainersPage() {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
   const [refreshing, setRefreshing] = useState(false)
+  // Contenedor cuyo modal de puertos está abierto (uno solo para toda la tabla).
+  const [portsOf, setPortsOf] = useState<Container | null>(null)
+  const showPorts = useCallback((c: Container) => setPortsOf(c), [])
   const [bulkBusy, setBulkBusy] = useState<{ op: 'start' | 'stop'; total: number } | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const tableRef = useRef<HTMLTableElement>(null)
@@ -333,6 +337,7 @@ export default function ContainersPage() {
                 <th scope="col" className="cell-name">Nombre</th>
                 <th scope="col">Estado</th>
                 <th scope="col" className="col-ports">Puertos</th>
+                <th scope="col" className="col-ports-more"><span className="sr-only">Ver todos los puertos</span></th>
                 <th scope="col" className="num col-cpu">CPU</th>
                 <th scope="col" className="num col-mem">Memoria</th>
                 <th scope="col" className="col-actions"><span className="sr-only">Acciones</span></th>
@@ -366,7 +371,7 @@ export default function ContainersPage() {
                                 <Icon name="chev-down" size="sm" className="chev" />
                                 <span className="grp-dot" aria-hidden="true" />
                                 {it.kind === 'custom' ? <Icon name="folder" size="sm" /> : null}
-                                {it.kind === 'custom' ? 'Grupo' : 'Stack'} {safeText(it.label)} <span className="muted" style={{ fontWeight: 400 }}>· {it.count}{it.running ? ` · ${it.running} en ejecución` : ''}</span>
+                                {it.kind === 'custom' ? 'Grupo' : 'Stack'} {safeText(it.label)}{it.running > 0 ? <span className="live-dot" aria-hidden="true" /> : null} <span className="muted" style={{ fontWeight: 400 }}>· {it.count}{it.running ? ` · ${it.running} en ejecución` : ''}</span>
                               </button>
                               {it.nets.map((n) => (
                                 <span key={n} className="net-chip mono" title={`Red: ${safeText(n)}`}><Icon name="network" size="sm" />{safeText(n)}</span>
@@ -378,7 +383,7 @@ export default function ContainersPage() {
                                 return (
                                   <span className="group-usage">
                                     {u.sum.sampled > 0 ? <span className="usage-chip mono" title="CPU de los contenedores en marcha de este stack (100 % = 1 núcleo)">CPU {u.sum.cpu.toFixed(1)} %</span> : null}
-                                    {u.sum.sampled > 0 ? <span className="usage-chip mono" title="Memoria de los contenedores en marcha de este stack">RAM {formatBytesPrecise(u.sum.memBytes)}</span> : null}
+                                    {u.sum.sampled > 0 ? <span className="usage-chip usage-ram mono" title="Memoria de los contenedores en marcha de este grupo">RAM {formatBytesPrecise(u.sum.memBytes)}</span> : null}
                                     {u.disk != null ? <span className="usage-chip usage-disk mono" title="Disco aproximado: capas de escritura + volúmenes de sus contenedores (no incluye las imágenes)">Disco ≈ {formatBytesSI(u.disk)}</span> : null}
                                   </span>
                                 )
@@ -393,6 +398,7 @@ export default function ContainersPage() {
                         key={it.c.id}
                         c={it.c}
                         groupHue={it.hue}
+                        onShowPorts={showPorts}
                         index={v.index}
                         measure={virt.measure}
                         selected={selected.has(it.c.id)}
@@ -411,6 +417,7 @@ export default function ContainersPage() {
           </table>
         </div>
       </div>
+      <PortsDialog c={portsOf} onClose={() => setPortsOf(null)} />
     </>
   )
 }
