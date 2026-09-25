@@ -265,7 +265,7 @@ export function createSimApi(opts: SimOptions = {}): SimEngineApi {
   const layers = PULL_LAYERS
 
   const capabilities: Record<Feature, Capability> = {
-    connection: 'live', containers: 'live', images: 'live', volumes: 'live', networks: 'live', actions: 'live', events: 'live', logs: 'live', stats: 'live', inspect: 'live',
+    connection: 'live', containers: 'live', images: 'live', volumes: 'live', networks: 'live', actions: 'live', events: 'live', logs: 'live', stats: 'live', inspect: 'live', system: 'live',
     exec: 'simulated', pull: 'simulated', create: 'simulated', stacks: 'simulated', connections: 'simulated',
   }
 
@@ -347,6 +347,30 @@ export function createSimApi(opts: SimOptions = {}): SimEngineApi {
         const iv = setInterval(() => on(statsFor(c)), 1000)
         setTimeout(() => on(statsFor(c)), 0)
         return () => clearInterval(iv)
+      },
+    },
+    system: {
+      // Datos de ejemplo coherentes con el mundo simulado (la capa real vive en el adaptador Tauri).
+      async usage() {
+        const GiB = 1024 ** 3
+        const rw = world.containers.map((c) => ({ id: c.id, size_rw_bytes: ((c.id.length * 7 + [...c.id].reduce((a, ch) => a + ch.charCodeAt(0), 0)) % 180 + 4) * 1024 * 1024 }))
+        const imgBytes = [...new Map(world.images.map((i) => [i.id, i.size_bytes])).values()].reduce((a, b) => a + b, 0)
+        const volBytes = world.volumes.reduce((a, v) => a + (v.size_bytes ?? 0), 0)
+        const rwBytes = rw.reduce((a, r) => a + r.size_rw_bytes, 0)
+        return {
+          host: { cpu_count: 16, mem_total_bytes: 32 * GiB },
+          disk: {
+            images: { total_bytes: imgBytes, reclaimable_bytes: Math.round(imgBytes * 0.3) },
+            containers: { total_bytes: rwBytes, reclaimable_bytes: Math.round(rwBytes * 0.5) },
+            volumes: { total_bytes: volBytes, reclaimable_bytes: Math.round(volBytes * 0.1) },
+            build_cache: { total_bytes: null, reclaimable_bytes: null },
+          },
+          container_disk: rw,
+          disk_known: true,
+        }
+      },
+      async gpu() {
+        return [{ index: 0, name: 'NVIDIA GeForce RTX 3060 (ejemplo)', utilization_percent: 8 + Math.round(Math.random() * 10), mem_used_bytes: 1.2 * 1024 ** 3, mem_total_bytes: 12 * 1024 ** 3, temperature_c: 52 }]
       },
     },
     images: { list: async () => world.images.map((i) => ({ ...i })) },

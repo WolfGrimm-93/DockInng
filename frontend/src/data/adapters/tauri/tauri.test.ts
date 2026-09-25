@@ -125,6 +125,25 @@ describe('contrato serde del backend', () => {
     await api.actions.cancel('t')
     expect(calls.map((c) => c.cmd)).toEqual(['reconnect', 'cancel_action'])
   })
+  it('system.usage llama a system_usage y devuelve la forma serde del backend', async () => {
+    const api = createTauriApi()
+    handler = (cmd) => (cmd === 'system_usage' ? F.systemUsage : undefined)
+    const u = await api.system.usage()
+    expect(calls).toEqual([{ cmd: 'system_usage', args: undefined }])
+    expect(u.host.cpu_count).toBe(24)
+    expect(u.disk.build_cache.total_bytes).toBeNull()
+    expect(u.container_disk[0].size_rw_bytes).toBe(3_051_520)
+  })
+  it('system.gpu llama a gpu_status; ante cualquier fallo o forma rara devuelve [] (sin error visible)', async () => {
+    const api = createTauriApi()
+    handler = (cmd) => (cmd === 'gpu_status' ? F.gpus : undefined)
+    expect((await api.system.gpu())[0].name).toContain('RTX 5060')
+    expect(calls).toEqual([{ cmd: 'gpu_status', args: undefined }])
+    handler = () => { throw new Error('nvidia-smi ausente') }
+    expect(await api.system.gpu()).toEqual([])
+    handler = () => ({ no: 'es una lista' }) as never
+    expect(await api.system.gpu()).toEqual([])
+  })
   it('statsSnapshot llama a container_stats_snapshot{ids} SIN abrir suscripciones y sin cortar a 12', async () => {
     const api = createTauriApi()
     handler = (cmd) => (cmd === 'container_stats_snapshot' ? F.snapshot : undefined)

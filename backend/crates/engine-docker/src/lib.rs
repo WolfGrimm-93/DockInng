@@ -23,7 +23,7 @@ use bollard::query_parameters::{
 use engine_core::{
     ConnectionCause, ConnectionStatus, Container, ContainerDetail, ContainerStats, EngineClient,
     EngineError, EngineEvent, EngineInfo, EngineStream, Image, LogLine, LogStream, LogsRequest,
-    Network, Volume, validate,
+    Network, SystemUsage, Volume, validate,
 };
 use futures_util::{StreamExt, stream};
 
@@ -245,6 +245,27 @@ impl EngineClient for DockerEngine {
             api_version: v.api_version.unwrap_or_default(),
             os: v.os.unwrap_or_default(),
             arch: v.arch.unwrap_or_default(),
+        })
+    }
+
+    async fn system_usage(&self) -> Result<SystemUsage, EngineError> {
+        let d = self.client().await?;
+        let info = map(d.info().await)?;
+        let host = engine_core::HostResources {
+            cpu_count: info.ncpu.unwrap_or(0).max(0) as u32,
+            mem_total_bytes: info.mem_total.unwrap_or(0).max(0) as u64,
+        };
+        // `df` falla o expira => disco desconocido (`disk_known = false`), no es un error: el resto sigue valiendo.
+        let (disk, container_disk, disk_known) =
+            match tokio::time::timeout(DF_TIMEOUT, d.df(None::<DataUsageOptions>)).await {
+                Ok(Ok(r)) => convert::disk_from_df(&r),
+                _ => (engine_core::DiskUsage::default(), Vec::new(), false),
+            };
+        Ok(SystemUsage {
+            host,
+            disk,
+            container_disk,
+            disk_known,
         })
     }
 

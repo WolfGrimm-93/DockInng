@@ -5,7 +5,7 @@ use futures_core::Stream;
 
 use crate::{
     ConnectionStatus, Container, ContainerDetail, ContainerStats, EngineError, EngineEvent,
-    EngineInfo, Image, LogLine, LogsRequest, Network, Volume,
+    EngineInfo, Image, LogLine, LogsRequest, Network, SystemUsage, Volume,
 };
 
 /// Stream boxed, `'static` y `Send`, para poder lanzarlo en una tarea.
@@ -44,6 +44,10 @@ pub trait EngineClient: Send + Sync {
     async fn remove_volume(&self, name: &str) -> Result<(), EngineError>;
     async fn list_networks(&self) -> Result<Vec<Network>, EngineError>;
     async fn remove_network(&self, id: &str) -> Result<(), EngineError>;
+
+    // --- sistema ---
+    /// CPU/memoria del equipo y uso de disco de Docker. Si `df` falla o expira, `disk_known = false` (no es un error).
+    async fn system_usage(&self) -> Result<SystemUsage, EngineError>;
 
     // --- streaming ---
     fn events(&self) -> EngineStream<EngineEvent>;

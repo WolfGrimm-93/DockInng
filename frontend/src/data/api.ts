@@ -4,12 +4,12 @@
 // Selección: `createEngineApi()` (isTauri()). Firma de cada método = comando IPC de PLAN_backend §4.3.
 import type {
   ActionOutcome, ActionPlan, ActionRequest, ConnSpec, ConnectionProfile, ConnectionStatus, Container,
-  ContainerDetail, ContainerStats, CreateSpec, EngineFeed, Image, LogFeed, Network, PullProgress,
-  StackSummary, StatsSnapshotItem, TerminalSession, Unsubscribe, UpProgress, Volume,
+  ContainerDetail, ContainerStats, CreateSpec, EngineFeed, GpuInfo, Image, LogFeed, Network, PullProgress,
+  StackSummary, StatsSnapshotItem, SystemUsage, TerminalSession, Unsubscribe, UpProgress, Volume,
 } from './types'
 
 export type Feature =
-  | 'connection' | 'containers' | 'images' | 'volumes' | 'networks' | 'actions' | 'events' | 'logs' | 'stats' | 'inspect'
+  | 'connection' | 'containers' | 'images' | 'volumes' | 'networks' | 'actions' | 'events' | 'logs' | 'stats' | 'inspect' | 'system'
   | 'exec' | 'pull' | 'create' | 'stacks' | 'connections'
 /** 'simulated' => la UI muestra <SimulatedTag/> «No conectado aún». */
 export type Capability = 'live' | 'simulated'
@@ -41,6 +41,8 @@ export interface EngineApi {
     /** `subscribe_stats`. */
     streamStats(id: string, on: (s: ContainerStats) => void): Unsubscribe
   }
+  /** Franja de consumo: `usage` = `system_usage` (CPU/RAM del equipo + disco de Docker); `gpu` = `gpu_status` (nunca lanza: sin GPU => []). */
+  system: { usage(): Promise<SystemUsage>; gpu(): Promise<GpuInfo[]> }
   images: { list(): Promise<Image[]> }
   volumes: { list(): Promise<Volume[]> }
   networks: { list(): Promise<Network[]> }

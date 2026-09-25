@@ -230,3 +230,25 @@ export interface CreateSpec {
   restart: 'no' | 'always' | 'unless-stopped' | 'on-failure'
 }
 export interface ConnSpec { kind: 'ssh' | 'tls'; name: string; host: string; port: string; user: string; key: string }
+
+// ---------------------------------------------------------------- Sistema (espejo de engine-core/src/system.rs)
+/** CPU y memoria del equipo donde corre el motor. */
+export interface HostResources { cpu_count: number; mem_total_bytes: number }
+/** `null` = el motor no lo informó (desconocido, nunca cero). */
+export interface DiskCategory { total_bytes: number | null; reclaimable_bytes: number | null }
+/** Disco que usa DOCKER (no el disco del equipo). */
+export interface DiskUsage { images: DiskCategory; containers: DiskCategory; volumes: DiskCategory; build_cache: DiskCategory }
+/** Capa de escritura de un contenedor. */
+export interface ContainerDisk { id: string; size_rw_bytes: number }
+/** `system_usage`. `disk_known=false` => `df` falló o expiró: el disco es desconocido. */
+export interface SystemUsage { host: HostResources; disk: DiskUsage; container_disk: ContainerDisk[]; disk_known: boolean }
+/** `gpu_status` (solo NVIDIA vía nvidia-smi y solo con motor local; sin GPU = lista vacía). */
+export interface GpuInfo {
+  index: number
+  name: string
+  /** 0–100. */
+  utilization_percent: number
+  mem_used_bytes: number
+  mem_total_bytes: number
+  temperature_c: number | null
+}

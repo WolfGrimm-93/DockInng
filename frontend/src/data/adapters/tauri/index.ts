@@ -14,7 +14,7 @@ import type { EngineApi } from '../../api'
 import { toApiError } from '../../errors'
 import type {
   ActionOutcome, ActionPlan, ConnectionProfile, ConnectionStatus, Container, ContainerDetail, ContainerStats, EngineFeed, Image,
-  LogFeed, Network, StatsFeed, StatsSnapshotItem, Volume,
+  GpuInfo, LogFeed, Network, StatsFeed, StatsSnapshotItem, SystemUsage, Volume,
 } from '../../types'
 import { createSimApi } from '../sim'
 import { subscribe } from './streams'
@@ -43,7 +43,7 @@ export function createTauriApi(): EngineApi {
   return {
     mode: 'tauri',
     capabilities: {
-      connection: 'live', containers: 'live', images: 'live', volumes: 'live', networks: 'live', actions: 'live', events: 'live', logs: 'live', stats: 'live', inspect: 'live',
+      connection: 'live', containers: 'live', images: 'live', volumes: 'live', networks: 'live', actions: 'live', events: 'live', logs: 'live', stats: 'live', inspect: 'live', system: 'live',
       exec: 'simulated', pull: 'simulated', create: 'simulated', stacks: 'simulated', connections: 'simulated',
     },
     connection: {
@@ -91,6 +91,18 @@ export function createTauriApi(): EngineApi {
         subscribe<StatsFeed>('subscribe_stats', { id }, (f) => {
           if (f.type === 'sample') on(f.stats as ContainerStats)
         }),
+    },
+    system: {
+      usage: () => call<SystemUsage>('system_usage'),
+      // La GPU es opcional: cualquier fallo del IPC se trata como «sin GPU», nunca como error visible.
+      async gpu() {
+        try {
+          const r = await invoke<GpuInfo[]>('gpu_status')
+          return Array.isArray(r) ? r : []
+        } catch {
+          return []
+        }
+      },
     },
     images: { list: () => call<Image[]>('list_images') },
     volumes: { list: () => call<Volume[]>('list_volumes') },

@@ -598,6 +598,29 @@ async fn imagen_en_uso_y_red_con_endpoints() {
 
 #[tokio::test]
 #[ignore = "requiere DOCKINNG_LIVE_TESTS=1 y Docker"]
+async fn system_usage_real_es_coherente() {
+    // Solo lectura (`info` + `df`): no crea ni toca ningún recurso.
+    live!("sysusage", |env| {
+        let u = env.engine.system_usage().await.expect("system_usage");
+        assert!(u.host.cpu_count > 0, "NCPU debe ser > 0");
+        assert!(
+            u.host.mem_total_bytes > 512 * 1024 * 1024,
+            "MemTotal absurdo"
+        );
+        // Un Docker moderno informa `df`; si no, `disk_known = false` y lo demás sigue valiendo.
+        if u.disk_known {
+            assert!(u.disk.images.total_bytes.is_some());
+            for c in &u.container_disk {
+                assert!(!c.id.is_empty());
+            }
+        } else {
+            assert!(u.container_disk.is_empty());
+        }
+    });
+}
+
+#[tokio::test]
+#[ignore = "requiere DOCKINNG_LIVE_TESTS=1 y Docker"]
 async fn diagnose_real_y_lecturas() {
     live!("diag", |env| {
         assert!(matches!(

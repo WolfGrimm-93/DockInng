@@ -522,3 +522,121 @@ mod tests {
         assert!(d.raw.is_object());
     }
 }
+
+/// Elemento de `container_usage.items` de `/system/df` (sin tipar en bollard 1.53).
+#[derive(serde::Deserialize)]
+struct DfContainer {
+    #[serde(rename = "Id")]
+    id: String,
+    #[serde(rename = "SizeRw", default)]
+    size_rw: Option<i64>,
+}
+
+fn nonneg(v: Option<i64>) -> Option<u64> {
+    v.filter(|n| *n >= 0).map(|n| n as u64)
+}
+
+fn category(total: Option<i64>, reclaimable: Option<i64>) -> engine_core::DiskCategory {
+    engine_core::DiskCategory {
+        total_bytes: nonneg(total),
+        reclaimable_bytes: nonneg(reclaimable),
+    }
+}
+
+/// Uso de disco de Docker a partir de `/system/df` (formato de API ≥ 1.52: `*_usage`). En un daemon más antiguo
+/// esos campos no vienen y todo queda desconocido (`known = false`): nunca se inventa un cero.
+pub fn disk_from_df(
+    r: &bollard::models::SystemDataUsageResponse,
+) -> (
+    engine_core::DiskUsage,
+    Vec<engine_core::ContainerDisk>,
+    bool,
+) {
+    let images = r
+        .image_usage
+        .as_ref()
+        .map(|u| category(u.total_size, u.reclaimable));
+    let containers = r
+        .container_usage
+        .as_ref()
+        .map(|u| category(u.total_size, u.reclaimable));
+    let volumes = r
+        .volume_usage
+        .as_ref()
+        .map(|u| category(u.total_size, u.reclaimable));
+    let cache = r
+        .build_cache_usage
+        .as_ref()
+        .map(|u| category(u.total_size, u.reclaimable));
+    let known = images.is_some() || containers.is_some() || volumes.is_some();
+    let per_container = r
+        .container_usage
+        .as_ref()
+        .and_then(|u| u.items.as_ref())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|v| serde_json::from_value::<DfContainer>(v.clone()).ok())
+                .filter_map(|c| {
+                    Some(engine_core::ContainerDisk {
+                        id: c.id,
+                        size_rw_bytes: nonneg(c.size_rw)?,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    (
+        engine_core::DiskUsage {
+            images: images.unwrap_or_default(),
+            containers: containers.unwrap_or_default(),
+            volumes: volumes.unwrap_or_default(),
+            build_cache: cache.unwrap_or_default(),
+        },
+        per_container,
+        known,
+    )
+}
+
+#[cfg(test)]
+mod df_tests {
+    use super::*;
+
+    fn resp(json: &str) -> bollard::models::SystemDataUsageResponse {
+        serde_json::from_str(json).expect("df de prueba")
+    }
+
+    #[test]
+    fn df_moderno_da_totales_y_capa_de_escritura_por_contenedor() {
+        let r = resp(
+            r#"{"ImageUsage":{"TotalSize":33306079873,"Reclaimable":12283808840},
+                "ContainerUsage":{"TotalSize":161054720,"Reclaimable":157421568,
+                  "Items":[{"Id":"c1","SizeRw":3051520},{"Id":"c2","SizeRw":-1},{"Id":"c3"}]},
+                "VolumeUsage":{"TotalSize":15505617941,"Reclaimable":560263712},
+                "BuildCacheUsage":{}}"#,
+        );
+        let (disk, per, known) = disk_from_df(&r);
+        assert!(known);
+        assert_eq!(disk.images.total_bytes, Some(33_306_079_873));
+        assert_eq!(disk.images.reclaimable_bytes, Some(12_283_808_840));
+        assert_eq!(disk.volumes.total_bytes, Some(15_505_617_941));
+        // Caché de build vacía: desconocida (None), no cero.
+        assert_eq!(disk.build_cache.total_bytes, None);
+        // -1 (desconocido) y ausente se descartan; solo queda el válido.
+        assert_eq!(
+            per,
+            vec![engine_core::ContainerDisk {
+                id: "c1".into(),
+                size_rw_bytes: 3_051_520
+            }]
+        );
+    }
+
+    #[test]
+    fn df_de_un_daemon_antiguo_queda_desconocido_no_cero() {
+        let (disk, per, known) = disk_from_df(&resp(r#"{"LayersSize":123}"#));
+        assert!(!known);
+        assert_eq!(disk, engine_core::DiskUsage::default());
+        assert!(per.is_empty());
+    }
+}

@@ -5,7 +5,7 @@ import { useCallback, useMemo, useRef, useState, type CSSProperties } from 'reac
 import { devFlagsEnabled, getDevFlags, usePreviewState } from '@/app/devFlags'
 import { useHashRoute } from '@/app/useHashRoute'
 import { describePlan } from '@/components/shared/planDescribe'
-import { formatBytes } from '@/lib/format'
+import { formatBytes, formatBytesPrecise, formatBytesSI } from '@/lib/format'
 import { BulkBar } from '@/components/shared/BulkBar'
 import { useGuardedAction } from '@/components/shared/ConfirmDialog'
 import { Icon } from '@/components/shared/Icon'
@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { apiErrorMessage } from '@/data/errors'
 import { containerName } from '@/data/store/engineStore'
-import { useContainers, useEngineApi, useEngineStoreApi, useNetworks, useVolumes } from '@/data/store/hooks'
+import { useAllStats, useContainers, useEngineApi, useEngineStoreApi, useNetworks, useSystemUsage, useVolumes } from '@/data/store/hooks'
 import type { Container } from '@/data/types'
 import { safeText } from '@/lib/safeText'
 import { toast } from '@/lib/toastStore'
@@ -28,6 +28,8 @@ import { useViewGate } from '../common/gate'
 import { LinkButton } from '../common/LinkButton'
 import { readRowHeight, useVirtualTable } from '../common/useVirtualTable'
 import { ContainerRow } from './ContainerRow'
+import { ResourceStrip } from './ResourceStrip'
+import { groupDiskBytes, sumConsumption } from './usage'
 
 const COLS = 7
 // Cabecera de grupo = proyecto de Compose (stack) + las redes propias que usan sus contenedores. Los contenedores sin proyecto
@@ -43,6 +45,8 @@ export default function ContainersPage() {
   const gate = useViewGate(COLS, 8)
   const { list: volumes } = useVolumes()
   const { list: networks } = useNetworks()
+  const allStats = useAllStats()
+  const system = useSystemUsage()
   // Tamaño de los volúmenes montados en el diálogo de eliminar: solo si el motor lo conoce (nunca se inventa).
   const volumeSize = useCallback((n: string) => { const v = volumes.find((x) => x.name === n); return v?.size_bytes != null ? formatBytes(v.size_bytes) : undefined }, [volumes])
   const preview = usePreviewState()
@@ -74,6 +78,12 @@ export default function ContainersPage() {
   }, [networks])
   // Color de cada stack: se calcula sobre TODOS los stacks (no solo los filtrados) para que un stack no cambie de color al filtrar.
   const hueOf = useMemo(() => assignGroupHues(list.flatMap((c) => (c.compose_project != null ? [c.compose_project] : []))), [list])
+  // Consumo de cada stack (sobre TODOS sus contenedores, no solo los filtrados): CPU/RAM de los en marcha y disco aproximado.
+  const groupUse = useMemo(() => {
+    const by = new Map<string, Container[]>()
+    for (const c of list) if (c.compose_project != null) by.set(c.compose_project, [...(by.get(c.compose_project) ?? []), c])
+    return new Map([...by].map(([k, cs]) => [k, { sum: sumConsumption(cs, allStats), disk: groupDiskBytes(cs, volumes, system?.container_disk ?? [], !!system?.disk_known) }]))
+  }, [list, allStats, volumes, system])
   // Los que están en marcha primero (orden estable: dentro de cada mitad se conserva el orden del motor).
   const ordered = useMemo(() => [...filtered].sort((a, b) => Number(!isOn(a.state)) - Number(!isOn(b.state))), [filtered])
   const items = useMemo<Item[]>(() => {
@@ -267,6 +277,7 @@ export default function ContainersPage() {
   return (
     <>
       {head}
+      <ResourceStrip />
       {toolbar}
       <div className="view-body" ref={scrollRef}>
         {gate.lostBanner}
@@ -319,14 +330,27 @@ export default function ContainersPage() {
                       return (
                         <tr key={`g-${it.key}`} ref={virt.measure} data-index={v.index} aria-rowindex={v.index + 2} className="group-row" style={{ '--grp-h': it.hue } as CSSProperties}>
                           <td colSpan={COLS}>
-                            <button type="button" aria-expanded={open} onClick={() => setCollapsed((s) => ({ ...s, [it.key]: !s[it.key] }))}>
-                              <Icon name="chev-down" size="sm" className="chev" />
-                              <span className="grp-dot" aria-hidden="true" />
-                              Stack {safeText(it.key)} <span className="muted" style={{ fontWeight: 400 }}>· {it.count}{it.running ? ` · ${it.running} en ejecución` : ''}</span>
-                            </button>
-                            {it.nets.map((n) => (
-                              <span key={n} className="net-chip mono" title={`Red: ${safeText(n)}`}><Icon name="network" size="sm" />{safeText(n)}</span>
-                            ))}
+                            <div className="group-head">
+                              <button type="button" aria-expanded={open} onClick={() => setCollapsed((s) => ({ ...s, [it.key]: !s[it.key] }))}>
+                                <Icon name="chev-down" size="sm" className="chev" />
+                                <span className="grp-dot" aria-hidden="true" />
+                                Stack {safeText(it.key)} <span className="muted" style={{ fontWeight: 400 }}>· {it.count}{it.running ? ` · ${it.running} en ejecución` : ''}</span>
+                              </button>
+                              {it.nets.map((n) => (
+                                <span key={n} className="net-chip mono" title={`Red: ${safeText(n)}`}><Icon name="network" size="sm" />{safeText(n)}</span>
+                              ))}
+                              {(() => {
+                                const u = groupUse.get(it.key)
+                                if (!u) return null
+                                return (
+                                  <span className="group-usage">
+                                    {u.sum.sampled > 0 ? <span className="usage-chip mono" title="CPU de los contenedores en marcha de este stack (100 % = 1 núcleo)">CPU {u.sum.cpu.toFixed(1)} %</span> : null}
+                                    {u.sum.sampled > 0 ? <span className="usage-chip mono" title="Memoria de los contenedores en marcha de este stack">RAM {formatBytesPrecise(u.sum.memBytes)}</span> : null}
+                                    {u.disk != null ? <span className="usage-chip usage-disk mono" title="Disco aproximado: capas de escritura + volúmenes de sus contenedores (no incluye las imágenes)">Disco ≈ {formatBytesSI(u.disk)}</span> : null}
+                                  </span>
+                                )
+                              })()}
+                            </div>
                           </td>
                         </tr>
                       )

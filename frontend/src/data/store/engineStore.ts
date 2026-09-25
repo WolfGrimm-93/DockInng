@@ -15,8 +15,7 @@ import { safeStorage } from '@/lib/safeStorage'
 import { toast } from '@/lib/toastStore'
 import type {
   ApiError, ConnectionIssue, ConnectionProfile, ConnectionState, ConnectionStatus, Container, ContainerBusy, ContainerStats, EngineFeed, EngineInfo,
-  Image, Network, Unsubscribe, Volume,
-} from '../types'
+  Image, Network, Unsubscribe, Volume, GpuInfo, SystemUsage } from '../types'
 import { planRefresh } from './eventReducer'
 
 export interface Entity<T> {
@@ -38,6 +37,10 @@ export interface EngineStoreState {
   volumes: Entity<Volume>
   networks: Entity<Network>
   stats: Record<string, ContainerStats>
+  /** Recursos del equipo y disco de Docker (se refresca cada ~60 s); null = aún no cargado. */
+  system: SystemUsage | null
+  /** GPU del equipo (se refresca con el muestreo de stats); vacío = sin GPU detectada. */
+  gpu: GpuInfo[]
   rowOps: Record<string, RowOp>
   polling: boolean
 
@@ -99,6 +102,9 @@ export function createEngineStore(api: EngineApi, opts: EngineStoreOptions = {})
   let unsubEvents: Unsubscribe | null = null
   let statsTimer: ReturnType<typeof setInterval> | null = null
   let statsTick: (() => Promise<void>) | null = null
+  let sysTimer: ReturnType<typeof setInterval> | null = null
+  let sysTick: (() => Promise<void>) | null = null
+  let gpuTick: (() => Promise<void>) | null = null
   let pollTimer: ReturnType<typeof setInterval> | null = null
   const timers: Partial<Record<EntityKind, ReturnType<typeof setTimeout>>> = {}
   let generation = 0 // invalida respuestas tardías tras dispose()/cambio de conexión
@@ -172,6 +178,10 @@ export function createEngineStore(api: EngineApi, opts: EngineStoreOptions = {})
       if (statsTimer) clearInterval(statsTimer)
       statsTimer = null
       statsTick = null
+      if (sysTimer) clearInterval(sysTimer)
+      sysTimer = null
+      sysTick = null
+      gpuTick = null
       for (const k of Object.keys(timers) as EntityKind[]) {
         if (timers[k]) clearTimeout(timers[k])
         timers[k] = undefined
@@ -199,8 +209,35 @@ export function createEngineStore(api: EngineApi, opts: EngineStoreOptions = {})
         }
         // El primer muestreo lo lanza connect() DESPUÉS de fetchAll (la lista de contenedores ya existe).
         statsTick = tick
-        statsTimer = setInterval(() => void tick(), statsMs)
+
+        // GPU del equipo: mismo ritmo que las stats, un único vuelo y sin error visible (sin GPU => []).
+        let gpuBusy = false
+        gpuTick = async () => {
+          if (gpuBusy || get().connection.status !== 'connected') return
+          if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+          const gen = generation
+          gpuBusy = true
+          try {
+            const gpu = await api.system.gpu()
+            if (gen === generation) set({ gpu: Array.isArray(gpu) ? gpu : [] })
+          } catch { /* opcional */ } finally { gpuBusy = false }
+        }
+        statsTimer = setInterval(() => { void tick(); void gpuTick?.() }, statsMs)
       }
+
+      // Recursos del equipo y disco de Docker: `df` es pesado, se pide cada 60 s (y tras cada conexión).
+      let sysBusy = false
+      const stick = async () => {
+        if (sysBusy || get().connection.status !== 'connected') return
+        const gen = generation
+        sysBusy = true
+        try {
+          const system = await api.system.usage()
+          if (gen === generation && system && typeof system === 'object') set({ system })
+        } catch { /* opcional: la franja muestra «—» */ } finally { sysBusy = false }
+      }
+      sysTick = stick
+      sysTimer = setInterval(() => { if (typeof document === 'undefined' || document.visibilityState !== 'hidden') void stick() }, 60_000)
     }
     const applyPolling = (on: boolean) => {
       if (pollTimer) clearInterval(pollTimer)
@@ -216,6 +253,8 @@ export function createEngineStore(api: EngineApi, opts: EngineStoreOptions = {})
         startLive()
         await fetchAll()
         void statsTick?.()
+        void sysTick?.()
+        void gpuTick?.()
       } else stopLive()
     }
 
@@ -228,6 +267,8 @@ export function createEngineStore(api: EngineApi, opts: EngineStoreOptions = {})
       volumes: emptyEntity(),
       networks: emptyEntity(),
       stats: {},
+      system: null,
+      gpu: [],
       rowOps: {},
       polling: readPoll,
 
@@ -268,7 +309,7 @@ export function createEngineStore(api: EngineApi, opts: EngineStoreOptions = {})
         try {
           const status = await api.connection.select(id)
           generation++
-          set({ activeProfileId: id, containers: emptyEntity(), images: emptyEntity(), volumes: emptyEntity(), networks: emptyEntity(), stats: {}, rowOps: {} })
+          set({ activeProfileId: id, containers: emptyEntity(), images: emptyEntity(), volumes: emptyEntity(), networks: emptyEntity(), stats: {}, system: null, gpu: [], rowOps: {} })
           await connect(status)
           if (get().connection.status === 'connected') toast.ok(`Conectado a ${target.name}`, { sub: target.version || undefined })
           else toast.err(`No se pudo conectar con ${target.name}`, { sub: 'Revisa el diagnóstico en pantalla.' })

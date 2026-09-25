@@ -11,7 +11,7 @@ import { useContext, useMemo } from 'react'
 import { useStore } from 'zustand'
 import type { EngineApi, Capability, Feature } from '../api'
 import { EngineContext } from '../EngineProvider'
-import type { ConnectionIssue, ConnectionProfile, ConnectionState, Container, ContainerStats } from '../types'
+import type { ConnectionIssue, ConnectionProfile, ConnectionState, Container, ContainerStats, GpuInfo, SystemUsage } from '../types'
 import type { EngineStore, EngineStoreState, RowOp } from './engineStore'
 import { containerCounts, findContainer, listOf, navCounts, totalImageBytes } from './selectors'
 
@@ -82,6 +82,12 @@ export function useNetworks() {
   return useMemo(() => ({ list: listOf(e), status: e.status, error: e.error }), [e])
 }
 export const useStats = (id: string): ContainerStats | undefined => useEngineStore((s) => s.stats[id])
+/** Todas las muestras de CPU/memoria por id de contenedor (la franja de consumo y las cabeceras de stack las suman). */
+export const useAllStats = (): Record<string, ContainerStats> => useEngineStore((s) => s.stats)
+/** CPU/RAM del equipo y disco de Docker; null = aún no cargado. */
+export const useSystemUsage = (): SystemUsage | null => useEngineStore((s) => s.system)
+/** GPU del equipo (vacío = sin GPU detectada). */
+export const useGpu = (): GpuInfo[] => useEngineStore((s) => s.gpu)
 const NO_OP: RowOp = {}
 export const useRowOps = (id: string): RowOp => useEngineStore((s) => s.rowOps[id] ?? NO_OP)
 

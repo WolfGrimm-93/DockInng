@@ -217,6 +217,27 @@ describe('ContainersPage', () => {
     expect(hue(rowOf('traefik-proxy') as HTMLElement)).toBe('')
   })
 
+  it('la franja de consumo muestra CPU, RAM, disco de Docker y GPU con datos, y las cabeceras de stack su consumo', async () => {
+    renderView(<ContainersPage />)
+    await loaded()
+    const strip = screen.getByRole('region', { name: 'Consumo total' })
+    for (const l of ['CPU', 'RAM', 'Disco', 'GPU']) expect(within(strip).getByRole('group', { name: l })).toBeInTheDocument()
+    // Los datos de sistema y de GPU llegan de forma asíncrona tras conectar.
+    await waitFor(() => expect(within(strip).getByRole('group', { name: 'Disco' })).toHaveTextContent(/imágenes .* · volúmenes/))
+    await waitFor(() => expect(within(strip).getByRole('group', { name: 'GPU' })).toHaveTextContent(/VRAM .* de /))
+    // El nombre de la GPU va en el título (con varias, la lista completa); el texto lleva VRAM y temperatura.
+    expect(within(strip).getByRole('group', { name: 'GPU' })).toHaveAttribute('title', expect.stringContaining('NVIDIA'))
+    expect(within(strip).getByRole('group', { name: 'CPU' })).toHaveTextContent(/núcleos/)
+    expect(within(strip).getByRole('group', { name: 'RAM' })).toHaveTextContent(/del equipo/)
+    // Barras accesibles como medidores con valor numérico.
+    for (const m of within(strip).getAllByRole('meter')) expect(m).toHaveAttribute('aria-valuenow')
+    // Cabecera de stack: CPU y RAM de los que corren + disco aproximado.
+    const head = screen.getByRole('button', { name: /Stack tienda/ }).closest('tr') as HTMLElement
+    await waitFor(() => expect(within(head).getByText(/^CPU \d/)).toBeInTheDocument())
+    expect(within(head).getByText(/^RAM /)).toBeInTheDocument()
+    expect(within(head).getByText(/^Disco ≈ /)).toBeInTheDocument()
+  })
+
   it('estado vacío, carga y error de lista', async () => {
     const api = makeApi()
     api.sim.world.containers = []

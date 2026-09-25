@@ -238,6 +238,19 @@ impl EngineClient for MockEngine {
         Ok(zero_stats())
     }
 
+    async fn system_usage(&self) -> Result<SystemUsage, EngineError> {
+        self.record("system_usage".into(), "system_usage")?;
+        Ok(SystemUsage {
+            host: HostResources {
+                cpu_count: 8,
+                mem_total_bytes: 16 * 1024 * 1024 * 1024,
+            },
+            disk: DiskUsage::default(),
+            container_disk: Vec::new(),
+            disk_known: false,
+        })
+    }
+
     async fn list_images(&self) -> Result<Vec<Image>, EngineError> {
         self.record("list_images".into(), "list_images")?;
         // Igual que el adaptador real: el uso se calcula con list_containers y su fallo se propaga.

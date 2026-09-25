@@ -2,6 +2,7 @@
 //! No contiene lógica de negocio; solo traduce entre la UI y `EngineClient`.
 
 mod commands;
+mod gpu;
 mod state;
 mod streams;
 
@@ -27,6 +28,8 @@ pub fn run() {
             commands::list_images,
             commands::list_volumes,
             commands::list_networks,
+            commands::system_usage,
+            commands::gpu_status,
             commands::start_container,
             commands::stop_container,
             commands::restart_container,

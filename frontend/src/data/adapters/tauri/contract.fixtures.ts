@@ -3,7 +3,7 @@
 // Están anotadas con los tipos de `data/types.ts`: si un tipo diverge del backend, `tsc` falla aquí.
 import type {
   ActionOutcome, ActionPlan, ActionRequest, ApiError, ConnectionStatus, Container, ContainerDetail, EngineFeed, Image, LogFeed, Network,
-  StatsFeed, StatsSnapshotItem, Volume,
+  GpuInfo, StatsFeed, StatsSnapshotItem, SystemUsage, Volume,
 } from '../../types'
 
 const ID = 'a'.repeat(64)
@@ -65,4 +65,21 @@ export const statsEnded: StatsFeed = { type: 'ended', reason: 'eof', error: null
 export const snapshot: StatsSnapshotItem[] = [
   { id: ID, stats: statsSample.type === 'sample' ? statsSample.stats : null, error: null },
   { id: 'e'.repeat(64), stats: null, error: { code: 'timeout', message: 'timeout', cause: null } },
+]
+
+// system_usage -> SystemUsage (engine-core/src/system.rs). `null` = desconocido (Option<u64> serializa a null), nunca cero.
+export const systemUsage: SystemUsage = {
+  host: { cpu_count: 24, mem_total_bytes: 33_064_775_680 },
+  disk: {
+    images: { total_bytes: 33_306_079_873, reclaimable_bytes: 12_283_808_840 },
+    containers: { total_bytes: 161_054_720, reclaimable_bytes: 157_421_568 },
+    volumes: { total_bytes: 15_505_617_941, reclaimable_bytes: 560_263_712 },
+    build_cache: { total_bytes: null, reclaimable_bytes: null },
+  },
+  container_disk: [{ id: ID, size_rw_bytes: 3_051_520 }],
+  disk_known: true,
+}
+// gpu_status -> Vec<GpuInfo> (salida real de nvidia-smi del equipo del autor; temperature_c es Option<u32>).
+export const gpus: GpuInfo[] = [
+  { index: 0, name: 'NVIDIA GeForce RTX 5060 Laptop GPU', utilization_percent: 13, mem_used_bytes: 42_991_616, mem_total_bytes: 8_547_991_552, temperature_c: 57 },
 ]

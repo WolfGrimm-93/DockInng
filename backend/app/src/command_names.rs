@@ -10,6 +10,8 @@ pub const COMMAND_NAMES: &[&str] = &[
     "list_images",
     "list_volumes",
     "list_networks",
+    "system_usage",
+    "gpu_status",
     "start_container",
     "stop_container",
     "restart_container",

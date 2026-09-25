@@ -37,8 +37,8 @@ use std::sync::Arc;
 
 use engine_core::{
     Action, ActionOutcome, ActionPlan, ActionRequest, ApiError, ApiErrorCode, ConnectionStatus,
-    Container, ContainerDetail, ContainerStats, EngineClient, Image, Interactivity, LogsRequest,
-    Network, Volume, decide,
+    Container, ContainerDetail, ContainerStats, EngineClient, GpuInfo, Image, Interactivity,
+    LogsRequest, Network, SystemUsage, Volume, decide,
 };
 use tauri::ipc::Channel;
 use tauri::{Runtime, State, Window};
@@ -185,6 +185,18 @@ pub async fn list_volumes(state: State<'_, AppState>) -> ApiResult<Vec<Volume>> 
 #[tauri::command]
 pub async fn list_networks(state: State<'_, AppState>) -> ApiResult<Vec<Network>> {
     Ok(state.engine.list_networks().await?)
+}
+
+/// CPU/memoria del equipo y uso de disco de Docker. Si `df` falla, `disk_known = false` (no es un error).
+#[tauri::command]
+pub async fn system_usage(state: State<'_, AppState>) -> ApiResult<SystemUsage> {
+    Ok(state.engine.system_usage().await?)
+}
+
+/// GPU del equipo (solo NVIDIA vía `nvidia-smi` y solo con motor local). Sin GPU o sin `nvidia-smi` devuelve `[]`.
+#[tauri::command]
+pub async fn gpu_status() -> ApiResult<Vec<GpuInfo>> {
+    Ok(crate::gpu::probe().await)
 }
 
 #[tauri::command]
