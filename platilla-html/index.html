@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="es" class="dark no-anim">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DockInng</title>
+  <meta name="color-scheme" content="dark light">
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="stylesheet" href="css/fonts.css">
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/app.css">
+  <script>
+    /* Antes del primer pintado: tema y riel del sidebar (evita destello y la animación 216→64 px).
+       ?theme= y ?sidebar= ganan sobre lo guardado. */
+    (function () {
+      var p = new URLSearchParams(location.search), t = null, s = null, h = document.documentElement;
+      try { t = p.get('theme') || localStorage.getItem('dockinng.theme'); s = p.get('sidebar') || localStorage.getItem('dockinng.sidebar'); } catch (e) { t = p.get('theme'); s = p.get('sidebar'); }
+      if (t === 'light') h.classList.remove('dark');
+      if (s ? s === 'collapsed' : window.innerWidth < 1000) h.classList.add('is-collapsed');
+    })();
+  </script>
+</head>
+<body>
+<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <!-- Sprite de iconos estilo lucide (trazo 24x24) -->
+  <symbol id="i-box" viewBox="0 0 24 24"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></symbol>
+  <symbol id="i-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></symbol>
+  <symbol id="i-network" viewBox="0 0 24 24"><rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/><path d="M12 12V8"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><polygon points="6 3 20 12 6 21 6 3"/></symbol>
+  <symbol id="i-square" viewBox="0 0 24 24"><rect width="14" height="14" x="5" y="5" rx="1.5"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></symbol>
+  <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+  <symbol id="i-xcircle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></symbol>
+  <symbol id="i-chev-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-chev-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-terminal" viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></symbol>
+  <symbol id="i-activity" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></symbol>
+  <symbol id="i-braces" viewBox="0 0 24 24"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"/><path d="M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol>
+  <symbol id="i-panel" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></symbol>
+  <symbol id="i-server" viewBox="0 0 24 24"><rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/></symbol>
+  <symbol id="i-monitor" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol>
+  <symbol id="i-dots" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></symbol>
+  <symbol id="i-dashed" viewBox="0 0 24 24"><path d="M10.1 2.18a10 10 0 0 1 3.8 0"/><path d="M17.9 3.7a10 10 0 0 1 3.4 3.4"/><path d="M21.82 10.1a10 10 0 0 1 0 3.8"/><path d="M20.3 17.9a10 10 0 0 1-3.4 3.4"/><path d="M13.9 21.82a10 10 0 0 1-3.8 0"/><path d="M6.1 20.3a10 10 0 0 1-3.4-3.4"/><path d="M2.18 13.9a10 10 0 0 1 0-3.8"/><path d="M3.7 6.1a10 10 0 0 1 3.4-3.4"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></symbol>
+  <symbol id="i-command" viewBox="0 0 24 24"><path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></symbol>
+  <symbol id="i-disk" viewBox="0 0 24 24"><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" x2="6.01" y1="16" y2="16"/><line x1="10" x2="10.01" y1="16" y2="16"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></symbol>
+  <symbol id="i-cpu" viewBox="0 0 24 24"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 2v2M9 20v2"/></symbol>
+  <symbol id="i-zap" viewBox="0 0 24 24"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></symbol>
+  <symbol id="i-dot" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><circle cx="12" cy="12" r="4.2" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-loader" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></symbol>
+</svg>
+
+
+<a class="skip" href="#main" id="skip">Saltar al contenido</a>
+
+<div class="shell" id="shell">
+  <!-- Sidebar flotante -->
+  <aside class="sidebar" aria-label="Barra lateral">
+    <div class="brand">
+      <img src="assets/logo-mark.svg" alt="" width="28" height="28">
+      <span class="brand-name"><b>Dock</b><span>Inng</span></span>
+    </div>
+
+    <div class="ctx">
+      <button class="ctx-btn" id="ctxBtn" aria-haspopup="menu" aria-expanded="false" aria-label="Cambiar de conexión. Actual: Local">
+        <svg class="i lg" aria-hidden="true"><use href="#i-monitor"/></svg>
+        <span class="ctx-text"><strong id="ctxName">Local</strong><small id="ctxSub">unix:///var/run/docker.sock</small></span>
+        <svg class="i sm" aria-hidden="true"><use href="#i-chev-down"/></svg>
+      </button>
+      <div class="menu" id="ctxMenu" role="menu" aria-label="Conexiones" hidden></div>
+    </div>
+
+    <nav class="nav" aria-label="Secciones" id="nav"></nav>
+
+    <div class="sidebar-foot">
+      <div class="engine" id="engine" role="status" tabindex="0" aria-label="Motor conectado">
+        <span class="engine-ico"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg></span>
+        <span class="engine-text"><strong id="engineTitle">Motor conectado</strong><small id="engineSub">Docker 27.3.1 · API 1.47</small></span>
+      </div>
+      <div class="foot-row">
+        <button class="btn btn-ghost btn-icon btn-sm" id="themeBtn" aria-label="Cambiar a tema claro" data-tip="Cambiar tema"><svg class="i" aria-hidden="true"><use href="#i-sun"/></svg></button>
+        <button class="btn btn-ghost btn-icon btn-sm" id="collapseBtn" aria-label="Colapsar barra lateral" aria-expanded="true" data-tip="Colapsar barra lateral"><svg class="i" aria-hidden="true"><use href="#i-panel"/></svg></button>
+        <button class="btn btn-ghost btn-icon btn-sm" id="paletteBtn" aria-label="Abrir paleta de comandos (Ctrl+K)" data-tip="Paleta de comandos (Ctrl+K)"><svg class="i" aria-hidden="true"><use href="#i-command"/></svg></button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Contenido: sin barra superior; cada vista trae su propio encabezado -->
+  <main class="main" id="main" tabindex="-1"></main>
+</div>
+
+<div class="tip" id="tip" role="presentation" hidden></div>
+<div class="toasts" id="toasts" aria-live="polite" aria-atomic="false"></div>
+
+<!-- Diálogo genérico de confirmación (nivel "Confirmar"); el contenido lo genera app.js -->
+<dialog id="dlgConfirm" aria-modal="true" aria-labelledby="dcTitle" aria-describedby="dcDesc">
+  <div class="dlg-body">
+    <span class="dlg-ico danger"><svg class="i lg" aria-hidden="true"><use href="#i-trash"/></svg></span>
+    <div>
+      <h2 id="dcTitle"></h2>
+      <div id="dcDesc"></div>
+      <div id="dcExtra"></div>
+      <div class="level-note"><svg class="i sm" aria-hidden="true"><use href="#i-info"/></svg><span id="dcLevel"></span></div>
+    </div>
+  </div>
+  <div class="dlg-foot">
+    <button class="btn btn-secondary" id="dcCancel">Cancelar</button>
+    <button class="btn btn-destructive" id="dcOk"><svg class="i" aria-hidden="true"><use href="#i-trash"/></svg><span id="dcOkText">Eliminar</span></button>
+  </div>
+</dialog>
+
+<!-- Diálogo: acción bloqueada (Deny · Forbidden: no se permite ni con confirmación) -->
+<dialog id="dlgBlocked" role="alertdialog" aria-modal="true" aria-labelledby="dbTitle" aria-describedby="dbDesc">
+  <div class="dlg-body">
+    <span class="dlg-ico blocked"><svg class="i lg" aria-hidden="true"><use href="#i-ban"/></svg></span>
+    <div>
+      <h2 id="dbTitle">Limpiar todo el sistema está bloqueado</h2>
+      <div id="dbDesc"><p>DockInng no ejecuta esta acción, ni siquiera con confirmación. Borraría contenedores detenidos, redes, imágenes sin usar y caché de compilación de una sola vez.</p></div>
+      <ul>
+        <li>Para limpiar por partes: elimina imágenes o volúmenes sin usar desde sus vistas, con confirmación.</li>
+        <li>Si de verdad lo necesitas, ejecútalo tú mismo en una terminal.</li>
+      </ul>
+      <div class="level-note"><svg class="i sm" aria-hidden="true"><use href="#i-lock"/></svg><span><b>Nivel Bloqueado.</b> El motor de seguridad rechaza la acción antes de enviarla a Docker.</span></div>
+    </div>
+  </div>
+  <div class="dlg-foot"><button class="btn btn-secondary" id="dbOk">Entendido</button></div>
+</dialog>
+
+<!-- Paleta de comandos (Ctrl+K) -->
+<dialog id="dlgPalette" class="palette" aria-modal="true" aria-label="Paleta de comandos">
+  <div class="palette-in">
+    <svg class="i" aria-hidden="true"><use href="#i-search"/></svg>
+    <input id="palIn" type="text" placeholder="Buscar vista o acción…" aria-label="Buscar comando" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="true" aria-controls="palList">
+    <kbd>Esc</kbd>
+  </div>
+  <ul class="palette-list" id="palList" role="listbox" aria-label="Resultados"></ul>
+  <div class="palette-empty" id="palEmpty" role="status" hidden>Sin resultados</div>
+</dialog>
+
+<script src="js/data.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

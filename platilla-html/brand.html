@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="es" class="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DockInng — Libro de marca</title>
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="stylesheet" href="css/fonts.css">
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/app.css">
+  <script>
+    (function () {
+      var t = null;
+      try { t = new URLSearchParams(location.search).get('theme') || localStorage.getItem('dockinng.theme'); } catch (e) {}
+      if (t === 'light') document.documentElement.classList.remove('dark');
+    })();
+  </script>
+  <style>
+    html, body { height: auto; }
+    body { overflow: auto; font-size: 14px; }
+    .page { max-width: 1040px; margin: 0 auto; padding: 32px 24px 96px; }
+    .page > section { margin-top: 64px; }
+    .page h2 { font-size: 22px; font-weight: 650; letter-spacing: -0.02em; margin-bottom: 6px; }
+    .page h3 { font-size: 14px; font-weight: 600; margin: 24px 0 8px; }
+    .lead { color: var(--muted-foreground); max-width: 68ch; margin-bottom: 20px; font-size: 14.5px; }
+    .page p + p { margin-top: 8px; }
+    .top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+    .top nav { display: flex; gap: 4px 14px; flex-wrap: wrap; margin-left: auto; font-size: 13px; }
+    .top nav a { color: var(--muted-foreground); text-decoration: none; }
+    .top nav a:hover { color: var(--foreground); text-decoration: underline; text-underline-offset: 3px; }
+    .hero { margin-top: 72px !important; display: grid; grid-template-columns: 1.3fr 1fr; gap: 40px; align-items: center; }
+    .hero h1 { font-size: clamp(40px, 6vw, 64px); line-height: 1; letter-spacing: -0.04em; font-weight: 400; }
+    .hero h1 b { font-weight: 700; }
+    .hero p { margin-top: 18px; font-size: 16px; color: var(--muted-foreground); max-width: 52ch; }
+    .hero-tile { justify-self: end; width: 168px; height: 168px; border-radius: 40px; background: var(--brand-tile); color: #f5fcf8; display: grid; place-items: center; box-shadow: var(--sh-float); }
+    .hero-tile svg { width: 100px; height: 100px; }
+    .glyph { fill: currentColor; fill-rule: evenodd; stroke: none; }
+    .g-stroke { fill: none; stroke: currentColor; stroke-width: 3.4; stroke-linecap: round; stroke-linejoin: round; }
+
+    .dirs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .dir { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+    .dir.rec { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+    .dir .stage { display: grid; place-items: center; height: 120px; border-radius: var(--radius-md); background: var(--muted); }
+    .tile { display: inline-grid; place-items: center; background: var(--brand-tile); color: #f5fcf8; border-radius: 22%; }
+    .tile svg { width: 62%; height: 62%; }
+    .sizes { display: flex; align-items: end; gap: 12px; }
+    .dir p { color: var(--muted-foreground); font-size: 13px; }
+    .dir h3 { margin: 0; display: flex; gap: 8px; align-items: center; }
+
+    .lab { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 16px; }
+    .cell { border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px; min-height: 120px; display: grid; place-items: center; gap: 10px; text-align: center; }
+    .cell small { color: inherit; opacity: 0.75; font-size: 11.5px; }
+    .cell.on-light { background: oklch(0.985 0.005 160); color: oklch(0.21 0.02 165); }
+    .cell.on-dark { background: oklch(0.155 0.014 165); color: oklch(0.955 0.008 165); }
+    .cell.on-brand { background: var(--brand-tile); color: #f5fcf8; }
+    .cell.on-photo { background: oklch(0.3 0.06 160); color: oklch(0.96 0.02 160); }
+    .wm { font-size: 30px; letter-spacing: -0.03em; line-height: 1; white-space: nowrap; }
+    .wm b { font-weight: 700; } .wm span { font-weight: 400; }
+    .lockup { display: inline-flex; align-items: center; gap: 12px; }
+    .lockup .tile { width: 40px; height: 40px; }
+    .lockup-mono svg { width: 36px; height: 36px; }
+    .rules { columns: 2; column-gap: 32px; margin: 8px 0 0; padding-left: 18px; color: var(--muted-foreground); }
+    .rules li { break-inside: avoid; margin-bottom: 6px; }
+    .rules b { color: var(--foreground); }
+
+    .tbl { width: 100%; }
+    .tbl th, .tbl td { height: 38px; font-size: 12.5px; }
+    .tbl td.sw { width: 44px; padding-right: 0; }
+    .sw i { display: block; width: 32px; height: 22px; border-radius: 6px; border: 1px solid oklch(0.5 0 0 / 30%); }
+    .tbl code { font-size: 11.5px; color: var(--muted-foreground); }
+    .grp td { background: color-mix(in oklch, var(--muted) 45%, var(--card)); font-weight: 600; font-size: 12px; height: 30px; }
+    .pass, .fail { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .pass { color: var(--status-running); } .fail { color: var(--status-dead); }
+    .two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .demo { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+    .demo .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .gray { filter: grayscale(1); }
+    .note { padding: 10px 12px; border-left: 3px solid var(--primary); background: var(--accent); color: var(--accent-foreground); border-radius: 0 var(--radius-md) var(--radius-md) 0; font-size: 13px; }
+
+    .type-spec { display: grid; grid-template-columns: 140px 1fr; gap: 6px 20px; align-items: baseline; }
+    .type-spec dt { color: var(--muted-foreground); font-size: 12px; } .type-spec dd { margin: 0; }
+    .scale { display: flex; gap: 16px; flex-wrap: wrap; align-items: end; }
+    .box { display: grid; place-items: center; background: var(--accent); color: var(--accent-foreground); font-size: 11px; }
+    .shadows { display: flex; gap: 20px; flex-wrap: wrap; }
+    .shadows div { width: 120px; height: 64px; border-radius: var(--radius-lg); background: var(--card); border: 1px solid var(--border); display: grid; place-items: center; font-size: 12px; color: var(--muted-foreground); }
+    .dlg-static { position: static; margin: 0; display: block; }
+    .voice { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .voice li { margin-bottom: 8px; }
+    .say-no { color: var(--muted-foreground); text-decoration: line-through; text-decoration-color: var(--status-dead); }
+    @media (max-width: 860px) { .hero, .dirs, .two, .voice { grid-template-columns: 1fr; } .lab { grid-template-columns: repeat(2, 1fr); } .hero-tile { justify-self: start; } .rules { columns: 1; } }
+    @media (max-width: 640px) { .tbl .hide-s { display: none; } }
+  </style>
+</head>
+<body>
+<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <!-- Sprite de iconos estilo lucide (trazo 24x24) -->
+  <symbol id="i-box" viewBox="0 0 24 24"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></symbol>
+  <symbol id="i-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></symbol>
+  <symbol id="i-network" viewBox="0 0 24 24"><rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/><path d="M12 12V8"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><polygon points="6 3 20 12 6 21 6 3"/></symbol>
+  <symbol id="i-square" viewBox="0 0 24 24"><rect width="14" height="14" x="5" y="5" rx="1.5"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></symbol>
+  <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+  <symbol id="i-xcircle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></symbol>
+  <symbol id="i-chev-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-chev-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-terminal" viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></symbol>
+  <symbol id="i-activity" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></symbol>
+  <symbol id="i-braces" viewBox="0 0 24 24"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"/><path d="M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol>
+  <symbol id="i-panel" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></symbol>
+  <symbol id="i-server" viewBox="0 0 24 24"><rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/></symbol>
+  <symbol id="i-monitor" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol>
+  <symbol id="i-dots" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></symbol>
+  <symbol id="i-dashed" viewBox="0 0 24 24"><path d="M10.1 2.18a10 10 0 0 1 3.8 0"/><path d="M17.9 3.7a10 10 0 0 1 3.4 3.4"/><path d="M21.82 10.1a10 10 0 0 1 0 3.8"/><path d="M20.3 17.9a10 10 0 0 1-3.4 3.4"/><path d="M13.9 21.82a10 10 0 0 1-3.8 0"/><path d="M6.1 20.3a10 10 0 0 1-3.4-3.4"/><path d="M2.18 13.9a10 10 0 0 1 0-3.8"/><path d="M3.7 6.1a10 10 0 0 1 3.4-3.4"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></symbol>
+  <symbol id="i-command" viewBox="0 0 24 24"><path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></symbol>
+  <symbol id="i-disk" viewBox="0 0 24 24"><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" x2="6.01" y1="16" y2="16"/><line x1="10" x2="10.01" y1="16" y2="16"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></symbol>
+  <symbol id="i-cpu" viewBox="0 0 24 24"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 2v2M9 20v2"/></symbol>
+  <symbol id="i-zap" viewBox="0 0 24 24"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></symbol>
+  <symbol id="i-dot" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><circle cx="12" cy="12" r="4.2" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-loader" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></symbol>
+</svg>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <!-- Isotipos: sólo trazo/relleno del glifo, heredan currentColor -->
+  <symbol id="m-a" viewBox="0 0 32 32"><path class="glyph" d="M8 7h7a9 9 0 0 1 0 18H8zm4.5 4.5v9h5v-9z"/></symbol>
+  <symbol id="m-b" viewBox="0 0 32 32"><path class="g-stroke" d="M6.5 15v8a3 3 0 0 0 3 3h13a3 3 0 0 0 3-3v-8"/><rect class="glyph" x="11" y="5" width="10" height="11" rx="2.2"/></symbol>
+  <symbol id="m-c" viewBox="0 0 32 32"><rect class="glyph" x="5" y="6" width="22" height="5" rx="1.6"/><rect class="glyph" x="5" y="13.5" width="14" height="5" rx="1.6"/><rect class="glyph" x="21.5" y="13.5" width="5.5" height="5" rx="1.6"/><rect class="glyph" x="5" y="21" width="22" height="5" rx="1.6"/></symbol>
+  <symbol id="m-mono" viewBox="0 0 32 32"><path class="glyph" d="M4 3h10.5a13 13 0 0 1 0 26H4zm6 7v12h5v-12z"/></symbol>
+</svg>
+<!-- Sondas ocultas para medir los tokens reales de cada tema -->
+<div class="light" id="probeL" style="position:absolute;visibility:hidden"></div>
+<div class="dark" id="probeD" style="position:absolute;visibility:hidden"></div>
+
+<div class="page">
+  <div class="top">
+    <span class="lockup"><span class="tile" style="width:28px;height:28px"><svg aria-hidden="true"><use href="#m-a"/></svg></span><span class="wm" style="font-size:18px"><b>Dock</b><span>Inng</span></span></span>
+    <nav aria-label="Secciones del libro de marca"><a href="#logo">Logotipo</a><a href="#wordmark">Wordmark</a><a href="#color">Color</a><a href="#running">Marca vs. running</a><a href="#tipo">Tipografía</a><a href="#sistema">Espaciado</a><a href="#componentes">Componentes</a><a href="#voz">Voz</a><a href="index.html">Abrir la app</a></nav>
+    <button class="btn btn-secondary btn-sm" id="themeBtn" aria-label="Cambiar tema"></button>
+  </div>
+
+  <section class="hero" aria-labelledby="h-name">
+    <div>
+      <h1 id="h-name"><b>Dock</b>Inng</h1>
+      <p>Una consola de escritorio para Docker en Linux. El nombre suma <i>dock</i> (el muelle donde atracan los contenedores) y el gerundio <i>-ing</i>: algo que se está haciendo ahora, con tus contenedores en marcha.</p>
+      <p>La marca es tranquila y precisa, como una buena herramienta de terminal: verde esmeralda con un toque de teal, superficies oscuras teñidas de verde y una sola forma memorable.</p>
+    </div>
+    <div class="hero-tile"><svg aria-label="Isotipo DockInng"><use href="#m-a"/></svg></div>
+  </section>
+
+  <section id="logo" aria-labelledby="h-logo">
+    <h2 id="h-logo">Logotipo: tres direcciones</h2>
+    <p class="lead">Las tres parten de la misma idea: un contenedor que encaja en su lugar. Ninguna usa ballena, cubo isométrico ni contenedor de carga naval, que ya pertenecen a otras marcas del sector.</p>
+    <div class="dirs">
+      <article class="card dir rec"><div class="stage"><span class="tile" style="width:88px;height:88px"><svg aria-hidden="true"><use href="#m-a"/></svg></span></div>
+        <h3>A · D con contenedor <span class="tag tag-brand">Recomendada</span></h3>
+        <div class="sizes"><span class="tile" style="width:16px;height:16px"><svg aria-hidden="true"><use href="#m-a"/></svg></span><span class="tile" style="width:24px;height:24px"><svg aria-hidden="true"><use href="#m-a"/></svg></span><span class="tile" style="width:32px;height:32px"><svg aria-hidden="true"><use href="#m-a"/></svg></span><span class="muted" style="font-size:11.5px">16 · 24 · 32 px</span></div>
+        <p>Una «D» sólida cuya cavidad es un rectángulo: el contenedor atracado en su muelle.</p></article>
+      <article class="card dir"><div class="stage"><span class="tile" style="width:88px;height:88px"><svg aria-hidden="true"><use href="#m-b"/></svg></span></div>
+        <h3>B · Amarre</h3>
+        <div class="sizes"><span class="tile" style="width:16px;height:16px"><svg aria-hidden="true"><use href="#m-b"/></svg></span><span class="tile" style="width:24px;height:24px"><svg aria-hidden="true"><use href="#m-b"/></svg></span><span class="tile" style="width:32px;height:32px"><svg aria-hidden="true"><use href="#m-b"/></svg></span></div>
+        <p>Un bloque que baja a un soporte en «U». Muy literal y clara, pero el trazo fino pierde fuerza a 16 px y se parece a un icono de «descargar a bandeja».</p></article>
+      <article class="card dir"><div class="stage"><span class="tile" style="width:88px;height:88px"><svg aria-hidden="true"><use href="#m-c"/></svg></span></div>
+        <h3>C · Pila con hueco</h3>
+        <div class="sizes"><span class="tile" style="width:16px;height:16px"><svg aria-hidden="true"><use href="#m-c"/></svg></span><span class="tile" style="width:24px;height:24px"><svg aria-hidden="true"><use href="#m-c"/></svg></span><span class="tile" style="width:32px;height:32px"><svg aria-hidden="true"><use href="#m-c"/></svg></span></div>
+        <p>Tres barras (un stack) con un módulo que se desprende. Funciona en pequeño, pero es genérica: se confunde con iconos de «capas» o «menú».</p></article>
+    </div>
+    <h3>Por qué la A</h3>
+    <ul class="rules">
+      <li><b>Se lee a 16 px.</b> Una silueta cerrada con una sola cavidad; no depende de trazos finos.</li>
+      <li><b>Lleva la inicial.</b> Marca y nombre se refuerzan; en la barra de tareas o el favicon la «D» ya dice DockInng.</li>
+      <li><b>Monocromo sin pérdida.</b> Es una forma llena con un recorte: funciona en una tinta, en relieve y en negativo.</li>
+      <li><b>Territorio propio.</b> Ni ballena, ni cubo, ni contenedor naval; el verde y el recorte rectangular la distinguen.</li>
+      <li><b>Costo honesto.</b> El símbolo del «contenedor» es abstracto: hay que contarlo una vez. Lo compensa que la forma es sólida aunque no se entienda la metáfora.</li>
+    </ul>
+
+    <div class="lab" role="group" aria-label="La dirección A sobre distintos fondos">
+      <div class="cell on-light"><span class="tile" style="width:64px;height:64px"><svg aria-hidden="true"><use href="#m-a"/></svg></span><small>Sobre claro · tesela</small></div>
+      <div class="cell on-dark"><span class="tile" style="width:64px;height:64px"><svg aria-hidden="true"><use href="#m-a"/></svg></span><small>Sobre oscuro · tesela</small></div>
+      <div class="cell on-light"><svg width="56" height="56" aria-hidden="true" style="color:oklch(0.5 0.13 160)"><use href="#m-mono"/></svg><small>Un color · verde marca</small></div>
+      <div class="cell on-dark"><svg width="56" height="56" aria-hidden="true" style="color:oklch(0.955 0.008 165)"><use href="#m-mono"/></svg><small>Monocromo · blanco</small></div>
+      <div class="cell on-light"><svg width="56" height="56" aria-hidden="true" style="color:#000"><use href="#m-mono"/></svg><small>Monocromo · negro (impresión)</small></div>
+      <div class="cell on-brand"><svg width="56" height="56" aria-hidden="true"><use href="#m-mono"/></svg><small>Sobre verde marca · blanco</small></div>
+      <div class="cell on-photo"><svg width="56" height="56" aria-hidden="true"><use href="#m-mono"/></svg><small>Sobre fondo complejo</small></div>
+      <div class="cell on-light"><span class="sizes"><span class="tile" style="width:16px;height:16px"><svg aria-hidden="true"><use href="#m-a"/></svg></span><svg width="16" height="16" aria-hidden="true" style="color:#0f1b16"><use href="#m-mono"/></svg></span><small>16 px real (favicon y bandeja)</small></div>
+    </div>
+    <ul class="rules" style="margin-top:20px"><li><b>Zona de respeto:</b> una altura de la cavidad (≈ ¼ del símbolo) alrededor.</li><li><b>Tamaño mínimo:</b> 16 px con tesela; 12 px sólo monocromo.</li><li><b>Tesela:</b> radio 25 % del lado, siempre <code>--brand-tile</code> con la D en casi blanco.</li><li><b>Prohibido:</b> degradados, sombras en el símbolo, girarlo, cambiar el verde por el de «running».</li></ul>
+  </section>
+
+  <section id="wordmark" aria-labelledby="h-wm">
+    <h2 id="h-wm">Wordmark</h2>
+    <p class="lead">«Dock» en negrita y «Inng» en peso regular, ambos en Geist con espaciado ajustado. El contraste de peso separa las dos ideas sin recurrir al color; con la doble «n» y la «g» se ve como una sola palabra. Escribe siempre <b>DockInng</b>, con una única mayúscula interior.</p>
+    <div class="lab" style="grid-template-columns:1fr 1fr">
+      <div class="cell on-light"><span class="lockup"><span class="tile" style="width:40px;height:40px"><svg aria-hidden="true"><use href="#m-a"/></svg></span><span class="wm"><b>Dock</b><span>Inng</span></span></span><small>Horizontal · claro (assets/logo-wordmark.svg)</small></div>
+      <div class="cell on-dark"><span class="lockup"><span class="tile" style="width:40px;height:40px"><svg aria-hidden="true"><use href="#m-a"/></svg></span><span class="wm"><b>Dock</b><span>Inng</span></span></span><small>Horizontal · oscuro</small></div>
+      <div class="cell on-light"><span class="lockup lockup-mono"><svg aria-hidden="true" style="color:#0f1b16"><use href="#m-mono"/></svg><span class="wm" style="color:#0f1b16"><b>Dock</b><span>Inng</span></span></span><small>Monocromo negro</small></div>
+      <div class="cell on-dark"><span class="lockup lockup-mono"><svg aria-hidden="true" style="color:#ebf2ef"><use href="#m-mono"/></svg><span class="wm" style="color:#ebf2ef"><b>Dock</b><span>Inng</span></span></span><small>Monocromo blanco</small></div>
+    </div>
+    <p class="muted" style="margin-top:10px;font-size:var(--text-xs)">Nota: en <code>logo-wordmark.svg</code> el texto ya está convertido a trazos (Geist 700 + 400, tracking −0.6), así que no depende de ninguna fuente instalada.</p>
+  </section>
+
+  <section id="color" aria-labelledby="h-color">
+    <h2 id="h-color">Color</h2>
+    <p class="lead">Verde esmeralda con leve inclinación a teal (matiz OKLCH 160). Dark-first: las superficies son neutros teñidos de verde (matiz 165, croma 0.014 a 0.02), nunca gris ni negro puro. Los valores de la tabla se leen en vivo de <code>css/tokens.css</code> y los contrastes se calculan aquí mismo con la fórmula WCAG 2.x; los valores hex son la conversión sRGB al renderizarse en tu navegador.</p>
+    <div class="table-wrap"><table class="tbl" id="palette"><thead><tr><th class="sw"></th><th>Token</th><th>Claro · oklch</th><th class="hide-s">Claro · hex</th><th class="sw"></th><th>Oscuro · oklch</th><th class="hide-s">Oscuro · hex</th></tr></thead><tbody></tbody></table></div>
+
+    <h3>Contraste WCAG (calculado)</h3>
+    <p class="muted" style="margin-bottom:10px">Texto: AA exige 4.5:1 (3:1 si es grande, ≥ 18.7 px en negrita). Elementos de interfaz y foco: 3:1. Se muestra AAA (7:1) cuando se alcanza.</p>
+    <div class="table-wrap"><table class="tbl" id="contrast"><thead><tr><th>Par (texto / fondo)</th><th>Uso</th><th class="num">Claro</th><th class="num">Oscuro</th></tr></thead><tbody></tbody></table></div>
+    <p class="muted" id="contrastSummary" style="margin-top:8px;font-size:var(--text-xs)" role="status"></p>
+    <p class="muted" style="margin-top:6px;font-size:var(--text-xs)"><code>--border</code> y <code>--sidebar-border</code> son separadores decorativos y llevan transparencia (no se miden). <code>--input</code>, en cambio, es opaco y se mide a 3:1 porque delimita campos, casillas y la pista del switch. <code>--ring</code> es opaco en ambos temas.</p>
+  </section>
+
+  <section id="running" aria-labelledby="h-run">
+    <h2 id="h-run">El verde de marca frente al verde «en ejecución»</h2>
+    <p class="lead">Dos verdes en la misma pantalla se confunden si no se decide quién dice qué. Regla: <b>la marca habla de acciones; el estado habla del motor</b>, y el estado nunca se apoya sólo en el color.</p>
+    <div class="two">
+      <div class="card demo"><b>Marca (matiz 160, teal)</b>
+        <div class="row"><button class="btn btn-primary">Nuevo contenedor</button><span class="tag tag-brand">Activa</span><a class="link" href="#running" style="color:var(--primary)">Enlace</a></div>
+        <div class="tabs" style="margin:0"><button class="tab" aria-selected="true">Logs</button><button class="tab" aria-selected="false">Terminal</button></div>
+        <p class="muted">Botón principal, ítem activo del menú, selección, foco, enlaces y la tesela. Siempre es interactivo o identifica la app.</p></div>
+      <div class="card demo"><b>Estado «running» (matiz 128, lima)</b>
+        <div class="row"><span class="status status-running"><svg class="i"><use href="#i-dot"/></svg>En ejecución</span><span class="status status-running"><svg class="i"><use href="#i-dot"/></svg>Saludable</span></div>
+        <p class="muted">Sólo dentro de una píldora tintada, con icono ● y texto. Unos 30° más amarillo que la marca (matiz 128 frente a 160), más luminoso en oscuro y sin hover: no es un control.</p></div>
+    </div>
+    <h3>Los seis estados, en color y en escala de grises</h3>
+    <div class="two">
+      <div class="card demo" id="statusColor"></div>
+      <div class="card demo gray" id="statusGray" aria-label="Los mismos estados en escala de grises, para comprobar que se distinguen sin color"></div>
+    </div>
+    <ul class="rules" style="margin-top:16px">
+      <li><b>Forma distinta por estado:</b> ● ejecución, ❚❚ pausa, ⟳ reiniciando, ■ detenido, ⊗ muerto, ◌ creado.</li>
+      <li><b>Etiqueta siempre visible</b> en la píldora; en tablas densas nunca se reduce a un punto.</li>
+      <li><b>Un solo relleno saturado por pantalla:</b> el botón primario. Los estados usan fondo tintado, no sólidos.</li>
+      <li><b>Separación medible:</b> ΔH ≈ 30° (128 frente a 160) y el texto de estado alcanza AA sobre su fondo tintado (ver tabla). La luminancia de ambos verdes es parecida (razón 1.4:1), así que la distinción descansa en el matiz, el icono y el texto, no en el brillo.</li>
+      <li><b>Sin colisión de iconos:</b> el estado «en ejecución» usa ● y el triángulo ▶ queda reservado a la acción «Iniciar» / «Levantar».</li>
+    </ul>
+  </section>
+
+  <section id="tipo" aria-labelledby="h-tipo">
+    <h2 id="h-tipo">Tipografía</h2>
+    <p class="lead">Geist Variable (la misma de <code>@fontsource-variable/geist</code>) para todo; JetBrains Mono (OFL, empaquetada en <code>fonts/</code>, con fallback a <code>ui-monospace</code>) para IDs, puertos, rutas y consola.</p>
+    <div class="card card-pad">
+      <dl class="type-spec">
+        <dt>Título de vista · 20/24, 650</dt><dd style="font-size:20px;font-weight:650;letter-spacing:-0.02em">Contenedores</dd>
+        <dt>Sección · 15/20, 600</dt><dd style="font-size:15px;font-weight:600">Conexiones</dd>
+        <dt>Cuerpo · 13/19, 400</dt><dd>Se eliminará tienda-redis-1 y se detendrá primero, porque está en ejecución.</dd>
+        <dt>Apoyo · 12/16, 400</dt><dd class="muted" style="font-size:12px">hace 3 días · Docker 27.3.1</dd>
+        <dt>Mono · 12/19, 400</dt><dd class="mono">9b2e5d81a7c0 &nbsp; 3000:3000 &nbsp; ghcr.io/casaluna/tienda-api:2.4.1</dd>
+        <dt>Números de tabla</dt><dd style="font-variant-numeric:tabular-nums">0.4% &nbsp; 6.8% &nbsp; 214 MiB &nbsp; 1.8 GB</dd>
+      </dl>
+    </div>
+    <p class="muted" style="margin-top:10px;font-size:var(--text-xs)">Sin mayúsculas sostenidas en etiquetas; en español se usa capitalización de frase. Densidad de herramienta: cuerpo 13 px, títulos contenidos, jerarquía por peso y color de texto antes que por tamaño.</p>
+  </section>
+
+  <section id="sistema" aria-labelledby="h-sis">
+    <h2 id="h-sis">Espaciado, radios y sombras</h2>
+    <p class="lead">Base de 4 px. Radio base 10 px (<code>--radius: 0.625rem</code>, el mismo de shadcn). El sidebar flotante sube a 18 px (<code>--radius-2xl</code>) porque es un panel, no un control.</p>
+    <h3>Espaciado</h3>
+    <div class="scale"><div><div class="box" style="width:4px;height:32px"></div><small class="muted">4</small></div><div><div class="box" style="width:8px;height:32px"></div><small class="muted">8</small></div><div><div class="box" style="width:12px;height:32px"></div><small class="muted">12</small></div><div><div class="box" style="width:16px;height:32px"></div><small class="muted">16</small></div><div><div class="box" style="width:24px;height:32px"></div><small class="muted">24</small></div><div><div class="box" style="width:32px;height:32px"></div><small class="muted">32</small></div></div>
+    <h3>Radios</h3>
+    <div class="scale">
+      <div><div class="box" style="width:72px;height:44px;border-radius:var(--radius-sm)">sm · 6</div></div><div><div class="box" style="width:72px;height:44px;border-radius:var(--radius-md)">md · 8</div></div><div><div class="box" style="width:72px;height:44px;border-radius:var(--radius-lg)">lg · 10</div></div><div><div class="box" style="width:72px;height:44px;border-radius:var(--radius-xl)">xl · 14</div></div><div><div class="box" style="width:72px;height:44px;border-radius:var(--radius-2xl)">panel · 18</div></div><div><div class="box" style="width:72px;height:44px;border-radius:99px">píldora</div></div>
+    </div>
+    <h3>Sombras</h3>
+    <div class="shadows"><div style="box-shadow:var(--sh-sm)">sm</div><div style="box-shadow:var(--sh-md)">md</div><div style="box-shadow:var(--sh-float)">flotante</div><div style="box-shadow:var(--sh-dialog)">diálogo</div></div>
+    <p class="muted" style="margin-top:10px;font-size:var(--text-xs)">Movimiento: 120 ms para hover y pulsación, 200 ms para diálogos y avisos, curva de salida suave. Con <code>prefers-reduced-motion</code> todo se reduce a cambios instantáneos.</p>
+  </section>
+
+  <section id="componentes" aria-labelledby="h-comp">
+    <h2 id="h-comp">Componentes base</h2>
+    <h3>Botones</h3>
+    <div class="row" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <button class="btn btn-primary"><svg class="i"><use href="#i-plus"/></svg>Primario</button><button class="btn btn-secondary">Secundario</button><button class="btn btn-ghost">Fantasma</button><button class="btn btn-destructive"><svg class="i"><use href="#i-trash"/></svg>Eliminar</button><button class="btn btn-outline-destructive">Eliminar…</button><button class="btn btn-secondary btn-blocked"><svg class="i"><use href="#i-ban"/></svg>Bloqueado por diseño</button><button class="btn btn-primary" disabled>Deshabilitado</button><button class="btn btn-secondary btn-icon" aria-label="Actualizar"><svg class="i"><use href="#i-refresh"/></svg></button>
+    </div>
+    <h3>Badges de estado y etiquetas</h3>
+    <div id="statusRow" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><span class="tag">Sin usar</span><span class="tag tag-brand">Activa</span><span class="tag"><svg class="i sm"><use href="#i-lock"/></svg>Del sistema</span><span class="level level-libre"><svg class="i sm"><use href="#i-check"/></svg>Libre</span><span class="level level-confirmar"><svg class="i sm"><use href="#i-warn"/></svg>Confirmar</span><span class="level level-bloqueado"><svg class="i sm"><use href="#i-ban"/></svg>Bloqueado</span></div>
+    <h3>Campos</h3>
+    <div class="row" style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+      <label class="field" style="width:260px"><svg class="i"><use href="#i-search"/></svg><input class="input" placeholder="Buscar por nombre, imagen o ID" aria-label="Buscar"></label>
+      <input class="input" style="width:200px" value="tienda_default!" aria-invalid="true" aria-label="Nombre de red con error">
+      <div class="segmented" role="group" aria-label="Ejemplo de filtro"><button aria-pressed="true">Todos</button><button aria-pressed="false">En ejecución</button><button aria-pressed="false">Detenidos</button></div>
+      <label style="display:inline-flex;gap:8px;align-items:center"><input type="checkbox" class="switch" role="switch" checked> Seguir en vivo</label>
+      <label style="display:inline-flex;gap:8px;align-items:center"><input type="checkbox" class="check-box" checked> Seleccionado</label>
+    </div>
+    <h3>Tabla</h3>
+    <div class="table-wrap"><table><thead><tr><th class="col-check"><input type="checkbox" class="check-box" aria-label="Seleccionar todos"></th><th>Nombre</th><th>Estado</th><th class="num">CPU</th><th class="col-actions"></th></tr></thead><tbody>
+      <tr aria-selected="true"><td class="col-check"><input type="checkbox" class="check-box" checked aria-label="Seleccionar tienda-api-1"></td><td><div class="name-cell"><a href="#componentes">tienda-api-1</a><small>9b2e5d81a7c0</small></div></td><td><span class="status status-running"><svg class="i"><use href="#i-dot"/></svg>En ejecución</span></td><td class="num">6.8%</td><td class="col-actions"><div class="row-actions"><button class="btn btn-ghost btn-icon btn-sm" aria-label="Detener"><svg class="i fill"><use href="#i-square"/></svg></button><button class="btn btn-ghost btn-icon btn-sm btn-del" aria-label="Eliminar"><svg class="i"><use href="#i-trash"/></svg></button></div></td></tr>
+      <tr><td class="col-check"><input type="checkbox" class="check-box" aria-label="Seleccionar minio-dev"></td><td><div class="name-cell"><a href="#componentes">minio-dev</a><small>2f8b6d05e7a3</small></div></td><td><span class="status status-exited"><svg class="i fill"><use href="#i-square"/></svg>Detenido</span></td><td class="num">—</td><td class="col-actions"><div class="row-actions"><button class="btn btn-ghost btn-icon btn-sm" aria-label="Iniciar"><svg class="i fill"><use href="#i-play"/></svg></button><button class="btn btn-ghost btn-icon btn-sm btn-del" aria-label="Eliminar"><svg class="i"><use href="#i-trash"/></svg></button></div></td></tr>
+    </tbody></table></div>
+    <h3>Diálogos: confirmar y bloqueado</h3>
+    <div class="two">
+      <div class="popover-demo card" style="background:var(--popover);box-shadow:var(--sh-dialog)">
+        <div class="dlg-body"><span class="dlg-ico danger"><svg class="i lg"><use href="#i-trash"/></svg></span><div><h2 style="font-size:15px;margin-bottom:4px">Eliminar contenedor</h2><p>Se eliminará <b class="mono">tienda-redis-1</b>.</p><div class="level-note"><svg class="i sm"><use href="#i-info"/></svg><span><b>Nivel Confirmar.</b> Requiere un clic explícito.</span></div></div></div>
+        <div class="dlg-foot"><button class="btn btn-secondary">Cancelar</button><button class="btn btn-destructive">Eliminar contenedor</button></div></div>
+      <div class="popover-demo card" style="background:var(--popover);box-shadow:var(--sh-dialog)">
+        <div class="dlg-body"><span class="dlg-ico blocked"><svg class="i lg"><use href="#i-ban"/></svg></span><div><h2 style="font-size:15px;margin-bottom:4px">Limpiar todo el sistema está bloqueado</h2><p>No se ejecuta ni con confirmación.</p><div class="level-note"><svg class="i sm"><use href="#i-lock"/></svg><span><b>Nivel Bloqueado.</b> Sin botón de acción: sólo «Entendido».</span></div></div></div>
+        <div class="dlg-foot"><button class="btn btn-secondary">Entendido</button></div></div>
+    </div>
+  </section>
+
+  <section id="voz" aria-labelledby="h-voz">
+    <h2 id="h-voz">Tono de voz</h2>
+    <div class="voice">
+      <ul class="rules" style="columns:1">
+        <li><b>Directo y técnico.</b> Nombra las cosas como las nombra Docker (contenedor, imagen, volumen), sin metáforas.</li>
+        <li><b>Verbo primero.</b> Los botones dicen qué pasa: «Eliminar contenedor», no «Aceptar».</li>
+        <li><b>Los errores explican y orientan.</b> Qué falló, en qué paso y qué comando lo arregla. Sin disculpas ni dramatismo.</li>
+        <li><b>Riesgo a la vista.</b> Una acción destructiva dice qué borra y qué no; una bloqueada dice por qué y qué hacer en su lugar.</li>
+      </ul>
+      <div class="card card-pad">
+        <p><span class="say-no">¡Ups! Algo salió mal con Docker :(</span></p>
+        <p><b>No se pudo conectar con el motor.</b> Tu usuario no pertenece al grupo docker.</p>
+        <p style="margin-top:14px"><span class="say-no">¿Estás seguro de que quieres continuar?</span></p>
+        <p><b>Eliminar tienda-redis-1.</b> No se puede deshacer, pero no toca volúmenes ni imágenes.</p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  var $ = function (s) { return document.querySelector(s); };
+  /* Tema */
+  function setTheme(t, save) {
+    document.documentElement.classList.toggle('dark', t === 'dark');
+    var b = $('#themeBtn');
+    b.innerHTML = '<svg class="i"><use href="#i-' + (t === 'dark' ? 'sun' : 'moon') + '"/></svg>' + (t === 'dark' ? 'Ver en claro' : 'Ver en oscuro');
+    if (save) { try { localStorage.setItem('dockinng.theme', t); } catch (e) {} }
+  }
+  setTheme(document.documentElement.classList.contains('dark') ? 'dark' : 'light', false);
+  $('#themeBtn').addEventListener('click', function () { setTheme(document.documentElement.classList.contains('dark') ? 'light' : 'dark', true); });
+
+  /* Estados */
+  var ST = { running: ['En ejecución', 'dot', 0], paused: ['Pausado', 'pause', 1], restarting: ['Reiniciando', 'rotate', 0], exited: ['Detenido', 'square', 1], dead: ['Muerto', 'xcircle', 0], created: ['Creado', 'dashed', 0] };
+  var pills = Object.keys(ST).map(function (k) { return '<span class="status status-' + k + '"><svg class="i ' + (ST[k][2] ? 'fill' : '') + '"><use href="#i-' + ST[k][1] + '"/></svg>' + ST[k][0] + '</span>'; }).join('');
+  $('#statusRow').innerHTML = pills;
+  $('#statusColor').innerHTML = '<b>Color</b><div style="display:flex;gap:8px;flex-wrap:wrap">' + pills + '</div>';
+  $('#statusGray').innerHTML = '<b>Escala de grises</b><div style="display:flex;gap:8px;flex-wrap:wrap">' + pills + '</div>';
+
+  /* Lectura de tokens y contraste WCAG */
+  var canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
+  var ctx = canvas.getContext('2d', { willReadFrequently: true });
+  var probes = { light: $('#probeL'), dark: $('#probeD') };
+  function raw(theme, tok) { return getComputedStyle(probes[theme]).getPropertyValue('--' + tok).trim(); }
+  function rgba(theme, tok) {
+    var el = probes[theme]; el.style.color = 'var(--' + tok + ')';
+    var c = getComputedStyle(el).color;
+    ctx.clearRect(0, 0, 1, 1); ctx.fillStyle = '#000'; ctx.fillStyle = c; ctx.fillRect(0, 0, 1, 1);
+    var d = ctx.getImageData(0, 0, 1, 1).data; return [d[0], d[1], d[2], d[3]];
+  }
+  function hex(a) { return '#' + a.slice(0, 3).map(function (x) { return ('0' + x.toString(16)).slice(-2); }).join(''); }
+  function lum(a) { var v = a.slice(0, 3).map(function (x) { x /= 255; return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); }); return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; }
+  function over(a, b) { if (a[3] >= 255) return a; var k = a[3] / 255; return [0, 1, 2].map(function (i) { return Math.round(a[i] * k + b[i] * (1 - k)); }).concat(255); }
+  function ratio(a, b) { a = over(a, b); var x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); }
+
+  var groups = [
+    ['Superficies', ['background', 'card', 'popover', 'secondary', 'accent', 'sidebar-accent']],
+    ['Texto', ['foreground', 'muted-foreground', 'accent-foreground']],
+    ['Marca (matiz 160)', ['primary', 'primary-foreground', 'ring', 'brand-tile']],
+    ['Destructivo', ['destructive', 'destructive-foreground']],
+    ['Estados de contenedor (texto / fondo tintado)', ['status-running', 'status-running-bg', 'status-paused', 'status-paused-bg', 'status-restarting', 'status-restarting-bg', 'status-exited', 'status-exited-bg', 'status-dead', 'status-dead-bg', 'status-created', 'status-created-bg']],
+    ['Gráficas', ['chart-1', 'chart-2', 'chart-3', 'chart-4', 'chart-5']],
+    ['Consola (siempre oscura)', ['console-bg', 'console-fg', 'console-muted', 'console-info', 'console-warn', 'console-error', 'console-debug']],
+    ['Bordes e input', ['border', 'input', 'sidebar', 'sidebar-border']]
+  ];
+  var tb = $('#palette tbody'), html = '';
+  groups.forEach(function (g) {
+    html += '<tr class="grp"><td colspan="7">' + g[0] + '</td></tr>';
+    g[1].forEach(function (t) {
+      var l = raw('light', t), d = raw('dark', t), la = rgba('light', t), da = rgba('dark', t);
+      var alpha = la[3] < 255 || da[3] < 255;
+      html += '<tr><td class="sw"><i style="background:var(--' + t + ')" class="light-sw"></i></td><td><code style="color:var(--foreground)">--' + t + '</code></td><td><code>' + l + '</code></td><td class="hide-s"><code>' + (alpha ? 'con alfa' : hex(la)) + '</code></td><td class="sw"><i style="background:' + d.replace(/^/, '') + '"></i></td><td><code>' + d + '</code></td><td class="hide-s"><code>' + (alpha ? 'con alfa' : hex(da)) + '</code></td></tr>';
+    });
+  });
+  tb.innerHTML = html;
+  /* muestras: la del tema claro debe verse con los valores claros aunque la página esté en oscuro */
+  Array.prototype.forEach.call(tb.querySelectorAll('tr'), function (tr) {
+    var i = tr.querySelectorAll('i'); if (i.length < 2) return;
+    var code = tr.querySelector('code').textContent.replace('--', '');
+    i[0].style.background = raw('light', code);
+  });
+
+  var pairs = [
+    ['foreground', 'background', 'Texto principal'], ['foreground', 'card', 'Texto en tarjetas y tablas'],
+    ['muted-foreground', 'background', 'Texto secundario'], ['muted-foreground', 'card', 'Texto secundario en tarjetas'], ['muted-foreground', 'muted', 'Texto secundario en píldoras y chips'],
+    ['primary-foreground', 'primary', 'Texto del botón primario'], ['primary', 'background', 'Enlaces y iconos de marca'], ['primary', 'card', 'Iconos de marca en tarjetas'],
+    ['accent-foreground', 'accent', 'Fila activa, etiqueta de marca'], ['destructive-foreground', 'destructive', 'Texto del botón destructivo'], ['destructive', 'background', 'Acción destructiva (texto)'],
+    ['status-running', 'status-running-bg', 'Badge · En ejecución'], ['status-paused', 'status-paused-bg', 'Badge · Pausado'], ['status-restarting', 'status-restarting-bg', 'Badge · Reiniciando'],
+    ['status-exited', 'status-exited-bg', 'Badge · Detenido'], ['status-dead', 'status-dead-bg', 'Badge · Muerto'], ['status-created', 'status-created-bg', 'Badge · Creado'],
+    ['console-fg', 'console-bg', 'Texto de logs y terminal'], ['console-muted', 'console-bg', 'Marcas de tiempo de logs'], ['console-info', 'console-bg', 'Nivel INFO'], ['console-warn', 'console-bg', 'Nivel WARN'], ['console-error', 'console-bg', 'Nivel ERROR'], ['console-debug', 'console-bg', 'Nivel DEBUG'],
+    ['ring', 'background', 'Anillo de foco (3:1, no texto)', 3], ['input', 'background', 'Borde de campos y casillas (3:1)', 3], ['input', 'card', 'Borde de campos sobre tarjeta (3:1)', 3], ['status-paused', 'card', 'Números en JSON (--status-paused)'], ['status-created', 'card', 'Booleanos en JSON (--status-created)'], ['primary', 'card', 'Claves en JSON (--primary)'], ['brand-tile', 'background', 'Tesela del logotipo (3:1, gráfico)', 3]
+  ];
+  var fails = 0, minv = 99, rows = '';
+  function cell(r, need) {
+    var ok = r >= need; if (!ok) fails++; minv = Math.min(minv, r);
+    return '<td class="num"><span class="' + (ok ? 'pass' : 'fail') + '"><svg class="i sm"><use href="#i-' + (ok ? 'check' : 'x') + '"/></svg>' + r.toFixed(2) + ':1' + (ok ? (r >= 7 && need > 3 ? ' AAA' : need === 3 ? ' 3:1' : ' AA') : ' no cumple') + '</span></td>';
+  }
+  pairs.forEach(function (p) {
+    var need = p[3] || 4.5;
+    var rl = ratio(rgba('light', p[0]), rgba('light', p[1])), rd = ratio(rgba('dark', p[0]), rgba('dark', p[1]));
+    rows += '<tr><td><code style="color:var(--foreground)">' + p[0] + '</code> / <code>' + p[1] + '</code></td><td>' + p[2] + '</td>' + cell(rl, need) + cell(rd, need) + '</tr>';
+  });
+  $('#contrast tbody').innerHTML = rows;
+  $('#contrastSummary').textContent = fails === 0 ? 'Resultado: los ' + pairs.length * 2 + ' pares medidos cumplen (mínimo global ' + minv.toFixed(2) + ':1).' : 'Atención: ' + fails + ' pares no cumplen.';
+})();
+</script>
+</body>
+</html>
