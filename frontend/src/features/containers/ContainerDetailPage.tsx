@@ -21,7 +21,8 @@ import type { Container, ContainerDetail } from '@/data/types'
 import { statusTextEs } from '@/lib/format'
 import { isOn } from '../common/containerUtils'
 import { hasMorePorts, mainPortsText, portEntries, totalPorts } from '../common/ports'
-import { PortsDialog } from './PortsDialog'
+import { ContainerInfoDialog, type InfoTab } from './ContainerInfoDialog'
+import { endpointsOf } from '../common/netinfo'
 import { useViewGate } from '../common/gate'
 import { LinkButton } from '../common/LinkButton'
 import { InspectTab } from './InspectTab'
@@ -81,7 +82,7 @@ function Detail({ c, initialTab }: { c: Container; initialTab: Tab }) {
   const [detailError, setDetailError] = useState<string | null>(null)
   const name = safeText(containerName(c), { singleLine: true })
   const portList = useMemo(() => portEntries(c.ports), [c.ports])
-  const [showPorts, setShowPorts] = useState(false)
+  const [infoTab, setInfoTab] = useState<InfoTab | null>(null)
   const on = isOn(c.state)
   const busy = op.busy
   const locked = gate.locked
@@ -130,11 +131,18 @@ function Detail({ c, initialTab }: { c: Container; initialTab: Tab }) {
       <div className="meta-line">
         <span>Imagen <span className="mono" title={safeText(c.image)}>{safeText(c.image, { singleLine: true })}</span></span>
         <span>ID <span className="mono">{c.id.slice(0, 12)}</span></span>
-        <span>IP <span className="mono">{safeText(detail?.ip_address) || '—'}</span></span>
+        <span>
+          IP <span className="mono">{safeText(detail?.ip_address) || '—'}</span>
+          {endpointsOf(c).length > 0 ? (
+            <Button variant="ghost" size="icon-sm" className="ports-eye" aria-label={`Ver las IPs de ${name} por red`} aria-haspopup="dialog" onClick={() => setInfoTab('ips')}>
+              <Icon name="eye" size="sm" />
+            </Button>
+          ) : null}
+        </span>
         <span>
           Puertos <span className="mono">{safeText(mainPortsText(portList))}</span>
           {hasMorePorts(portList) ? (
-            <Button variant="ghost" size="icon-sm" className="ports-eye" aria-label={`Ver los ${totalPorts(portList)} puertos de ${name}`} aria-haspopup="dialog" onClick={() => setShowPorts(true)}>
+            <Button variant="ghost" size="icon-sm" className="ports-eye" aria-label={`Ver los ${totalPorts(portList)} puertos de ${name}`} aria-haspopup="dialog" onClick={() => setInfoTab('ports')}>
               <Icon name="eye" size="sm" />
             </Button>
           ) : null}
@@ -159,7 +167,7 @@ function Detail({ c, initialTab }: { c: Container; initialTab: Tab }) {
         <TabsPanel value="stats" className="view-body tabpanel">{gate.lostBanner}<StatsTab c={c} detail={detail} /></TabsPanel>
         <TabsPanel value="inspect" className="view-body tabpanel">{gate.lostBanner}<InspectTab name={name} detail={detail} error={detailError} /></TabsPanel>
       </Tabs>
-      <PortsDialog c={showPorts ? c : null} onClose={() => setShowPorts(false)} />
+      <ContainerInfoDialog target={infoTab ? { c, tab: infoTab } : null} onClose={() => setInfoTab(null)} />
     </div>
   )
 }

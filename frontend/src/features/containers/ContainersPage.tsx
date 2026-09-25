@@ -23,6 +23,7 @@ import { safeText } from '@/lib/safeText'
 import { toast } from '@/lib/toastStore'
 import { isOn, isStoppedState, matchesContainer, type StateFilter } from '../common/containerUtils'
 import { assignGroupHues } from '../common/groupColor'
+import { ownNetworkNames } from '../common/netinfo'
 import { useStartupOnce } from '../common/devOnce'
 import { useViewGate } from '../common/gate'
 import { LinkButton } from '../common/LinkButton'
@@ -30,7 +31,8 @@ import { readRowHeight, useVirtualTable } from '../common/useVirtualTable'
 import { ContainerRow } from './ContainerRow'
 import { AssignGroupMenu } from '../groups/AssignGroupMenu'
 import { assignKey, useGroupsStore } from '../groups/groupsStore'
-import { PortsDialog } from './PortsDialog'
+import { ContainerInfoDialog, type InfoTarget } from './ContainerInfoDialog'
+import { GroupNetworksDialog } from './GroupNetworksDialog'
 import { ResourceStrip } from './ResourceStrip'
 import { groupDiskBytes, sumConsumption } from './usage'
 
@@ -67,9 +69,10 @@ export default function ContainersPage() {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
   const [refreshing, setRefreshing] = useState(false)
-  // Contenedor cuyo modal de puertos está abierto (uno solo para toda la tabla).
-  const [portsOf, setPortsOf] = useState<Container | null>(null)
-  const showPorts = useCallback((c: Container) => setPortsOf(c), [])
+  // Modales de toda la tabla (uno de cada): puertos e IPs de un contenedor, y redes de un grupo (por su clave).
+  const [infoOf, setInfoOf] = useState<InfoTarget | null>(null)
+  const showInfo = useCallback((c: Container) => setInfoOf({ c, tab: 'ports' }), [])
+  const [netsOfKey, setNetsOfKey] = useState<string | null>(null)
   const [bulkBusy, setBulkBusy] = useState<{ op: 'start' | 'stop'; total: number } | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const tableRef = useRef<HTMLTableElement>(null)
@@ -80,15 +83,12 @@ export default function ContainersPage() {
 
   const filtered = useMemo(() => list.filter((c) => matchesContainer(c, filter, q)), [list, filter, q])
   const stopped = useMemo(() => list.filter((c) => isStoppedState(c.state)).length, [list])
-  // Red(es) propia(s) de cada contenedor (nombre del contenedor → redes). Se omiten las de sistema (bridge, host, none).
+  // Red(es) propia(s) de cada contenedor (nombre del contenedor → redes), desde sus endpoints (la misma fuente que el modal de redes). Se omiten
+  // las de sistema (bridge, host, none).
   const netsByContainer = useMemo(() => {
-    const m = new Map<string, string[]>()
-    for (const n of networks) {
-      if (n.system) continue
-      for (const cn of n.connected) m.set(cn, [...(m.get(cn) ?? []), n.name])
-    }
-    return m
-  }, [networks])
+    const system = new Set(networks.filter((n) => n.system).map((n) => n.name))
+    return new Map(list.map((c) => [containerName(c), ownNetworkNames(c, system)]))
+  }, [list, networks])
   // A qué grupo pertenece un contenedor: su grupo propio (si lo tiene y existe), si no su stack de Compose, si no ninguno (suelto).
   const groupKeyOf = useCallback((c: Container): string | null => {
     const gid = assigned[assignKey(profileId, containerName(c))]
@@ -373,9 +373,18 @@ export default function ContainersPage() {
                                 {it.kind === 'custom' ? <Icon name="folder" size="sm" /> : null}
                                 {it.kind === 'custom' ? 'Grupo' : 'Stack'} {safeText(it.label)}{it.running > 0 ? <span className="live-dot" aria-hidden="true" /> : null} <span className="muted" style={{ fontWeight: 400 }}>· {it.count}{it.running ? ` · ${it.running} en ejecución` : ''}</span>
                               </button>
-                              {it.nets.map((n) => (
-                                <span key={n} className="net-chip mono" title={`Red: ${safeText(n)}`}><Icon name="network" size="sm" />{safeText(n)}</span>
-                              ))}
+                              {it.nets.length > 0 ? (
+                                <button
+                                  type="button"
+                                  className="group-nets"
+                                  aria-haspopup="dialog"
+                                  aria-label={`Ver las ${it.nets.length} ${it.nets.length === 1 ? 'red' : 'redes'} de ${it.kind === 'custom' ? 'el grupo' : 'el stack'} ${safeText(it.label)}`}
+                                  title="Redes del grupo, con sus IPs"
+                                  onClick={() => setNetsOfKey(it.key)}
+                                >
+                                  <Icon name="network" size="sm" />Redes <b>{it.nets.length}</b><Icon name="eye" size="sm" />
+                                </button>
+                              ) : null}
                               <a className="group-edit" href={route.href('settings', { tab: 'groups' })} aria-label={`Editar el color o el nombre de ${it.kind === 'custom' ? 'el grupo' : 'el stack'} ${safeText(it.label)}`} title="Editar en Configuración > Grupos"><Icon name="palette" size="sm" /></a>
                               {(() => {
                                 const u = groupUse.get(it.key)
@@ -398,7 +407,7 @@ export default function ContainersPage() {
                         key={it.c.id}
                         c={it.c}
                         groupHue={it.hue}
-                        onShowPorts={showPorts}
+                        onShowInfo={showInfo}
                         index={v.index}
                         measure={virt.measure}
                         selected={selected.has(it.c.id)}
@@ -417,7 +426,11 @@ export default function ContainersPage() {
           </table>
         </div>
       </div>
-      <PortsDialog c={portsOf} onClose={() => setPortsOf(null)} />
+      <ContainerInfoDialog target={infoOf} onClose={() => setInfoOf(null)} />
+      <GroupNetworksDialog
+        group={netsOfKey ? { kind: metaOf(netsOfKey).kind, label: metaOf(netsOfKey).label, containers: list.filter((c) => groupKeyOf(c) === netsOfKey) } : null}
+        onClose={() => setNetsOfKey(null)}
+      />
     </>
   )
 }

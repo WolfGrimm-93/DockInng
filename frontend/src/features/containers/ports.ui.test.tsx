@@ -22,7 +22,7 @@ function screegoPorts(): PortMapping[] {
 }
 const heavy = (name: string, ports: PortMapping[], state: Container['state'] = 'running'): Container => ({
   id: fullId('9'.repeat(12)), names: [name], image: 'screego/server:1.10', image_id: 'sha256:' + '0'.repeat(64), state, status: 'Up 1 hour', created: 1,
-  compose_project: null, compose_service: null, ports, mounts: [], networks: [],
+  compose_project: null, compose_service: null, ports, mounts: [], networks: [], endpoints: [],
 })
 async function withHeavy() {
   const api = makeApi()
@@ -32,31 +32,33 @@ async function withHeavy() {
 const rowOf = (name: string) => screen.getByRole('link', { name }).closest('tr') as HTMLElement
 
 describe('puertos: principales en la tabla y todos en el modal', () => {
-  it('con más de 2 puertos aparece el ojo y la tabla muestra solo los 2 principales; con 2 o menos no hay ojo', async () => {
+  it('el ojo está en TODAS las filas (las IPs sirven para cualquiera) y la tabla muestra solo los 2 principales', async () => {
     renderView(<ContainersPage />, { api: await withHeavy() })
     await screen.findByRole('link', { name: 'screego-prod-server' })
     const row = rowOf('screego-prod-server')
     // 189 entradas de la API → los 2 principales (publicados, tcp, número menor).
     expect(row.querySelector('.col-ports')?.textContent).toBe('55100, 55101')
-    const eye = within(row).getByRole('button', { name: /^Ver los \d+ puertos de screego-prod-server$/ })
+    const eye = within(row).getByRole('button', { name: 'Ver puertos e IPs de screego-prod-server' })
     expect(eye).toHaveAttribute('aria-haspopup', 'dialog')
     // Nada de la lista larga en la fila.
     expect(row.textContent).not.toContain('55110')
-    // Contenedores con 1 o 2 puertos: sin ojo (minio-dev tiene 9000 y 9001; traefik 80 y 443).
-    expect(within(rowOf('minio-dev')).queryByRole('button', { name: /Ver los .* puertos/ })).toBeNull()
-    expect(within(rowOf('traefik-proxy')).queryByRole('button', { name: /Ver los .* puertos/ })).toBeNull()
+    // Contenedores con pocos puertos también tienen ojo (el modal ahora incluye las IPs); su celda de puertos sigue igual.
+    expect(within(rowOf('minio-dev')).getByRole('button', { name: 'Ver puertos e IPs de minio-dev' })).toBeInTheDocument()
     expect(rowOf('minio-dev').querySelector('.col-ports')?.textContent).toBe('9000, 9001')
+    const contRows = Array.from(document.querySelectorAll('tbody tr')).filter((r) => !r.classList.contains('group-row') && r.querySelector('td.cell-name'))
+    expect(contRows.length).toBeGreaterThan(10)
+    for (const r of contRows) expect(within(r as HTMLElement).getAllByRole('button', { name: /^Ver puertos e IPs de / })).toHaveLength(1)
   })
 
   it('el ojo abre el modal con TODOS los puertos (IPv4/IPv6 unidos y rangos colapsados) y Esc lo cierra devolviendo el foco', async () => {
     const u = userEvent.setup()
     renderView(<ContainersPage />, { api: await withHeavy() })
     await screen.findByRole('link', { name: 'screego-prod-server' })
-    const eye = within(rowOf('screego-prod-server')).getByRole('button', { name: /Ver los .* puertos/ })
+    const eye = within(rowOf('screego-prod-server')).getByRole('button', { name: /Ver puertos e IPs de/ })
     await u.click(eye)
-    const dlg = await screen.findByRole('dialog', { name: 'Puertos de screego-prod-server' })
-    // 3 expuestos + 2 tcp + 90 udp + 0 duplicados (IPv4 e IPv6 unidos) = 95 puertos; 92 publicados; 3 solo expuestos.
-    expect(within(dlg).getByText(/95 puertos abiertos · 92 publicados en el equipo · 3 solo expuestos/)).toBeInTheDocument()
+    const dlg = await screen.findByRole('dialog', { name: 'Puertos e IPs de screego-prod-server' })
+    // 3 expuestos + 2 tcp + 90 udp + 0 duplicados (IPv4 e IPv6 unidos) = 95 puertos; 92 publicados en el equipo.
+    expect(within(dlg).getByText(/95 puertos abiertos · 92 publicados en el equipo/)).toBeInTheDocument()
     const rows = within(dlg).getAllByRole('row').slice(1)
     expect(rows.length).toBeLessThanOrEqual(8) // 189 entradas → pocas filas
     const text = rows.map((r) => r.textContent ?? '')
@@ -85,7 +87,7 @@ describe('puertos: principales en la tabla y todos en el modal', () => {
     api.sim.world.containers.push(heavy('<b>x</b>-web', [pub(80), pub(443), pub(8080)]))
     renderView(<ContainersPage />, { api })
     await screen.findByRole('link', { name: '<b>x</b>-web' })
-    await u.click(screen.getByRole('button', { name: /Ver los 3 puertos de <b>x<\/b>-web/ }))
+    await u.click(screen.getByRole('button', { name: 'Ver puertos e IPs de <b>x</b>-web' }))
     const dlg = await screen.findByRole('dialog')
     expect(dlg.querySelector('b')).toBeNull()
     await u.click(within(dlg).getByRole('button', { name: 'Cerrar' }))
@@ -99,7 +101,8 @@ describe('puertos: principales en la tabla y todos en el modal', () => {
     const eye = await screen.findByRole('button', { name: /Ver los .* puertos de screego-prod-server/ })
     expect(eye.closest('span')?.textContent).toContain('55100, 55101')
     await u.click(eye)
-    expect(await screen.findByRole('dialog', { name: 'Puertos de screego-prod-server' })).toBeInTheDocument()
+    const dlg = await screen.findByRole('dialog', { name: 'Puertos e IPs de screego-prod-server' })
+    expect(within(dlg).getByRole('tab', { name: 'Puertos' })).toHaveAttribute('aria-selected', 'true')
   })
 
   it('detalle de un contenedor con pocos puertos: sin ojo', async () => {

@@ -61,6 +61,7 @@ impl MockEngine {
                 ports: vec![],
                 mounts: vec![],
                 networks: vec![],
+                endpoints: vec![],
             },
             created_at: created_at.into(),
             ip_address: None,

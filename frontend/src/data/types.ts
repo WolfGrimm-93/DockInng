@@ -26,9 +26,21 @@ export interface Container {
   ports: PortMapping[]
   mounts: MountInfo[]
   networks: string[]
+  /** IP, puerta de enlace y MAC del contenedor en cada red (vacío/sin IP si está detenido; sin alias: esos solo vienen en el detalle). */
+  endpoints: NetworkEndpoint[]
 }
 
-export interface NetworkEndpoint { name: string; ip_address: string | null; gateway: string | null }
+/** Un extremo de red de un contenedor (espejo de engine-core NetworkEndpoint). Los campos vacíos de Docker llegan como null. */
+export interface NetworkEndpoint {
+  /** Nombre de la red. */
+  name: string
+  ip_address: string | null
+  ipv6_address: string | null
+  gateway: string | null
+  mac_address: string | null
+  /** Alias de DNS en esa red: solo los da `inspect` (en el listado de contenedores vienen vacíos). */
+  aliases: string[]
+}
 export interface ContainerDetail {
   summary: Container
   created_at: string

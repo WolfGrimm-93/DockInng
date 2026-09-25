@@ -316,6 +316,7 @@ mod tests {
             ports: vec![],
             mounts: vec![],
             networks: vec![],
+            endpoints: vec![],
         }
     }
 

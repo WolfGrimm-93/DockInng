@@ -12,7 +12,7 @@ import { useRowOps, useStats } from '@/data/store/hooks'
 import type { Container } from '@/data/types'
 import { statusTextEs } from '@/lib/format'
 import { isOn } from '../common/containerUtils'
-import { hasMorePorts, mainPortsText, portEntries, totalPorts } from '../common/ports'
+import { mainPortsText, portEntries } from '../common/ports'
 import { AssignGroupMenu } from '../groups/AssignGroupMenu'
 
 export interface ContainerRowProps {
@@ -27,13 +27,13 @@ export interface ContainerRowProps {
   onSelect(id: string, on: boolean): void
   onOp(c: Container, op: 'start' | 'stop' | 'restart'): void
   onDelete(c: Container): void
-  /** Abre el modal con todos los puertos (el ojo solo aparece con más de 2). */
-  onShowPorts(c: Container): void
+  /** Abre el modal de puertos e IPs del contenedor (el ojo está en todas las filas: las IPs sirven para cualquier contenedor). */
+  onShowInfo(c: Container): void
 }
 
 const MIB = 1024 * 1024
 
-function ContainerRowImpl({ c, selected, locked, href, index, measure, groupHue, onSelect, onOp, onDelete, onShowPorts }: ContainerRowProps) {
+function ContainerRowImpl({ c, selected, locked, href, index, measure, groupHue, onSelect, onOp, onDelete, onShowInfo }: ContainerRowProps) {
   const name = safeText(containerName(c), { singleLine: true })
   const image = safeText(c.image, { singleLine: true })
   const op = useRowOps(c.id)
@@ -42,7 +42,6 @@ function ContainerRowImpl({ c, selected, locked, href, index, measure, groupHue,
   const busy = op.busy
   const portList = useMemo(() => portEntries(c.ports), [c.ports])
   const ports = mainPortsText(portList)
-  const morePorts = hasMorePorts(portList)
   const memMib = stats ? Math.round(stats.mem_used_bytes / MIB) : 0
   const memPct = stats ? Math.min(100, stats.mem_percent) : 0
   const blockedByBusy = !!busy
@@ -82,13 +81,11 @@ function ContainerRowImpl({ c, selected, locked, href, index, measure, groupHue,
       </td>
       <td className="col-ports mono" title={safeText(ports)}>{safeText(ports)}</td>
       <td className="col-ports-more">
-        {morePorts ? (
-          <Tooltip label={`Ver los ${totalPorts(portList)} puertos`}>
-            <Button variant="ghost" size="icon" className="ports-eye" aria-label={`Ver los ${totalPorts(portList)} puertos de ${name}`} aria-haspopup="dialog" onClick={() => onShowPorts(c)}>
-              <Icon name="eye" />
-            </Button>
-          </Tooltip>
-        ) : null}
+        <Tooltip label="Puertos e IPs">
+          <Button variant="ghost" size="icon" className="ports-eye" aria-label={`Ver puertos e IPs de ${name}`} aria-haspopup="dialog" onClick={() => onShowInfo(c)}>
+            <Icon name="eye" />
+          </Button>
+        </Tooltip>
       </td>
       <td className="num col-cpu">{c.state === 'running' && stats ? `${stats.cpu_percent.toFixed(1)}%` : '—'}</td>
       <td className="num col-mem">

@@ -54,13 +54,13 @@ cd frontend && pnpm test && pnpm build && pnpm lint
 
 Configuración > Apariencia permite elegir modo claro, oscuro o sistema, un color de acento (presets o matiz personalizado), un tinte de superficies independiente y combinaciones con nombre. Los tokens se calculan en OKLCH y se validan con contraste WCAG AA en todos los matices. Los colores de estado y el logo no cambian con el acento.
 
-## Puertos
+## Puertos e IPs
 
-La tabla de contenedores muestra solo los 2 puertos principales (primero los publicados, tcp antes que udp). Cuando un contenedor tiene más, un icono de ojo abre un modal con todos sus puertos abiertos: se unen los enlaces IPv4/IPv6 y las tiradas largas de puertos consecutivos se muestran como un rango (p. ej. `55110–55199/udp`).
+La tabla de contenedores muestra solo los 2 puertos principales (primero los publicados, tcp antes que udp). El icono de ojo de cada fila abre un modal con dos pestañas: **Puertos** (todos los abiertos) e **IPs** (una fila por red con IPv4, IPv6, puerta de enlace, MAC y alias de DNS; un contenedor detenido conserva sus redes pero no tiene IP). En la pestaña Puertos: se unen los enlaces IPv4/IPv6 y las tiradas largas de puertos consecutivos se muestran como un rango (p. ej. `55110–55199/udp`).
 
 ## Grupos
 
-Los contenedores se agrupan automáticamente por stack de Compose (cada stack tiene su color y en la cabecera del grupo se muestran las redes que usa). También puedes crear tus propios grupos (menú de cada fila o barra masiva), elegir cualquier color para un grupo o un stack y gestionarlos en Configuración > Grupos. Los grupos propios se guardan solo en la app, por conexión, y no cambian nada en Docker.
+Los contenedores se agrupan automáticamente por stack de Compose (cada stack tiene su color). La cabecera del grupo tiene un botón **Redes** con el número de redes y un ojo que abre un modal con cada red (driver, subred, puerta de enlace) y los contenedores del grupo conectados a ella con sus IPs; las redes del sistema (bridge, host, none) se omiten. También puedes crear tus propios grupos (menú de cada fila o barra masiva), elegir cualquier color para un grupo o un stack y gestionarlos en Configuración > Grupos. Los grupos propios se guardan solo en la app, por conexión, y no cambian nada en Docker.
 
 La Configuración está dividida en pestañas: Conexiones, Apariencia, Grupos, Seguridad y Datos.
 

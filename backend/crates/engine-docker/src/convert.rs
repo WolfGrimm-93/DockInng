@@ -57,12 +57,15 @@ pub fn container_from_summary(c: ContainerSummary) -> Container {
             && a.protocol == b.protocol
     });
     let mut labels = c.labels.unwrap_or_default();
-    let mut networks: Vec<String> = c
+    let mut endpoints: Vec<NetworkEndpoint> = c
         .network_settings
         .and_then(|n| n.networks)
-        .map(|n| n.into_keys().collect())
-        .unwrap_or_default();
-    networks.sort();
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(name, e)| endpoint_from(name, e))
+        .collect();
+    endpoints.sort_by(|a, b| a.name.cmp(&b.name));
+    let networks: Vec<String> = endpoints.iter().map(|e| e.name.clone()).collect();
     Container {
         id: c.id.unwrap_or_default(),
         names: c
@@ -89,11 +92,28 @@ pub fn container_from_summary(c: ContainerSummary) -> Container {
             .map(mount_from)
             .collect(),
         networks,
+        endpoints,
     }
 }
 
 fn real_date(d: Option<String>) -> Option<String> {
     d.filter(|s| !s.is_empty() && s != ZERO_DATE)
+}
+
+/// Un extremo de red de un contenedor. Los campos vacíos (`""`) de Docker pasan a `None`; los alias solo vienen en `inspect`.
+fn endpoint_from(name: String, e: bollard::models::EndpointSettings) -> NetworkEndpoint {
+    let non_empty = |s: Option<String>| s.filter(|v| !v.is_empty());
+    let mut aliases = e.aliases.unwrap_or_default();
+    aliases.sort();
+    aliases.dedup();
+    NetworkEndpoint {
+        name,
+        ip_address: non_empty(e.ip_address),
+        ipv6_address: non_empty(e.global_ipv6_address),
+        gateway: non_empty(e.gateway),
+        mac_address: non_empty(e.mac_address),
+        aliases,
+    }
 }
 
 /// Combina el resultado de `inspect` con la fila de la lista (`summary`).
@@ -107,11 +127,7 @@ pub fn detail_from_inspect(summary: Container, i: ContainerInspectResponse) -> C
         .and_then(|n| n.networks)
         .unwrap_or_default()
         .into_iter()
-        .map(|(name, e)| NetworkEndpoint {
-            name,
-            ip_address: e.ip_address.filter(|s| !s.is_empty()),
-            gateway: e.gateway.filter(|s| !s.is_empty()),
-        })
+        .map(|(name, e)| endpoint_from(name, e))
         .collect();
     networks.sort_by(|a, b| a.name.cmp(&b.name));
     let ip_address = networks.iter().find_map(|n| n.ip_address.clone());
@@ -328,6 +344,50 @@ mod tests {
         serde_json::from_str(json).expect("json")
     }
 
+    /// Forma REAL del listado de Docker (`/containers/json`): IP, IPv6, puerta de enlace y MAC por red; sin alias (solo en `inspect`).
+    #[test]
+    fn el_listado_trae_ip_por_red_y_los_vacios_son_none() {
+        let c = container_from_summary(summary(
+            r#"{"Id":"abc","Names":["/web"],"Image":"nginx","ImageID":"sha256:1","Created":1,"State":"running","Status":"Up",
+            "NetworkSettings":{"Networks":{
+              "tienda_default":{"Aliases":null,"Gateway":"172.18.0.1","IPAddress":"172.18.0.7","IPPrefixLen":16,
+                                "GlobalIPv6Address":"fd00::7","MacAddress":"16:f4:da:68:6c:75"},
+              "bridge":{"Gateway":"","IPAddress":"","GlobalIPv6Address":"","MacAddress":""}}}}"#,
+        ));
+        // Ordenadas por nombre; `networks` sigue siendo la lista de nombres.
+        assert_eq!(c.networks, ["bridge", "tienda_default"]);
+        assert_eq!(c.endpoints.len(), 2);
+        let td = c
+            .endpoints
+            .iter()
+            .find(|e| e.name == "tienda_default")
+            .unwrap();
+        assert_eq!(td.ip_address.as_deref(), Some("172.18.0.7"));
+        assert_eq!(td.ipv6_address.as_deref(), Some("fd00::7"));
+        assert_eq!(td.gateway.as_deref(), Some("172.18.0.1"));
+        assert_eq!(td.mac_address.as_deref(), Some("16:f4:da:68:6c:75"));
+        assert!(td.aliases.is_empty());
+        // Un contenedor detenido devuelve campos vacíos: son `None`, nunca cadenas vacías.
+        let br = c.endpoints.iter().find(|e| e.name == "bridge").unwrap();
+        assert_eq!(
+            (
+                &br.ip_address,
+                &br.ipv6_address,
+                &br.gateway,
+                &br.mac_address
+            ),
+            (&None, &None, &None, &None)
+        );
+    }
+
+    #[test]
+    fn contenedor_sin_red_o_con_red_none_no_tiene_endpoints() {
+        let c = container_from_summary(summary(
+            r#"{"Id":"a","Names":["/x"],"Image":"i","ImageID":"s","Created":1,"State":"exited","Status":"Exited"}"#,
+        ));
+        assert!(c.endpoints.is_empty() && c.networks.is_empty());
+    }
+
     #[test]
     fn contenedor_completo() {
         let c = container_from_summary(summary(
@@ -497,6 +557,28 @@ mod tests {
             ))
             .is_some()
         );
+    }
+
+    /// `inspect` sí trae los alias de DNS por red (el listado no): se ordenan, sin repetidos y sin cadenas vacías.
+    #[test]
+    fn inspect_trae_los_alias_de_dns_por_red_ordenados_y_sin_repetidos() {
+        let i: ContainerInspectResponse = serde_json::from_str(
+            r#"{"Id":"abc","Created":"2026-01-01T00:00:00Z","State":{"Status":"running","Running":true},
+            "NetworkSettings":{"Networks":{"tienda_default":{"IPAddress":"172.20.0.3","Gateway":"172.20.0.1",
+               "MacAddress":"02:42:ac:14:00:03","Aliases":["web","tienda-web-1","3f9a1c7e02b4","web"]}}}}"#,
+        )
+        .expect("json");
+        let d = detail_from_inspect(container_from_summary(summary(r#"{"Id":"abc"}"#)), i);
+        assert_eq!(d.networks.len(), 1);
+        assert_eq!(
+            d.networks[0].aliases,
+            ["3f9a1c7e02b4", "tienda-web-1", "web"]
+        );
+        assert_eq!(
+            d.networks[0].mac_address.as_deref(),
+            Some("02:42:ac:14:00:03")
+        );
+        assert_eq!(d.ip_address.as_deref(), Some("172.20.0.3"));
     }
 
     #[test]

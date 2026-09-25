@@ -14,11 +14,12 @@ export const container: Container = {
   ports: [{ ip: '0.0.0.0', private_port: 80, public_port: 8080, protocol: 'tcp' }, { ip: null, private_port: 6379, public_port: null, protocol: 'tcp' }],
   mounts: [{ kind: 'volume', name: 'datos', source: '/var/lib/docker/volumes/datos/_data', destination: '/data', read_write: true }, { kind: 'bind', name: null, source: '/srv/x', destination: '/x', read_write: false }],
   networks: ['tienda_default'],
+  endpoints: [{ name: 'tienda_default', ip_address: '172.20.0.3', ipv6_address: null, gateway: '172.20.0.1', mac_address: '02:42:ac:14:00:03', aliases: [] }],
 }
 export const containerDetail: ContainerDetail = {
   summary: container, created_at: '2026-09-21T09:14:52.318Z', ip_address: '172.20.0.3', started_at: '2026-09-21T09:15:01Z', finished_at: null, exit_code: null, pid: 4821,
   oom_killed: false, restart_count: 0, error: null, tty: false, restart_policy: 'unless-stopped', memory_limit_bytes: 536870912, cpu_limit: 1,
-  networks: [{ name: 'tienda_default', ip_address: '172.20.0.3', gateway: '172.20.0.1' }], raw: { Id: ID, Config: { Env: ['A=1'] } },
+  networks: [{ name: 'tienda_default', ip_address: '172.20.0.3', ipv6_address: null, gateway: '172.20.0.1', mac_address: '02:42:ac:14:00:03', aliases: ['api', 'tienda-api-1', '9b2e5d81a7c0'] }], raw: { Id: ID, Config: { Env: ['A=1'] } },
 }
 export const image: Image = { id: 'sha256:' + 'c'.repeat(64), reference: 'nginx:1.27-alpine', repository: 'nginx', tag: '1.27-alpine', size_bytes: 54525952, created: 1_790_000_000, containers: 1, dangling: false }
 export const volume: Volume = { name: 'datos', driver: 'local', mountpoint: '/var/lib/docker/volumes/datos/_data', created_at: '2026-09-01T00:00:00Z', labels: { 'com.docker.compose.project': 'tienda' }, compose_project: 'tienda', size_bytes: null, used_by: ['tienda-api-1'], anonymous: false }

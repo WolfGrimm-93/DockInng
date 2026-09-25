@@ -115,7 +115,7 @@ export function createSimApi(opts: SimOptions = {}): SimEngineApi {
     return {
       summary: c, created_at: raw.Created, ip_address: on ? '172.20.0.3' : null, started_at: on ? raw.Created : null, finished_at: null, exit_code: on ? null : 0,
       pid: on ? 48213 : null, oom_killed: false, restart_count: 0, error: null, tty: false, restart_policy: 'unless-stopped',
-      memory_limit_bytes: 512 * MB, cpu_limit: 1, networks: c.networks.map((n) => ({ name: n, ip_address: '172.20.0.3', gateway: '172.20.0.1' })), raw,
+      memory_limit_bytes: 512 * MB, cpu_limit: 1, networks: c.endpoints.map((e) => ({ ...e, aliases: e.ip_address ? [...new Set([c.compose_service ?? '', c.names[0], c.id.slice(0, 12)].filter(Boolean))].sort() : [] })), raw,
     }
   }
   async function changeState(idOrName: string, op: 'start' | 'stop' | 'restart') {
@@ -421,7 +421,7 @@ export function createSimApi(opts: SimOptions = {}): SimEngineApi {
             id: uuidv7().replace(/-/g, '').padEnd(64, '0').slice(0, 64), names: [name], image: spec.image, image_id: 'sha256:' + '0'.repeat(64), state: mode === 'start' ? 'running' : 'created',
             status: mode === 'start' ? 'Up Less than a second' : 'Created', created: Math.floor(Date.now() / 1000), compose_project: null, compose_service: null,
             ports: spec.ports.filter((p) => p.host && p.container).map((p) => ({ ip: '0.0.0.0', private_port: Number(p.container), public_port: Number(p.host), protocol: p.protocol })),
-            mounts: [], networks: [spec.network],
+            mounts: [], networks: [spec.network], endpoints: [],
           }
           world.containers.unshift(c)
           if (mode === 'start') world.usage[name] = { cpu: 0.3, memMb: 18 }

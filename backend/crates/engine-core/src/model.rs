@@ -87,13 +87,25 @@ pub struct Container {
     pub ports: Vec<PortMapping>,
     pub mounts: Vec<MountInfo>,
     pub networks: Vec<String>,
+    /// IP (v4/v6), puerta de enlace y MAC del contenedor en cada red a la que está conectado (vacío si está detenido o usa `none`).
+    #[serde(default)]
+    pub endpoints: Vec<NetworkEndpoint>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NetworkEndpoint {
+    /// Nombre de la red.
     pub name: String,
     pub ip_address: Option<String>,
+    #[serde(default)]
+    pub ipv6_address: Option<String>,
     pub gateway: Option<String>,
+    #[serde(default)]
+    pub mac_address: Option<String>,
+    /// Alias de DNS del contenedor en esa red (nombre del servicio, del contenedor, id corto). Solo los da `inspect`:
+    /// en el listado de contenedores vienen vacíos.
+    #[serde(default)]
+    pub aliases: Vec<String>,
 }
 
 /// Detalle de un contenedor (pantalla de detalle + pestaña "Inspeccionar").
@@ -126,4 +138,69 @@ pub struct EngineInfo {
     pub api_version: String,
     pub os: String,
     pub arch: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn container(endpoints: Vec<NetworkEndpoint>) -> Container {
+        Container {
+            id: "a".repeat(64),
+            names: vec!["web".into()],
+            image: "nginx".into(),
+            image_id: "sha256:x".into(),
+            state: ContainerState::Running,
+            status: "Up".into(),
+            created: 1,
+            compose_project: None,
+            compose_service: None,
+            ports: vec![],
+            mounts: vec![],
+            networks: endpoints.iter().map(|e| e.name.clone()).collect(),
+            endpoints,
+        }
+    }
+
+    /// CONTRATO IPC: el frontend (`data/types.ts`, `contract.fixtures.ts`) espera EXACTAMENTE estas claves en snake_case,
+    /// con `null` para lo desconocido y `aliases` siempre como lista.
+    #[test]
+    fn el_json_de_los_endpoints_tiene_la_forma_que_espera_el_frontend() {
+        let c = container(vec![NetworkEndpoint {
+            name: "tienda_default".into(),
+            ip_address: Some("172.20.0.3".into()),
+            ipv6_address: None,
+            gateway: Some("172.20.0.1".into()),
+            mac_address: Some("02:42:ac:14:00:03".into()),
+            aliases: vec![],
+        }]);
+        let v = serde_json::to_value(&c).unwrap();
+        assert_eq!(
+            v["endpoints"][0],
+            serde_json::json!({
+                "name": "tienda_default", "ip_address": "172.20.0.3", "ipv6_address": null,
+                "gateway": "172.20.0.1", "mac_address": "02:42:ac:14:00:03", "aliases": []
+            })
+        );
+        assert_eq!(v["networks"], serde_json::json!(["tienda_default"]));
+    }
+
+    /// Compatibilidad: un JSON antiguo sin `endpoints` ni los campos nuevos sigue deserializándose.
+    #[test]
+    fn un_json_antiguo_sin_endpoints_ni_campos_nuevos_se_deserializa() {
+        let old = serde_json::json!({
+            "id": "a", "names": ["x"], "image": "i", "image_id": "s", "state": "running", "status": "Up", "created": 1,
+            "compose_project": null, "compose_service": null, "ports": [], "mounts": [], "networks": ["n"]
+        });
+        let c: Container = serde_json::from_value(old).unwrap();
+        assert!(c.endpoints.is_empty());
+        let e: NetworkEndpoint = serde_json::from_value(
+            serde_json::json!({"name": "n", "ip_address": null, "gateway": null}),
+        )
+        .unwrap();
+        assert_eq!(
+            (e.ipv6_address, e.mac_address, e.aliases.len()),
+            (None, None, 0)
+        );
+    }
 }

@@ -19,7 +19,7 @@ const rowOf = (name: string) => screen.getByRole('link', { name }).closest('tr')
 function fake(i: number): Container {
   return {
     id: fullId(String(i).padStart(12, '0')), names: [`bulk-${i}`], image: `img:${i}`, image_id: 'sha256:' + '0'.repeat(64), state: i % 3 ? 'running' : 'exited',
-    status: 'Up 1 hour', created: 1, compose_project: i % 2 ? 'alfa' : null, compose_service: null, ports: [], mounts: [], networks: [],
+    status: 'Up 1 hour', created: 1, compose_project: i % 2 ? 'alfa' : null, compose_service: null, ports: [], mounts: [], networks: [], endpoints: [],
   }
 }
 
@@ -167,9 +167,11 @@ describe('ContainersPage', () => {
     renderView(<ContainersPage />)
     await loaded()
     const head = screen.getByRole('button', { name: /Stack tienda/ }).closest('tr') as HTMLElement
-    // Red propia del proyecto visible como chip; «bridge» (sistema) nunca aparece.
-    expect(within(head).getByTitle('Red: tienda_default')).toBeInTheDocument()
-    expect(within(head).queryByTitle(/Red: bridge/)).toBeNull()
+    // Un solo botón «Redes N 👁» (ya no hay un chip por red); cuenta solo las redes propias: nunca «bridge» (sistema).
+    const nets = within(head).getByRole('button', { name: 'Ver las 2 redes de el stack tienda' })
+    expect(nets).toHaveTextContent(/Redes\s*2/)
+    expect(nets).toHaveAttribute('aria-haspopup', 'dialog')
+    expect(within(head).queryByTitle(/Red: /)).toBeNull()
     expect(within(head).getByText(/en ejecución/)).toBeInTheDocument()
   })
 

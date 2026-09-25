@@ -598,6 +598,48 @@ async fn imagen_en_uso_y_red_con_endpoints() {
 
 #[tokio::test]
 #[ignore = "requiere DOCKINNG_LIVE_TESTS=1 y Docker"]
+async fn endpoints_reales_de_los_contenedores_en_marcha() {
+    // Solo lectura (listado + un inspect): no crea ni toca nada.
+    live!("endpoints", |env| {
+        let list = env.engine.list_containers(false).await.expect("list");
+        // Un contenedor en marcha con red propia (no host/none) debe traer IP en el listado.
+        let with_ip: Vec<_> = list
+            .iter()
+            .filter(|c| c.endpoints.iter().any(|e| e.ip_address.is_some()))
+            .collect();
+        for c in &with_ip {
+            assert_eq!(
+                c.networks.len(),
+                c.endpoints.len(),
+                "{}: networks y endpoints deben coincidir",
+                c.names[0]
+            );
+            for e in c.endpoints.iter().filter(|e| e.ip_address.is_some()) {
+                assert!(
+                    e.ip_address
+                        .as_deref()
+                        .unwrap()
+                        .parse::<std::net::Ipv4Addr>()
+                        .is_ok(),
+                    "IP inválida: {e:?}"
+                );
+                assert!(e.aliases.is_empty(), "el listado no trae alias");
+            }
+        }
+        // El inspect del primero sí trae alias de DNS en alguna red.
+        if let Some(c) = with_ip.first() {
+            let d = env.engine.inspect_container(&c.id).await.expect("inspect");
+            assert!(d.networks.iter().any(|n| n.ip_address.is_some()));
+            assert!(
+                d.networks.iter().any(|n| !n.aliases.is_empty()),
+                "inspect debería traer alias de DNS"
+            );
+        }
+    });
+}
+
+#[tokio::test]
+#[ignore = "requiere DOCKINNG_LIVE_TESTS=1 y Docker"]
 async fn system_usage_real_es_coherente() {
     // Solo lectura (`info` + `df`): no crea ni toca ningún recurso.
     live!("sysusage", |env| {

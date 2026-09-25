@@ -1,6 +1,6 @@
 // Datos de ejemplo del adaptador simulado: portados de platilla-html/js/data.js (nada aquí es real).
 // `buildWorld(now)` devuelve una copia NUEVA y mutable en cada llamada (tests y recargas parten de cero).
-import type { Container, ConnectionProfile, Image, Network, StackSummary, Volume, UiStatus, ContainerState } from '../../types'
+import type { Container, ConnectionProfile, Image, Network, NetworkEndpoint, StackSummary, Volume, UiStatus, ContainerState } from '../../types'
 
 const MB = 1024 * 1024
 const DAY = 86400
@@ -104,6 +104,21 @@ export function buildWorld(now: number = Date.now()): World {
     reference: s.repo === '<none>' ? `sha256:${fullId(s.id)}` : `${s.repo}:${s.tag}`,
     repository: s.repo, tag: s.tag, size_bytes: s.size * MB, created: nowS - s.ago, containers: 0, dangling: s.repo === '<none>',
   }))
+  // IP simulada por red: se reparte dentro de la subred de cada red (.2, .3, …) y solo a los contenedores encendidos, como Docker
+  // (un contenedor detenido conserva sus redes pero sin IP).
+  const nextHost = new Map<string, number>()
+  // Ordenados por nombre de red, como los devuelve el backend real.
+  const endpointsOf = (s: (typeof C)[number]): NetworkEndpoint[] =>
+    [...s.nets].sort((a, b) => a.localeCompare(b)).map((name) => {
+      const net = N.find((n) => n.name === name)
+      const base = net?.subnet.match(/^(\d+\.\d+\.\d+)\./)?.[1]
+      const up = s.status === 'running' || s.status === 'paused' || s.status === 'restarting'
+      if (!base || !up) return { name, ip_address: null, ipv6_address: null, gateway: null, mac_address: null, aliases: [] }
+      const host = nextHost.get(name) ?? 2
+      nextHost.set(name, host + 1)
+      const mac = ['02', '42', ...base.split('.').map((o) => Number(o).toString(16).padStart(2, '0')), host.toString(16).padStart(2, '0')].slice(0, 6).join(':')
+      return { name, ip_address: `${base}.${host}`, ipv6_address: null, gateway: `${base}.1`, mac_address: mac, aliases: [] }
+    })
   const containers: Container[] = C.map((s) => {
     const img = images.find((i) => i.reference === s.image)
     const project = s.stack
@@ -117,6 +132,7 @@ export function buildWorld(now: number = Date.now()): World {
         ...s.bind.map((b) => ({ kind: 'bind' as const, name: null, source: b, destination: '/mnt/' + (b.split('/').pop() || 'host'), read_write: true })),
       ],
       networks: s.nets,
+      endpoints: endpointsOf(s),
     }
   })
   for (const im of images) im.containers = containers.filter((c) => c.image_id === im.id).length
