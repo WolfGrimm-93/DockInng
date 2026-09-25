@@ -1,0 +1,44 @@
+/* Apariencia (Configuración). Usa solo tokens y clases de la plantilla; nada de colores fijos salvo las muestras. */
+.appearance .setting-row { flex-wrap: wrap; align-items: flex-start; }
+.appearance .setting-row .grow { min-width: 200px; }
+.appearance .setting-row.stack { display: grid; gap: 10px; }
+.choice { display: flex; flex-wrap: wrap; gap: 8px; }
+/* Segmentado con role=radio: mismo aspecto que .segmented con aria-pressed */
+.choice.segmented { display: inline-flex; flex-wrap: nowrap; gap: 2px; }
+.segmented button[role="radio"] { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border: 0; border-radius: calc(var(--radius-md) - 2px); background: none; color: var(--muted-foreground); font-weight: 500; }
+.segmented button[role="radio"]:hover:not(:disabled) { color: var(--foreground); }
+.segmented button[role="radio"][aria-checked="true"] { background: var(--card); color: var(--foreground); box-shadow: var(--sh-sm); }
+.dark .segmented button[role="radio"][aria-checked="true"] { background: var(--accent); }
+.segmented button[role="radio"]:disabled { opacity: 0.5; cursor: not-allowed; }
+/* Muestras de acento */
+.choice-swatch button { width: 32px; height: 32px; border-radius: var(--radius-full); border: 2px solid var(--border); padding: 0; display: grid; place-items: center; background: var(--sw, var(--primary)); color: var(--sw-fg, var(--primary-foreground)); }
+.choice-swatch button:hover { border-color: var(--input); }
+.choice-swatch button[aria-checked="true"] { border-color: var(--foreground); box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--foreground); }
+.choice-swatch button.custom { background: conic-gradient(from 0deg, oklch(.7 .14 0), oklch(.7 .14 60), oklch(.7 .14 120), oklch(.7 .14 180), oklch(.7 .14 240), oklch(.7 .14 300), oklch(.7 .14 360)); }
+.swatch-label { display: inline-flex; flex-direction: column; align-items: center; gap: 4px; }
+/* Chips (tinte): texto + puntos de color */
+.choice-chip button { display: inline-flex; align-items: center; gap: 8px; height: var(--h-md); padding: 0 12px; border-radius: var(--radius-md); border: 1px solid var(--input); background: none; color: var(--foreground); font-weight: 500; }
+.choice-chip button:hover { background: var(--accent); }
+.choice-chip button[aria-checked="true"] { background: var(--accent); color: var(--accent-foreground); border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
+.dot { width: 14px; height: 14px; border-radius: var(--radius-full); border: 1px solid color-mix(in oklch, var(--foreground) 25%, transparent); flex: none; }
+/* Combinaciones */
+.choice-combo { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; width: 100%; }
+.choice-combo button { display: grid; gap: 6px; text-align: left; padding: 10px; border-radius: var(--radius-lg); border: 1px solid var(--border); background: var(--card); color: var(--card-foreground); }
+.choice-combo button:hover { border-color: var(--input); }
+.choice-combo button[aria-checked="true"] { border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
+.combo-name { display: flex; align-items: center; gap: 6px; font-weight: 600; }
+.combo-dots { display: flex; gap: 4px; }
+.combo-dots i { width: 22px; height: 14px; border-radius: var(--radius-sm); border: 1px solid color-mix(in oklch, var(--foreground) 18%, transparent); }
+/* Matiz personalizado */
+.hue-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; width: 100%; }
+.hue-row input[type="range"] { flex: 1 1 220px; min-width: 160px; height: 14px; border-radius: var(--radius-full); appearance: none; background: linear-gradient(to right, oklch(.7 .14 0), oklch(.7 .14 60), oklch(.7 .14 120), oklch(.7 .14 180), oklch(.7 .14 240), oklch(.7 .14 300), oklch(.7 .14 360)); border: 1px solid var(--input); }
+.hue-row input[type="range"]::-webkit-slider-thumb { appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--background); border: 3px solid var(--foreground); }
+.hue-row input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--background); border: 3px solid var(--foreground); }
+.hue-row input[type="number"] { width: 84px; }
+/* Vista previa en vivo */
+.preview { display: grid; gap: 12px; padding: 14px 16px; }
+.preview-box { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--background); padding: 12px; display: grid; gap: 10px; }
+.preview-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.preview-focus { outline: 2px solid var(--ring); outline-offset: 2px; }
+.readout { display: flex; gap: 8px 16px; flex-wrap: wrap; color: var(--muted-foreground); font-size: var(--text-xs); }
+.readout b { color: var(--foreground); font-weight: 600; }

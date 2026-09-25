@@ -5,7 +5,19 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[features]
+# Expone `MockEngine` para tests de otros crates.
+testing = ["dep:tokio"]
+
 [dependencies]
-async-trait = "0.1"
+async-trait.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
+futures-core.workspace = true
+futures-util.workspace = true
+uuid.workspace = true
+tokio = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

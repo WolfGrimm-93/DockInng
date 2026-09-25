@@ -4,7 +4,7 @@
 
 A native Linux desktop app to manage Docker from a graphical interface, in the spirit of Docker Desktop. It talks directly to the Docker Engine API. A companion CLI (`dockinng`) shares the same core.
 
-> Status: early development (skeleton + first vertical slice: list containers).
+> Status: in development. The full interface is implemented. **Real Docker data:** containers (list, start, stop, restart, remove, live events, logs, stats, inspect), and images, volumes and networks (list, remove). **Simulated and marked "Not connected yet" in the UI:** embedded terminal, image pull, create container, Compose stacks and SSH/TLS connections. Details in [PENDIENTES.md](PENDIENTES.md).
 
 ## Stack
 
@@ -22,8 +22,8 @@ backend/
   crates/engine-docker   EngineClient adapter on top of bollard
   crates/dockinng-cli    `dockinng` binary (clap)
   app/                   Tauri shell (IPC commands)
-frontend/                React + Vite UI
-docs/
+frontend/                React + Vite UI (shadcn/ui + Tailwind)
+platilla-html/           approved design reference (brand book + HTML template)
 ```
 
 The GUI and the CLI are adapters over the same core; the frontend never talks to Docker directly.
@@ -47,9 +47,13 @@ cd backend && cargo run -p dockinng-cli -- ps -a
 
 # Tests
 cd backend && cargo test
-cd frontend && pnpm build && pnpm lint
+cd frontend && pnpm test && pnpm build && pnpm lint
 ```
+
+## Appearance
+
+Settings > Appearance lets you pick light, dark or system mode, an accent color (presets or a custom hue), an independent surface tint and named combinations. Tokens are computed in OKLCH and validated for WCAG AA contrast across all hues. Status colors and the logo do not change with the accent.
 
 ## Safety
 
-Destructive actions go through a `ConfirmationPolicy` in the core: reversible actions run directly, destructive ones ask for confirmation, and there is a floor of catastrophic actions that not even `--yes` can bypass. Without a TTY, anything that needs confirmation is denied.
+Destructive actions go through a `ConfirmationPolicy` in the core: reversible actions run directly, destructive ones ask for confirmation, and there is a floor of catastrophic actions that not even `--yes` can bypass. Without a TTY, anything that needs confirmation is denied. In the desktop app, destructive actions use a plan → one-time ticket → typed confirmation flow enforced by the backend (single-target actions require the exact name; prunes require the word `ELIMINAR`). Known accepted risk: a compromised webview could still call the plan/execute commands, so the strict CSP and the absence of remote content are the real barrier.

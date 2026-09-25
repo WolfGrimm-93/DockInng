@@ -1,0 +1,168 @@
+// Imágenes, volúmenes y redes: listas reales, eliminación por el flujo de política y niveles de confirmación.
+import { act, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { afterEach, describe, expect, it } from 'vitest'
+import { setPreviewState } from '@/app/devFlags'
+import ImagesPage from './images/ImagesPage'
+import NetworksPage from './networks/NetworksPage'
+import VolumesPage from './volumes/VolumesPage'
+import { makeApi, renderView, resetGlobals } from './testUtils'
+
+afterEach(resetGlobals)
+const EVIL = 'x"><img src=x onerror=alert(1)>'
+
+describe('ImagesPage', () => {
+  it('lista con «En uso»/«Sin usar»; eliminar deshabilitado si está en uso', async () => {
+    renderView(<ImagesPage />)
+    await screen.findByText('ghcr.io/casaluna/tienda-api')
+    expect(screen.getByText('12 · 3.2 GB')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Eliminar nginx:1.27-alpine' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Eliminar node:20-bookworm-slim' })).toBeEnabled()
+    expect(screen.getByRole('link', { name: 'Ejecutar redis:7.4-alpine' })).toHaveAttribute('href', '#create?image=redis%3A7.4-alpine')
+  })
+  it('eliminar una imagen: confirmación → ejecución → toast', async () => {
+    const u = userEvent.setup()
+    renderView(<ImagesPage />)
+    await u.click(await screen.findByRole('button', { name: 'Eliminar node:20-bookworm-slim' }))
+    const dlg = await screen.findByRole('alertdialog')
+    expect(within(dlg).getByRole('heading', { name: 'Eliminar imagen' })).toBeInTheDocument()
+    await u.click(within(dlg).getByRole('button', { name: 'Eliminar imagen' }))
+    await waitFor(() => expect(screen.queryByText('20-bookworm-slim')).toBeNull())
+    expect(await screen.findByText('Imagen eliminada')).toBeInTheDocument()
+  })
+  it('«Eliminar sin usar…» enumera las imágenes afectadas', async () => {
+    const u = userEvent.setup()
+    renderView(<ImagesPage />)
+    await u.click(await screen.findByRole('button', { name: 'Eliminar sin usar…' }))
+    const dlg = await screen.findByRole('alertdialog')
+    expect(within(dlg).getByRole('list', { name: 'Imágenes a eliminar' }).querySelectorAll('li')).toHaveLength(2)
+    await u.click(within(dlg).getByRole('button', { name: 'Cancelar' }))
+  })
+  it('búsqueda, vacío, carga y nombres maliciosos', async () => {
+    const u = userEvent.setup()
+    const api = makeApi()
+    api.sim.world.images[0].reference = EVIL
+    api.sim.world.images[0].repository = EVIL
+    const { unmount } = renderView(<ImagesPage />, { api })
+    await screen.findByText(EVIL)
+    expect(document.querySelector('img')).toBeNull()
+    await u.type(screen.getByRole('searchbox'), 'postgres')
+    expect(document.querySelectorAll('tbody tr')).toHaveLength(1)
+    await u.clear(screen.getByRole('searchbox'))
+    await u.type(screen.getByRole('searchbox'), 'qqqq')
+    expect(await screen.findByText('Ninguna imagen coincide')).toBeInTheDocument()
+    unmount()
+    const empty = makeApi()
+    empty.sim.world.images = []
+    renderView(<ImagesPage />, { api: empty })
+    expect(await screen.findByText('No hay imágenes descargadas')).toBeInTheDocument()
+  })
+  it('vista previa de carga: esqueleto', async () => {
+    renderView(<ImagesPage />)
+    await screen.findByText('ghcr.io/casaluna/tienda-api')
+    act(() => setPreviewState('loading'))
+    expect(await screen.findByRole('status', { name: 'Cargando datos' })).toBeInTheDocument()
+  })
+})
+
+describe('VolumesPage', () => {
+  it('lista y estados de uso; eliminar deshabilitado si está en uso', async () => {
+    renderView(<VolumesPage />)
+    await screen.findByText('respaldos-pg')
+    expect(screen.getByRole('button', { name: 'Eliminar volumen tienda_redis-datos' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Eliminar volumen respaldos-pg' })).toBeEnabled()
+  })
+  it('eliminar volumen exige escribir el nombre (botón deshabilitado hasta coincidir)', async () => {
+    const u = userEvent.setup()
+    renderView(<VolumesPage />)
+    await u.click(await screen.findByRole('button', { name: 'Eliminar volumen respaldos-pg' }))
+    const dlg = await screen.findByRole('alertdialog')
+    const ok = within(dlg).getByRole('button', { name: 'Eliminar volumen' })
+    expect(ok).toBeDisabled()
+    const input = within(dlg).getByRole('textbox')
+    await u.type(input, 'respaldos')
+    expect(ok).toBeDisabled()
+    await u.type(input, '-pg')
+    expect(ok).toBeEnabled()
+    await u.click(ok)
+    await waitFor(() => expect(screen.queryByText('respaldos-pg')).toBeNull())
+    expect(await screen.findByText('Volumen eliminado')).toBeInTheDocument()
+  })
+  it('volúmenes sin usar: confirmación escrita con ELIMINAR y lista de afectados', async () => {
+    const u = userEvent.setup()
+    renderView(<VolumesPage />)
+    await u.click(await screen.findByRole('button', { name: 'Eliminar sin usar…' }))
+    const dlg = await screen.findByRole('alertdialog')
+    expect(within(dlg).getByRole('list', { name: 'Volúmenes afectados' }).querySelectorAll('li')).toHaveLength(2)
+    const ok = within(dlg).getByRole('button', { name: 'Eliminar 2 volúmenes' })
+    expect(ok).toBeDisabled()
+    await u.type(within(dlg).getByRole('textbox'), 'eliminar')
+    expect(ok).toBeDisabled() // sensible a mayúsculas
+    await u.clear(within(dlg).getByRole('textbox'))
+    await u.type(within(dlg).getByRole('textbox'), 'ELIMINAR')
+    expect(ok).toBeEnabled()
+    await u.click(ok)
+    expect(await screen.findByText('2 volúmenes eliminados')).toBeInTheDocument()
+  })
+  it('«Nuevo volumen» es simulado y lo avisa', async () => {
+    const u = userEvent.setup()
+    renderView(<VolumesPage />)
+    await u.click(await screen.findByRole('button', { name: 'Nuevo volumen' }))
+    expect(await screen.findByText('Simulado — no conectado aún')).toBeInTheDocument()
+  })
+  it('nombres maliciosos como texto y estado vacío', async () => {
+    const api = makeApi()
+    api.sim.world.volumes[5].name = EVIL
+    const { unmount } = renderView(<VolumesPage />, { api })
+    await screen.findByText(EVIL)
+    expect(document.querySelector('img')).toBeNull()
+    unmount()
+    const empty = makeApi()
+    empty.sim.world.volumes = []
+    renderView(<VolumesPage />, { api: empty })
+    expect(await screen.findByText('No hay volúmenes')).toBeInTheDocument()
+  })
+})
+
+describe('NetworksPage', () => {
+  it('redes del sistema o con contenedores no se pueden eliminar; una libre sí, con confirmación', async () => {
+    const u = userEvent.setup()
+    const api = makeApi()
+    api.sim.world.networks.push({ id: 'net-libre', name: 'libre', driver: 'bridge', scope: 'local', subnets: ['172.30.0.0/24'], internal: false, system: false, connected: [], compose_project: null })
+    renderView(<NetworksPage />, { api })
+    await screen.findByText('tienda_default')
+    expect(screen.getByRole('button', { name: 'Eliminar red bridge' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Eliminar red tienda_default' })).toBeDisabled()
+    expect(screen.getAllByText('Del sistema').length).toBeGreaterThan(0)
+    await u.click(screen.getByRole('button', { name: 'Eliminar red libre' }))
+    const dlg = await screen.findByRole('alertdialog')
+    expect(within(dlg).getByRole('heading', { name: 'Eliminar red' })).toBeInTheDocument()
+    await u.click(within(dlg).getByRole('button', { name: 'Eliminar red' }))
+    await waitFor(() => expect(screen.queryByText('libre')).toBeNull())
+    expect(await screen.findByText('Red eliminada')).toBeInTheDocument()
+  })
+  it('estado vacío y «Nueva red» simulada', async () => {
+    const u = userEvent.setup()
+    const api = makeApi()
+    api.sim.world.networks = []
+    renderView(<NetworksPage />, { api })
+    expect(await screen.findByText('No hay redes personalizadas')).toBeInTheDocument()
+    await u.click(screen.getAllByRole('button', { name: 'Nueva red' })[0])
+    expect(await screen.findByText('Simulado — no conectado aún')).toBeInTheDocument()
+  })
+})
+
+describe('texto bidi y nombres larguísimos', () => {
+  it('volúmenes e imágenes saneados', async () => {
+    const api = makeApi()
+    api.sim.world.volumes[5].name = '\u202Egpj.exe'
+    api.sim.world.images[0].repository = 'r'.repeat(10000)
+    api.sim.world.images[0].reference = 'r'.repeat(10000) + ':1'
+    const v = renderView(<VolumesPage />, { api })
+    expect(await screen.findByText('gpj.exe')).toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(/[\u202A-\u202E]/)
+    v.unmount()
+    renderView(<ImagesPage />, { api })
+    expect((await screen.findByText('r'.repeat(10000))).closest('.name-cell')).not.toBeNull()
+  })
+})

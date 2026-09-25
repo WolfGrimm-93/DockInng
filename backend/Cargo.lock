@@ -808,9 +808,13 @@ version = "0.1.0"
 dependencies = [
  "engine-core",
  "engine-docker",
+ "futures-util",
  "serde",
+ "serde_json",
  "tauri",
  "tauri-build",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]
@@ -914,8 +918,13 @@ name = "engine-core"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "futures-core",
+ "futures-util",
  "serde",
+ "serde_json",
  "thiserror 2.0.21",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]
@@ -925,6 +934,11 @@ dependencies = [
  "async-trait",
  "bollard",
  "engine-core",
+ "futures-util",
+ "serde",
+ "serde_json",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]

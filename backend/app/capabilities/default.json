@@ -1,7 +1,29 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Permisos base de la ventana principal",
-  "windows": ["main"],
-  "permissions": ["core:default"]
+  "description": "Solo permisos propios (allow-<comando>). NO se incluye core:default: concede event, path, app, menu, tray, window y devtools que la UI no usa (solo usa invoke y Channel, que no requieren permiso de plugin). Verificado con los tests IPC de app/src/lib.rs (comandos y suscripciones por Channel bajo ACL real). Si la UI necesita una API de ventana, añadir solo ese permiso concreto.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "allow-connection-status",
+    "allow-reconnect",
+    "allow-list-containers",
+    "allow-inspect-container",
+    "allow-container-stats-snapshot",
+    "allow-list-images",
+    "allow-list-volumes",
+    "allow-list-networks",
+    "allow-start-container",
+    "allow-stop-container",
+    "allow-restart-container",
+    "allow-plan-action",
+    "allow-execute-action",
+    "allow-cancel-action",
+    "allow-subscribe-engine-events",
+    "allow-subscribe-logs",
+    "allow-subscribe-stats",
+    "allow-unsubscribe",
+    "allow-reset-subscriptions"
+  ]
 }

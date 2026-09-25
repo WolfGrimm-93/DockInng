@@ -1,9 +1,52 @@
 <!doctype html>
-<html lang="en">
+<html lang="es" class="dark no-anim">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#070e0b" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>DockInng</title>
+    <script>
+      /* Antes del primer pintado (sin destello): modo claro/oscuro/sistema, hoja del motor de temas y riel del sidebar.
+         Espejo mínimo del motor (src/theme): lee `dockinng.theme.v1` (modo) y la hoja precompilada `dockinng.theme.css.v1`
+         ({algo:1, css, hex}) que escribe savePrefs. La versión del algoritmo (algo) debe coincidir con THEME_ALGO
+         (lo comprueba src/theme/prepaint.test.ts). ?theme= y ?sidebar= ganan sobre lo guardado. */
+      (function () {
+        var h = document.documentElement, p = new URLSearchParams(location.search), m = 'dark', s = null;
+        // Validación COMPLETA de las prefs (espejo de validatePrefs): si algo es inválido se usan los valores de fábrica
+        // (modo oscuro, sin hoja) para que el DOM y el radiogroup de Apariencia nunca discrepen.
+        function hue(x) { return typeof x === 'number' && isFinite(x) && x >= 0 && x <= 360; }
+        function validPrefs(o) {
+          if (!o || typeof o !== 'object' || o.v !== 1) return false;
+          if (['light', 'dark', 'system'].indexOf(o.mode) < 0 || ['soft', 'normal', 'strong'].indexOf(o.strength) < 0) return false;
+          var a = o.accent, t = o.tint;
+          if (!a || typeof a !== 'object') return false;
+          if ('preset' in a ? ['emerald', 'teal', 'blue', 'indigo', 'violet', 'pink', 'red', 'amber', 'orange'].indexOf(a.preset) < 0 : !hue(a.hue)) return false;
+          if (t === 'follow' || t === 'neutral') return true;
+          if (!t || typeof t !== 'object') return false;
+          return 'preset' in t ? ['green', 'blue', 'warm', 'violet', 'pink'].indexOf(t.preset) >= 0 : hue(t.hue);
+        }
+        try {
+          var raw = localStorage.getItem('dockinng.theme.v1'), pr = raw ? JSON.parse(raw) : null, valid = validPrefs(pr);
+          if (valid) m = pr.mode;
+          else if (!raw) { var lg = localStorage.getItem('dockinng.theme'); if (lg === 'light' || lg === 'dark') m = lg; }
+          // La hoja precompilada solo se usa si es de esta versión del algoritmo Y corresponde a estas prefs (sig).
+          var c = valid ? JSON.parse(localStorage.getItem('dockinng.theme.css.v1') || 'null') : null;
+          if (c && c.algo === 1 && c.sig === JSON.stringify([pr.accent, pr.tint, pr.strength])) {
+            var ok = window.CSS && CSS.supports && CSS.supports('color', 'oklch(0 0 0)');
+            var css = ok ? c.css : c.hex;
+            if (css) { var st = document.createElement('style'); st.id = 'dk-theme'; st.textContent = css; document.head.appendChild(st); }
+          }
+          s = p.get('sidebar') || localStorage.getItem('dockinng.sidebar');
+        } catch (e) { s = p.get('sidebar'); }
+        var t = p.get('theme') || m;
+        if (t === 'system') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        h.classList.toggle('dark', t !== 'light');
+        var tc = document.querySelector('meta[name="theme-color"]'); if (tc && !document.getElementById('dk-theme')) tc.setAttribute('content', t === 'light' ? '#f7fbf9' : '#070e0b');
+        if (s ? s === 'collapsed' : window.innerWidth < 1000) h.classList.add('is-collapsed');
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

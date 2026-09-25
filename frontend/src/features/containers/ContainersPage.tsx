@@ -1,81 +1,326 @@
-import { useEffect, useState } from 'react'
-import { Badge } from '@/components/ui/badge'
+// Vista «Contenedores»: tabla virtualizada (filas de altura fija) con búsqueda, filtro por estado, agrupación por stack,
+// selección múltiple + barra masiva, acciones por fila con estado en curso/error y eliminación por el flujo de política.
+// Datos REALES (Docker vía la capa de datos): lista, iniciar/detener/reiniciar, eventos en vivo, CPU/memoria.
+import { useCallback, useMemo, useRef, useState } from 'react'
+import { devFlagsEnabled, getDevFlags, usePreviewState } from '@/app/devFlags'
+import { useHashRoute } from '@/app/useHashRoute'
+import { describePlan } from '@/components/shared/planDescribe'
+import { formatBytes } from '@/lib/format'
+import { BulkBar } from '@/components/shared/BulkBar'
+import { useGuardedAction } from '@/components/shared/ConfirmDialog'
+import { Icon } from '@/components/shared/Icon'
+import { PageHeader } from '@/components/shared/PageHeader'
+import { SearchField } from '@/components/shared/SearchField'
+import { Segmented } from '@/components/shared/Segmented'
+import { AlertBox, EmptyState, SkeletonTable } from '@/components/shared/StateViews'
 import { Button } from '@/components/ui/button'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import { isDesktop, listContainers, type Container } from '@/lib/engine'
+import { Checkbox } from '@/components/ui/checkbox'
+import { apiErrorMessage } from '@/data/errors'
+import { containerName } from '@/data/store/engineStore'
+import { useContainers, useEngineApi, useEngineStoreApi, useVolumes } from '@/data/store/hooks'
+import type { Container } from '@/data/types'
+import { toast } from '@/lib/toastStore'
+import { isOn, isStoppedState, matchesContainer, type StateFilter } from '../common/containerUtils'
+import { useStartupOnce } from '../common/devOnce'
+import { useViewGate } from '../common/gate'
+import { LinkButton } from '../common/LinkButton'
+import { readRowHeight, useVirtualTable } from '../common/useVirtualTable'
+import { ContainerRow } from './ContainerRow'
 
-export function ContainersPage() {
-  const [containers, setContainers] = useState<Container[]>([])
-  const [showAll, setShowAll] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+const COLS = 7
+const NO_STACK = '\u0000sin-stack'
 
-  // `reload` fuerza una recarga manual; luego se reemplazará por eventos en vivo de Docker.
-  const [reload, setReload] = useState(0)
+type Item = { type: 'group'; key: string; count: number } | { type: 'row'; c: Container }
 
-  useEffect(() => {
-    let cancelled = false
-    listContainers(showAll)
-      .then((list) => {
-        if (cancelled) return
-        setContainers(list)
-        setError(null)
-      })
-      .catch((e) => {
-        if (!cancelled) setError(String(e))
-      })
-    return () => {
-      cancelled = true
+export default function ContainersPage() {
+  const { list, status, counts, error } = useContainers()
+  const api = useEngineApi()
+  const store = useEngineStoreApi()
+  const route = useHashRoute()
+  const guard = useGuardedAction()
+  const gate = useViewGate(COLS, 8)
+  const { list: volumes } = useVolumes()
+  // Tamaño de los volúmenes montados en el diálogo de eliminar: solo si el motor lo conoce (nunca se inventa).
+  const volumeSize = useCallback((n: string) => { const v = volumes.find((x) => x.name === n); return v?.size_bytes != null ? formatBytes(v.size_bytes) : undefined }, [volumes])
+  const preview = usePreviewState()
+  const [filter, setFilter] = useState<StateFilter>('all')
+  const [q, setQ] = useState('')
+  const [group, setGroup] = useState(() => getDevFlags().group)
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  const [selected, setSelected] = useState<Set<string>>(() => new Set())
+  const [refreshing, setRefreshing] = useState(false)
+  const [bulkBusy, setBulkBusy] = useState<{ op: 'start' | 'stop'; total: number } | null>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const tableRef = useRef<HTMLTableElement>(null)
+  const rowH = useMemo(() => readRowHeight(), [])
+
+  const loading = preview === 'loading' || status === 'idle' || status === 'loading'
+  const empty = preview === 'empty' || (status === 'ready' && list.length === 0)
+
+  const filtered = useMemo(() => list.filter((c) => matchesContainer(c, filter, q)), [list, filter, q])
+  const stopped = useMemo(() => list.filter((c) => isStoppedState(c.state)).length, [list])
+  const items = useMemo<Item[]>(() => {
+    if (!group) return filtered.map((c) => ({ type: 'row', c }))
+    const groups = new Map<string, Container[]>()
+    for (const c of filtered) {
+      const k = c.compose_project ?? NO_STACK
+      if (!groups.has(k)) groups.set(k, [])
+      groups.get(k)!.push(c)
     }
-  }, [showAll, reload])
+    const out: Item[] = []
+    for (const [key, cs] of groups) {
+      out.push({ type: 'group', key, count: cs.length })
+      if (!collapsed[key]) for (const c of cs) out.push({ type: 'row', c })
+    }
+    return out
+  }, [filtered, group, collapsed])
+
+  const virt = useVirtualTable({ count: items.length, scrollRef, tableRef, estimate: (i) => (items[i]?.type === 'group' ? 32 : rowH) })
+
+  // Selección efectiva = seleccionados Y visibles con el filtro/búsqueda actual: la barra y los diálogos cuentan exactamente lo que se va a actuar.
+  const selIds = useMemo(() => filtered.filter((c) => selected.has(c.id)).map((c) => c.id), [filtered, selected])
+  const allSel = filtered.length > 0 && filtered.every((c) => selected.has(c.id))
+  const someSel = filtered.some((c) => selected.has(c.id))
+
+  const focusTitle = () => document.getElementById('viewTitle')?.focus({ preventScroll: true })
+  const onSelect = useCallback((id: string, on: boolean) => {
+    setSelected((prev) => {
+      const n = new Set(prev)
+      if (on) n.add(id)
+      else n.delete(id)
+      return n
+    })
+  }, [])
+  const onOp = useCallback((c: Container, op: 'start' | 'stop' | 'restart') => void store.getState().runContainerOp(c.id, op), [store])
+  const deleteContainers = useCallback(
+    async (ids: string[]) => {
+      const req = { type: 'remove_containers' as const, ids }
+      const r = await guard(req, (plan) => describePlan(plan, req, { volumeSize }))
+      if (r.status === 'done') {
+        setSelected((prev) => {
+          const n = new Set(prev)
+          for (const id of ids) n.delete(id)
+          return n
+        })
+        void store.getState().refresh('all')
+        focusTitle()
+      }
+    },
+    [guard, store, volumeSize],
+  )
+  const onDelete = useCallback((c: Container) => void deleteContainers([c.id]), [deleteContainers])
+
+  const bulk = async (op: 'start' | 'stop') => {
+    const targets = filtered.filter((c) => selected.has(c.id) && (op === 'start' ? !isOn(c.state) : isOn(c.state)))
+    if (!targets.length) {
+      toast.warn(op === 'start' ? 'Los contenedores seleccionados ya están en ejecución' : 'Los contenedores seleccionados ya están detenidos')
+      setSelected(new Set())
+      return
+    }
+    // Concurrencia limitada, un solo refresco y un solo toast resumen los pone el store.
+    setBulkBusy({ op, total: targets.length })
+    try {
+      await store.getState().runContainerOps(targets.map((c) => c.id), op)
+    } finally {
+      setBulkBusy(null)
+      setSelected(new Set())
+    }
+  }
+
+  const refresh = async () => {
+    setRefreshing(true)
+    try {
+      await store.getState().refresh('all')
+      toast.ok('Lista actualizada')
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  // Parámetros de arranque de la plantilla (solo simulado/DEV): ?sel=N y ?dialog=delete|delete-running|delete-multi
+  const ready = status === 'ready' && list.length > 0 && !preview && devFlagsEnabled(api)
+  useStartupOnce('containers.sel', ready, () => {
+    const n = Math.min(getDevFlags().sel, Math.max(0, list.length - 1))
+    if (n > 0) setSelected(new Set(list.slice(1, n + 1).map((c) => c.id)))
+  })
+  useStartupOnce('containers.dialog', ready, () => {
+    const d = getDevFlags().dialog
+    const byName = (n: string) => list.find((c) => c.names.includes(n))
+    if (d === 'delete') { const c = byName('tienda-redis-1'); if (c) void deleteContainers([c.id]) }
+    else if (d === 'delete-running') { const c = byName('tienda-postgres-1'); if (c) void deleteContainers([c.id]) }
+    else if (d === 'delete-multi') {
+      const cs = ['tienda-redis-1', 'minio-dev', 'tienda-postgres-1'].map(byName).filter(Boolean) as Container[]
+      if (cs.length) void deleteContainers(cs.map((c) => c.id))
+    }
+  })
+
+  const head = (
+    <PageHeader
+      title="Contenedores"
+      count={gate.isError ? null : `${counts.total} en total · ${counts.running} en ejecución`}
+      secondary={
+        <Button variant="secondary" locked={gate.locked} aria-busy={refreshing || undefined} onClick={() => void refresh()}>
+          <Icon name="refresh" spin={refreshing} />Actualizar
+        </Button>
+      }
+      primary={<LinkButton variant="primary" locked={gate.locked} href={route.href('create')}><Icon name="plus" />Nuevo contenedor</LinkButton>}
+    />
+  )
+  if (gate.blocked) return <>{head}{gate.blocked}</>
+
+  const toolbar = selIds.length ? (
+    <div className="toolbar">
+      <BulkBar
+        count={selIds.length}
+        locked={gate.locked || !!bulkBusy}
+        onStart={() => void bulk('start')}
+        onStop={() => void bulk('stop')}
+        onDelete={() => void deleteContainers(selIds)}
+        onClear={() => setSelected(new Set())}
+      />
+      {bulkBusy ? (
+        <span className="muted" role="status" aria-live="polite" style={{ alignSelf: 'center' }}>
+          <Icon name="loader" size="sm" spin /> {bulkBusy.op === 'start' ? 'Iniciando' : 'Deteniendo'} {bulkBusy.total} contenedores…
+        </span>
+      ) : null}
+    </div>
+  ) : (
+    <div className="toolbar">
+      <SearchField id="q" placeholder="Buscar por nombre, imagen o ID" value={q} onChange={setQ} />
+      <Segmented<StateFilter>
+        ariaLabel="Filtrar por estado"
+        value={filter}
+        onChange={setFilter}
+        options={[
+          { value: 'all', label: 'Todos', count: counts.total },
+          { value: 'running', label: 'En ejecución', count: counts.running },
+          { value: 'stopped', label: 'Detenidos', count: stopped },
+        ]}
+      />
+      <Button variant="secondary" aria-pressed={group} onClick={() => setGroup((g) => !g)}><Icon name="grid" />Agrupar por stack</Button>
+    </div>
+  )
+
+  if (status === 'error' && !list.length && !preview) {
+    const m = error ? apiErrorMessage(error) : { title: 'No se pudo cargar la lista', detail: '' }
+    return (
+      <>
+        {head}
+        <div className="view-body">
+          <AlertBox kind="error" icon="alert" title="No se pudo cargar la lista de contenedores" text={`${m.title}. ${m.detail}`}
+            actions={<Button variant="secondary" size="sm" onClick={() => void store.getState().refresh('containers')}><Icon name="refresh" size="sm" />Reintentar</Button>} />
+        </div>
+      </>
+    )
+  }
+  if (loading && !empty) return <>{head}{toolbar}<div className="view-body"><SkeletonTable cols={COLS} rows={8} /></div></>
+  if (empty) {
+    return (
+      <>
+        {head}
+        <div className="view-body">
+          <EmptyState
+            icon="box"
+            title="Todavía no hay contenedores"
+            text="Cuando crees o ejecutes un contenedor aparecerá aquí. Puedes empezar desde una imagen ya descargada o desde un archivo Compose."
+            actions={<><LinkButton variant="primary" href={route.href('create')}><Icon name="plus" />Nuevo contenedor</LinkButton><LinkButton variant="secondary" href={route.href('stacks')}>Abrir un stack</LinkButton></>}
+          />
+        </div>
+      </>
+    )
+  }
+
+  const spacer = (h: number, k: string) => (
+    <tr key={k} aria-hidden="true" style={{ background: 'transparent', pointerEvents: 'none' }}>
+      <td colSpan={COLS} style={{ height: h, padding: 0, border: 0 }} />
+    </tr>
+  )
 
   return (
-    <section className="space-y-4">
-      <header className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Contenedores</h1>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setShowAll((v) => !v)}>
-            {showAll ? 'Solo activos' : 'Mostrar todos'}
-          </Button>
-          <Button onClick={() => setReload((n) => n + 1)}>Actualizar</Button>
+    <>
+      {head}
+      {toolbar}
+      <div className="view-body" ref={scrollRef}>
+        {gate.lostBanner}
+        <div className="table-wrap">
+          <table ref={tableRef} aria-rowcount={items.length + 1}>
+            <caption className="sr-only">Lista de contenedores</caption>
+            <thead>
+              <tr aria-rowindex={1}>
+                <th className="col-check">
+                  <Checkbox
+                    id="selAll"
+                    aria-label="Seleccionar todos"
+                    checked={allSel}
+                    indeterminate={someSel && !allSel}
+                    onChange={(e) => setSelected((prev) => {
+                      const n = new Set(prev)
+                      for (const c of filtered) { if (e.target.checked) n.add(c.id); else n.delete(c.id) }
+                      return n
+                    })}
+                  />
+                </th>
+                <th scope="col" className="cell-name">Nombre</th>
+                <th scope="col">Estado</th>
+                <th scope="col" className="col-ports">Puertos</th>
+                <th scope="col" className="num col-cpu">CPU</th>
+                <th scope="col" className="num col-mem">Memoria</th>
+                <th scope="col" className="col-actions"><span className="sr-only">Acciones</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {!filtered.length ? (
+                <tr>
+                  <td colSpan={COLS} style={{ height: 'auto' }}>
+                    <div className="state" style={{ padding: '36px 24px' }}>
+                      <span className="state-ico"><Icon name="search" size="lg" /></span>
+                      <h2>Ningún contenedor coincide</h2>
+                      <p>Prueba con otro nombre o quita el filtro de estado.</p>
+                      <div className="btns"><Button variant="secondary" onClick={() => { setQ(''); setFilter('all') }}>Quitar filtros</Button></div>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                <>
+                  {virt.padTop > 0 ? spacer(virt.padTop, 'top') : null}
+                  {virt.items.map((v) => {
+                    const it = items[v.index]
+                    if (!it) return null
+                    if (it.type === 'group') {
+                      const open = !collapsed[it.key]
+                      return (
+                        <tr key={`g-${it.key}`} ref={virt.measure} data-index={v.index} aria-rowindex={v.index + 2} className="group-row">
+                          <td colSpan={COLS}>
+                            <button type="button" aria-expanded={open} onClick={() => setCollapsed((s) => ({ ...s, [it.key]: !s[it.key] }))}>
+                              <Icon name="chev-down" size="sm" className="chev" />
+                              {it.key === NO_STACK ? 'Sin stack' : `Stack ${it.key}`} <span className="muted" style={{ fontWeight: 400 }}>· {it.count}</span>
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    }
+                    return (
+                      <ContainerRow
+                        key={it.c.id}
+                        c={it.c}
+                        index={v.index}
+                        measure={virt.measure}
+                        selected={selected.has(it.c.id)}
+                        locked={gate.locked}
+                        href={route.href('detail', { c: containerName(it.c) })}
+                        onSelect={onSelect}
+                        onOp={onOp}
+                        onDelete={onDelete}
+                      />
+                    )
+                  })}
+                  {virt.padBottom > 0 ? spacer(virt.padBottom, 'bottom') : null}
+                </>
+              )}
+            </tbody>
+          </table>
         </div>
-      </header>
-
-      {!isDesktop && (
-        <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
-          Modo navegador: mostrando datos de muestra. Abre la app de escritorio para ver Docker real.
-        </p>
-      )}
-      {error && <p className="text-sm text-red-500">{error}</p>}
-
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Nombre</TableHead>
-            <TableHead>Imagen</TableHead>
-            <TableHead>Estado</TableHead>
-            <TableHead>Stack</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {containers.map((c) => (
-            <TableRow key={c.id}>
-              <TableCell className="font-medium">{c.names[0] ?? c.id.slice(0, 12)}</TableCell>
-              <TableCell>{c.image}</TableCell>
-              <TableCell>
-                <Badge variant={c.state === 'running' ? 'default' : 'secondary'}>{c.status}</Badge>
-              </TableCell>
-              <TableCell>{c.compose_project ?? '—'}</TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </section>
+      </div>
+    </>
   )
 }
