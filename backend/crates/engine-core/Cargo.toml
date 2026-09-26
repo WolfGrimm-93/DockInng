@@ -17,6 +17,7 @@ thiserror.workspace = true
 futures-core.workspace = true
 futures-util.workspace = true
 uuid.workspace = true
+shlex.workspace = true
 tokio = { workspace = true, optional = true }
 
 [dev-dependencies]

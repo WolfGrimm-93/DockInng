@@ -1,7 +1,9 @@
 // STORE NORMALIZADO del motor (zustand vanilla: usable dentro y fuera de React, testeable sin DOM).
 // Contrato público:
 //   createEngineStore(api, opts?) -> EngineStore   (getState()/subscribe()/setState de zustand)
-//   Estado:  connection · profiles · activeProfileId · containers/images/volumes/networks (Entity) · stats · rowOps · polling
+//   Estado:  connection · profiles · activeProfileId · containers/images/volumes/networks/stacks (Entity) · compose · stackOps · pulls · stats · rowOps · polling
+//   Ola 1: `stacks` es la FUENTE ÚNICA (página, cabecera y contador del menú); `stackOps[proyecto]` y `pulls[referencia]` sobreviven a la navegación;
+//          runStackOp/cancelStackOp/dismissStackOp/noteStackDown · startPull/cancelPull/dismissPull · checkCompose. La política (confirmación de bajar/borrar) NO vive aquí.
 //   Acciones (getState().x): bootstrap() · dispose() · retry() · selectProfile(id) · refresh(kind?) · runContainerOp(id, op) · runContainerOps(ids, op, {concurrency})
 //                            setRowBusy(id, busy?) · clearRowError(id) · markLost() · setPolling(on)
 // Flujo (PLAN_frontend §2.5): bootstrap -> connection_status; si conectado -> 4 list() en paralelo + events.subscribe + stats.
@@ -14,8 +16,8 @@ import { toApiError } from '../errors'
 import { safeStorage } from '@/lib/safeStorage'
 import { toast } from '@/lib/toastStore'
 import type {
-  ApiError, ConnectionIssue, ConnectionProfile, ConnectionState, ConnectionStatus, Container, ContainerBusy, ContainerStats, EngineFeed, EngineInfo,
-  Image, Network, Unsubscribe, Volume, GpuInfo, SystemUsage } from '../types'
+  ApiError, ComposeInfo, ConnectionIssue, ConnectionProfile, ConnectionState, ConnectionStatus, Container, ContainerBusy, ContainerStats, EngineFeed, EngineInfo,
+  Image, Network, PullFeed, PullOp, StackOpFeed, StackOpState, StackSummary, Unsubscribe, Volume, GpuInfo, SystemUsage } from '../types'
 import { planRefresh } from './eventReducer'
 
 export interface Entity<T> {
@@ -26,7 +28,9 @@ export interface Entity<T> {
   updatedAt?: number
 }
 export interface RowOp { busy?: ContainerBusy; error?: string; tried?: boolean }
-export type EntityKind = 'containers' | 'images' | 'volumes' | 'networks'
+export type EntityKind = 'containers' | 'images' | 'volumes' | 'networks' | 'stacks'
+/** Máximo de líneas de la salida de docker compose que se conservan por operación. */
+export const STACK_LOG_LIMIT = 300
 
 export interface EngineStoreState {
   connection: ConnectionState
@@ -36,6 +40,14 @@ export interface EngineStoreState {
   images: Entity<Image>
   volumes: Entity<Volume>
   networks: Entity<Network>
+  /** Stacks Compose (list_stacks): NO depende de que Compose esté instalado. */
+  stacks: Entity<StackSummary>
+  /** Estado de Docker Compose; null = aún no comprobado. */
+  compose: ComposeInfo | null
+  /** Operaciones up/restart por proyecto (sobreviven a la navegación). */
+  stackOps: Record<string, StackOpState>
+  /** Descargas de imagen por referencia (sobreviven a la navegación). */
+  pulls: Record<string, PullOp>
   stats: Record<string, ContainerStats>
   /** Recursos del equipo y disco de Docker (se refresca cada ~60 s); null = aún no cargado. */
   system: SystemUsage | null
@@ -59,6 +71,19 @@ export interface EngineStoreState {
   /** Simula/aplica «conexión perdida»: se conservan los datos, se bloquean las acciones. */
   markLost(): void
   setPolling(on: boolean): void
+
+  /** `recheck` salta la caché del backend (botón «Volver a comprobar»). */
+  checkCompose(recheck?: boolean): Promise<boolean>
+  /** Levanta/reinicia un stack con progreso en vivo. Ignora la petición si ya hay una operación en curso para ese proyecto. */
+  runStackOp(project: string, kind: 'up' | 'restart' | 'stop' | 'start' | 'pull'): void
+  /** Cancelación limpia (SIGTERM): llega `ended: canceled`; el estado puede haber quedado a medias. */
+  cancelStackOp(project: string): void
+  dismissStackOp(project: string): void
+  /** Tras un `stack_down` ejecutado por la política: limpia la operación y refresca. */
+  noteStackDown(project: string): void
+  startPull(reference: string): void
+  cancelPull(reference: string): void
+  dismissPull(reference: string): void
 }
 export type EngineStore = StoreApi<EngineStoreState>
 
@@ -107,6 +132,8 @@ export function createEngineStore(api: EngineApi, opts: EngineStoreOptions = {})
   let gpuTick: (() => Promise<void>) | null = null
   let pollTimer: ReturnType<typeof setInterval> | null = null
   const timers: Partial<Record<EntityKind, ReturnType<typeof setTimeout>>> = {}
+  const opHandles = new Map<string, { cancel(): void; dispose(): void }>()
+  const pullHandles = new Map<string, Unsubscribe>()
   let generation = 0 // invalida respuestas tardías tras dispose()/cambio de conexión
 
   let readPoll = false
@@ -122,8 +149,9 @@ export function createEngineStore(api: EngineApi, opts: EngineStoreOptions = {})
       const cur = get()[kind]
       if (cur.status === 'idle') set({ [kind]: { ...cur, status: 'loading' } } as Partial<EngineStoreState>)
       try {
-        let next: Entity<Container> | Entity<Image> | Entity<Volume> | Entity<Network>
-        if (kind === 'containers') next = toEntity(await api.containers.list(true), (c) => c.id)
+        let next: Entity<Container> | Entity<Image> | Entity<Volume> | Entity<Network> | Entity<StackSummary>
+        if (kind === 'stacks') next = toEntity(await api.stacks.list(), (x) => x.name)
+        else if (kind === 'containers') next = toEntity(await api.containers.list(true), (c) => c.id)
         else if (kind === 'images') next = toEntity(await api.images.list(), (i) => i.reference)
         else if (kind === 'volumes') next = toEntity(await api.volumes.list(), (v) => v.name)
         else next = toEntity(await api.networks.list(), (n) => n.id)
@@ -135,7 +163,7 @@ export function createEngineStore(api: EngineApi, opts: EngineStoreOptions = {})
       }
     }
     const fetchAll = async () => {
-      await Promise.all((['containers', 'images', 'volumes', 'networks'] as const).map(fetchKind))
+      await Promise.all((['containers', 'images', 'volumes', 'networks', 'stacks'] as const).map(fetchKind))
     }
     const schedule = (kind: EntityKind, ms: number) => {
       if (timers[kind]) return
@@ -158,6 +186,7 @@ export function createEngineStore(api: EngineApi, opts: EngineStoreOptions = {})
         if (p.images) schedule('images', dOthers)
         if (p.volumes) schedule('volumes', dOthers)
         if (p.networks) schedule('networks', dOthers)
+        if (p.stacks) schedule('stacks', dContainers)
       } else if (feed.type === 'connection') {
         const cur = get().connection
         if (feed.status.state === 'failed' && cur.status === 'connected') {
@@ -239,6 +268,21 @@ export function createEngineStore(api: EngineApi, opts: EngineStoreOptions = {})
       sysTick = stick
       sysTimer = setInterval(() => { if (typeof document === 'undefined' || document.visibilityState !== 'hidden') void stick() }, 60_000)
     }
+    // Aborta (duro) los Channels abiertos de operaciones de stack y descargas.
+    const abortAll = () => {
+      for (const h of opHandles.values()) h.dispose()
+      opHandles.clear()
+      for (const u of pullHandles.values()) u()
+      pullHandles.clear()
+    }
+    const patchOp = (project: string, patch: Partial<StackOpState>) => {
+      const cur = get().stackOps[project]
+      if (cur) set({ stackOps: { ...get().stackOps, [project]: { ...cur, ...patch } } })
+    }
+    const patchPull = (ref: string, patch: Partial<PullOp>) => {
+      const cur = get().pulls[ref]
+      if (cur) set({ pulls: { ...get().pulls, [ref]: { ...cur, ...patch } } })
+    }
     const applyPolling = (on: boolean) => {
       if (pollTimer) clearInterval(pollTimer)
       pollTimer = null
@@ -251,6 +295,7 @@ export function createEngineStore(api: EngineApi, opts: EngineStoreOptions = {})
       set({ connection: conn })
       if (conn.status === 'connected') {
         startLive()
+        void get().checkCompose()
         await fetchAll()
         void statsTick?.()
         void sysTick?.()
@@ -266,6 +311,10 @@ export function createEngineStore(api: EngineApi, opts: EngineStoreOptions = {})
       images: emptyEntity(),
       volumes: emptyEntity(),
       networks: emptyEntity(),
+      stacks: emptyEntity(),
+      compose: null,
+      stackOps: {},
+      pulls: {},
       stats: {},
       system: null,
       gpu: [],
@@ -287,6 +336,7 @@ export function createEngineStore(api: EngineApi, opts: EngineStoreOptions = {})
         generation++
         stopLive()
         applyPolling(false)
+        abortAll()
       },
       async retry() {
         const cur = get().connection
@@ -309,7 +359,8 @@ export function createEngineStore(api: EngineApi, opts: EngineStoreOptions = {})
         try {
           const status = await api.connection.select(id)
           generation++
-          set({ activeProfileId: id, containers: emptyEntity(), images: emptyEntity(), volumes: emptyEntity(), networks: emptyEntity(), stats: {}, system: null, gpu: [], rowOps: {} })
+          abortAll()
+          set({ activeProfileId: id, containers: emptyEntity(), images: emptyEntity(), volumes: emptyEntity(), networks: emptyEntity(), stacks: emptyEntity(), compose: null, stackOps: {}, pulls: {}, stats: {}, system: null, gpu: [], rowOps: {} })
           await connect(status)
           if (get().connection.status === 'connected') toast.ok(`Conectado a ${target.name}`, { sub: target.version || undefined })
           else toast.err(`No se pudo conectar con ${target.name}`, { sub: 'Revisa el diagnóstico en pantalla.' })
@@ -397,6 +448,106 @@ export function createEngineStore(api: EngineApi, opts: EngineStoreOptions = {})
         const rest = { ...get().rowOps }
         if (rest[id]) rest[id] = { ...rest[id], error: undefined }
         set({ rowOps: rest })
+      },
+      async checkCompose(recheck = false) {
+        const gen = generation
+        try {
+          const info = await api.stacks.composeInfo(recheck)
+          if (gen === generation) set({ compose: info })
+          return info.available && info.supported
+        } catch {
+          // Si el comando falla se trata como «no comprobado»: la página lo reintenta con «Reintentar».
+          if (gen === generation) set({ compose: { available: false, flavor: 'missing', version: null, supported: false, docker_cli: false } })
+          return false
+        }
+      },
+      runStackOp(project, kind) {
+        if (get().connection.status !== 'connected' || get().stackOps[project]?.state === 'running') return
+        const label = { up: 'levantado', restart: 'reiniciado', stop: 'detenido', start: 'iniciado', pull: 'con imágenes actualizadas' }[kind]
+        set({ stackOps: { ...get().stackOps, [project]: { kind, state: 'running', services: [], log: [], error: null, issues: [], startedAt: Date.now() } } })
+        const gen = generation
+        const onFeed = (f: StackOpFeed) => {
+          if (gen !== generation) return
+          if (f.type === 'progress') patchOp(project, { services: f.services })
+          else if (f.type === 'log') {
+            const cur = get().stackOps[project]
+            if (cur) patchOp(project, { log: [...cur.log, f.text].slice(-STACK_LOG_LIMIT) })
+          } else if (f.type === 'ended') {
+            opHandles.delete(project)
+            if (f.outcome === 'success') {
+              const cur = get().stackOps[project]
+              patchOp(project, { state: 'done', services: cur ? cur.services.map((s) => ({ ...s, percent: 100, phase: 'started' as const })) : [] })
+              toast.ok(`Stack ${project} ${label}`)
+            } else if (f.outcome === 'canceled') {
+              patchOp(project, { state: 'canceled' })
+              toast.warn(`Operación sobre ${project} cancelada`, { sub: 'Puede haber quedado a medias: revisa los servicios.' })
+            } else {
+              patchOp(project, { state: 'error', error: f.error ?? { code: 'compose_failed', message: f.outcome === 'timeout' ? 'La operación tardó demasiado.' : 'Docker Compose terminó con un error.' }, issues: f.issues })
+              toast.err(`No se pudo ${{ up: 'levantar', restart: 'reiniciar', stop: 'detener', start: 'iniciar', pull: 'actualizar las imágenes de' }[kind]} ${project}`, { sub: f.error?.message })
+            }
+            // Refresco explícito (no depender solo de los eventos del motor).
+            void fetchKind('containers')
+            void fetchKind('stacks')
+          }
+        }
+        opHandles.set(project, api.stacks.runOp(project, { type: kind }, onFeed))
+      },
+      cancelStackOp(project) {
+        opHandles.get(project)?.cancel()
+      },
+      dismissStackOp(project) {
+        const { [project]: _drop, ...rest } = get().stackOps
+        void _drop
+        if (get().stackOps[project]?.state === 'running') return
+        set({ stackOps: rest })
+      },
+      noteStackDown(project) {
+        const { [project]: _drop, ...rest } = get().stackOps
+        void _drop
+        set({ stackOps: rest })
+        void fetchKind('containers')
+        void fetchKind('stacks')
+        void fetchKind('volumes')
+        void fetchKind('networks')
+      },
+      startPull(reference) {
+        const ref = reference.trim()
+        if (!ref || get().connection.status !== 'connected' || get().pulls[ref]?.state === 'pulling') return
+        pullHandles.get(ref)?.()
+        set({ pulls: { ...get().pulls, [ref]: { reference: ref, state: 'pulling', layers: [], doneBytes: 0, totalBytes: 0, upToDate: false, digest: null, error: null } } })
+        const gen = generation
+        const onFeed = (f: PullFeed) => {
+          if (gen !== generation) return
+          if (f.type === 'progress') patchPull(ref, { layers: f.layers, doneBytes: f.done_bytes, totalBytes: f.total_bytes })
+          else if (f.type === 'ended') {
+            pullHandles.delete(ref)
+            if (f.outcome === 'done') {
+              patchPull(ref, { state: 'done', upToDate: f.up_to_date, digest: f.digest, layers: get().pulls[ref]?.layers.map((l) => ({ ...l, phase: 'complete' as const, done: l.total })) ?? [] })
+              toast.ok(f.up_to_date ? `${ref} ya estaba al día` : `${ref} descargada`)
+              void fetchKind('images')
+            } else {
+              patchPull(ref, { state: 'error', error: f.error ?? { code: 'engine', message: 'La descarga falló.' } })
+              toast.err(`No se pudo descargar ${ref}`, { sub: f.error?.message })
+            }
+          }
+        }
+        pullHandles.set(ref, api.images.pull(ref, onFeed))
+      },
+      cancelPull(reference) {
+        const ref = reference.trim()
+        const u = pullHandles.get(ref)
+        if (!u) return
+        u()
+        pullHandles.delete(ref)
+        // Tras un abort duro no hay `ended`: se marca localmente.
+        patchPull(ref, { state: 'canceled' })
+      },
+      dismissPull(reference) {
+        const ref = reference.trim()
+        if (get().pulls[ref]?.state === 'pulling') return
+        const { [ref]: _drop, ...rest } = get().pulls
+        void _drop
+        set({ pulls: rest })
       },
       previewConnection(kind) {
         if (!kind) {

@@ -140,6 +140,22 @@ impl<P> Broker<P> {
         }
     }
 
+    /// Devuelve al broker un ticket recién canjeado cuya operación NO llegó a ejecutarse
+    /// (fallo previo a crear, p. ej. imagen ausente): conserva el mismo id y estrena TTL.
+    pub fn restore(&self, ticket: &str, payload: P, decision: Decision) {
+        let now = self.clock.now();
+        let mut g = self.lock();
+        g.map.insert(
+            ticket.to_string(),
+            Entry {
+                payload,
+                decision,
+                expires: now + TICKET_TTL,
+                attempts: 0,
+            },
+        );
+    }
+
     pub fn cancel(&self, ticket: &str) -> bool {
         self.lock().map.remove(ticket).is_some()
     }

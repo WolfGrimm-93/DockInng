@@ -7,6 +7,8 @@ export interface RefreshPlan {
   images: boolean
   volumes: boolean
   networks: boolean
+  /** stacks: cualquier evento de contenedor cambia sus servicios/estado. */
+  stacks: boolean
   /** ids de contenedor destruidos: se eliminan del store al instante (sin esperar al refetch). */
   removedContainerIds: string[]
 }
@@ -16,7 +18,7 @@ const CONTAINER_ACTIONS = new Set([
 ])
 
 export function planRefresh(events: EngineEvent[], resync = false): RefreshPlan {
-  const plan: RefreshPlan = { containers: resync, images: resync, volumes: resync, networks: resync, removedContainerIds: [] }
+  const plan: RefreshPlan = { containers: resync, images: resync, volumes: resync, networks: resync, stacks: resync, removedContainerIds: [] }
   for (const e of events) {
     switch (e.kind) {
       case 'container': {
@@ -24,6 +26,7 @@ export function planRefresh(events: EngineEvent[], resync = false): RefreshPlan 
         const action = e.action.split(':')[0]
         if (!CONTAINER_ACTIONS.has(action)) break
         plan.containers = true
+        plan.stacks = true
         if (action === 'destroy') plan.removedContainerIds.push(e.id)
         // Crear/destruir/arrancar cambia «en uso» de imágenes, «usado por» de volúmenes y conectados de redes.
         // El backend coalesce create+start en `start` (docker run) y die+destroy en `destroy`: `start` también cuenta

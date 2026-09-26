@@ -29,6 +29,13 @@ const TITLE: Record<ApiErrorCode, string> = {
   state_changed: 'El recurso cambió mientras confirmabas',
   not_implemented: 'Todavía no disponible',
   internal: 'Error interno de la aplicación',
+  compose_missing: 'Docker Compose no está instalado',
+  compose_failed: 'Docker Compose terminó con un error',
+  invalid_compose: 'El archivo Compose no es válido',
+  image_missing: 'La imagen no está en este equipo',
+  auth_required: 'El registro pidió autenticación',
+  registry_unreachable: 'No se pudo contactar con el registro de imágenes',
+  no_shell: 'El contenedor no tiene una shell disponible',
 }
 
 export function apiErrorTitle(e: ApiError): string {

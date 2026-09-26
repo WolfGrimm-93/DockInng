@@ -1,5 +1,5 @@
 // Vista «Contenedor» (#detail?c=<nombre>&tab=logs|terminal|stats|inspect). Cabecera con acciones, línea meta y 4 pestañas.
-//   Logs / Estadísticas / Inspeccionar: datos REALES.  Terminal: SIMULADA (marcada «No conectado aún»).
+//   Logs / Estadísticas / Inspeccionar / Terminal: datos REALES (la terminal es xterm sobre un exec del motor).
 import { safeText } from '@/lib/safeText'
 import { useEffect, useMemo, useState } from 'react'
 import { useHashRoute } from '@/app/useHashRoute'
@@ -9,9 +9,9 @@ import { useGuardedAction } from '@/components/shared/ConfirmDialog'
 import { Icon } from '@/components/shared/Icon'
 import type { IconName } from '@/components/shared/iconNames'
 import { PageHeader } from '@/components/shared/PageHeader'
-import { EmptyState, SimulatedTag } from '@/components/shared/StateViews'
+import { EmptyState } from '@/components/shared/StateViews'
 import { StatusBadge } from '@/components/shared/StatusBadge'
-import { TerminalView } from '@/components/shared/TerminalView'
+import { TerminalTab } from './terminal/TerminalTab'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsPanel, TabsTab } from '@/components/ui/tabs'
 import { apiErrorMessage } from '@/data/errors'
@@ -158,11 +158,7 @@ function Detail({ c, initialTab }: { c: Container; initialTab: Tab }) {
         <TabsPanel value="logs" className="view-body tabpanel">{gate.lostBanner}<LogsTab c={c} /></TabsPanel>
         <TabsPanel value="terminal" className="view-body tabpanel">
           {gate.lostBanner}
-          <div className="toolbar" style={{ padding: 0 }}>
-            <SimulatedTag />
-            <span className="muted">Terminal de demostración: no ejecuta comandos dentro del contenedor.</span>
-          </div>
-          <TerminalView containerId={c.id} containerName={name} />
+          <TerminalTab key={c.id} c={c} name={name} />
         </TabsPanel>
         <TabsPanel value="stats" className="view-body tabpanel">{gate.lostBanner}<StatsTab c={c} detail={detail} /></TabsPanel>
         <TabsPanel value="inspect" className="view-body tabpanel">{gate.lostBanner}<InspectTab name={name} detail={detail} error={detailError} /></TabsPanel>

@@ -1,0 +1,28 @@
+=== syntax
+exit=1
+stdout: 
+stderr: go-yaml load error in parser (while parsing a block mapping) at L2.C3-L4.C4: did not find expected key
+=== schema
+exit=1
+stdout: 
+stderr: validating /home/user/stacks/bad/schema.yaml: services.web additional properties 'imagen' not allowed
+=== port
+exit=1
+stdout: 
+stderr: invalid hostPort: abc
+=== reqvar
+exit=1
+stdout: 
+stderr: error while interpolating services.web.environment.X: required variable REQ is missing a value: falta REQ
+=== tab
+exit=1
+stdout: 
+stderr: go-yaml load error in scanner (while scanning for the next token) at L2.C1: found character that cannot start any token
+=== empty
+exit=1
+stdout: 
+stderr: empty compose file
+=== dep
+exit=1
+stdout: 
+stderr: service "web" depends on undefined service "nope": invalid compose project

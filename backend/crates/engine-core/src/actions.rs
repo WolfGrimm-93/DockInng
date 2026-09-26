@@ -15,6 +15,7 @@ use crate::client::EngineClient;
 use crate::error::EngineError;
 use crate::model::ContainerState;
 use crate::policy::{Action, Decision, DenyReason, Interactivity, decide, decide_batch};
+use crate::stacks::StackControl;
 use crate::validate;
 
 /// Máximo de elementos por ticket.
@@ -24,13 +25,27 @@ pub const MAX_ITEMS: usize = 500;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ActionRequest {
-    RemoveContainers { ids: Vec<String> },
-    RemoveImage { reference: String },
+    RemoveContainers {
+        ids: Vec<String>,
+    },
+    RemoveImage {
+        reference: String,
+    },
     PruneImages,
-    RemoveVolume { name: String },
+    RemoveVolume {
+        name: String,
+    },
     PruneVolumes,
-    RemoveNetwork { id: String },
-    StackDown { project: String },
+    RemoveNetwork {
+        id: String,
+    },
+    StackDown {
+        project: String,
+    },
+    /// Borra los archivos de un stack propio (irreversible).
+    StackDelete {
+        name: String,
+    },
     PruneSystem,
 }
 
@@ -41,6 +56,7 @@ pub enum ItemKind {
     Image,
     Volume,
     Network,
+    Stack,
 }
 
 /// Decisión tal como viaja a la UI.
@@ -198,6 +214,8 @@ struct Payload {
 pub struct ActionService {
     engine: Arc<dyn EngineClient>,
     broker: Broker<Payload>,
+    /// Control de stacks (bajar / borrar). `None` en la CLI y en tests sin stacks.
+    stacks: Option<Arc<dyn StackControl>>,
 }
 
 impl ActionService {
@@ -209,7 +227,18 @@ impl ActionService {
         Self {
             engine,
             broker: Broker::new(clock),
+            stacks: None,
         }
+    }
+
+    /// Servicio con control de stacks (bajar y borrar stacks).
+    pub fn with_stacks(
+        engine: Arc<dyn EngineClient>,
+        stacks: Option<Arc<dyn StackControl>>,
+    ) -> Self {
+        let mut s = Self::new(engine);
+        s.stacks = stacks;
+        s
     }
 
     pub fn cancel(&self, ticket: &str) -> bool {
@@ -230,6 +259,9 @@ impl ActionService {
     /// interactiva y sin `assume_yes`.
     pub async fn plan(&self, req: ActionRequest) -> Result<ActionPlan, ActionError> {
         let mut warnings = Vec::new();
+        // Elementos que solo se muestran en el plan (p. ej. los contenedores de un stack que
+        // se baja: `down` los detiene, pero no se ejecuta nada por ellos).
+        let mut display_only: Vec<AffectedItem> = Vec::new();
         let items: Vec<PlannedItem> = match req {
             ActionRequest::PruneSystem => {
                 return Ok(ActionPlan {
@@ -245,11 +277,11 @@ impl ActionService {
                     total_size_bytes: None,
                 });
             }
-            ActionRequest::StackDown { .. } => {
-                return Err(ActionError::NotImplemented(
-                    "bajar un stack aún no está disponible".into(),
-                ));
+            ActionRequest::StackDown { project } => {
+                self.plan_stack_down(project, &mut warnings, &mut display_only)
+                    .await?
             }
+            ActionRequest::StackDelete { name } => self.plan_stack_delete(name).await?,
             ActionRequest::RemoveContainers { ids } => {
                 self.plan_containers(ids, &mut warnings).await?
             }
@@ -365,6 +397,7 @@ impl ActionService {
                 size_bytes: i.size_bytes,
                 detail: None,
             })
+            .chain(display_only)
             .collect::<Vec<_>>();
         let needs_ticket =
             !items.is_empty() && !matches!(decision, Decision::Allow | Decision::Deny(_));
@@ -385,6 +418,158 @@ impl ActionService {
             warnings,
             total_size_bytes,
         })
+    }
+
+    fn stack_control(&self) -> Result<&Arc<dyn StackControl>, ActionError> {
+        self.stacks.as_ref().ok_or_else(|| {
+            ActionError::NotImplemented(
+                "el control de stacks no está disponible en esta interfaz".into(),
+            )
+        })
+    }
+
+    /// Contenedores (de cualquier estado) del proyecto de Compose, con el mismo criterio que
+    /// el descubrimiento por labels.
+    async fn project_containers(
+        &self,
+        project: &str,
+    ) -> Result<Vec<crate::model::Container>, EngineError> {
+        Ok(self
+            .engine
+            .list_containers(true)
+            .await?
+            .into_iter()
+            .filter(|c| c.compose_project.as_deref() == Some(project))
+            .collect())
+    }
+
+    /// `down` de un stack: el backend fija los objetivos (contenedores del proyecto) y la huella.
+    async fn plan_stack_down(
+        &self,
+        project: String,
+        warnings: &mut Vec<PlanWarning>,
+        display_only: &mut Vec<AffectedItem>,
+    ) -> Result<Vec<PlannedItem>, ActionError> {
+        stack_name_ok(&project)?;
+        let stacks = self.stack_control()?;
+        let containers = self.project_containers(&project).await?;
+        let origin = stacks.origin_of(&project).await?;
+        if origin.is_none() && containers.is_empty() {
+            return Err(EngineError::NotFound(format!("stack {project}")).into());
+        }
+        let (mut volumes, mut binds) = (Vec::new(), Vec::new());
+        for c in &containers {
+            for m in &c.mounts {
+                match m.kind {
+                    crate::model::MountKind::Volume => {
+                        volumes.push(m.name.clone().unwrap_or_else(|| m.source.clone()))
+                    }
+                    crate::model::MountKind::Bind => binds.push(m.source.clone()),
+                    _ => {}
+                }
+            }
+            display_only.push(AffectedItem {
+                kind: ItemKind::Container,
+                id: c.id.clone(),
+                name: c.names.first().cloned().unwrap_or_default(),
+                state: Some(c.state),
+                size_bytes: None,
+                detail: None,
+            });
+        }
+        // `down` nunca usa `-v`: los volúmenes con nombre y las carpetas montadas se conservan.
+        volumes.sort();
+        volumes.dedup();
+        binds.sort();
+        binds.dedup();
+        if !volumes.is_empty() {
+            warnings.push(PlanWarning::VolumesKept { items: volumes });
+        }
+        if !binds.is_empty() {
+            warnings.push(PlanWarning::BindMountsKept { items: binds });
+        }
+        Ok(vec![PlannedItem {
+            kind: ItemKind::Stack,
+            id: project.clone(),
+            name: project.clone(),
+            action: Action::StackDown {
+                project: project.clone(),
+            },
+            force: false,
+            fingerprint: Some(stack_fingerprint(&containers)),
+            size_bytes: None,
+            state: None,
+        }])
+    }
+
+    /// Borrar los archivos de un stack propio (irreversible): solo `managed` y sin contenedores.
+    async fn plan_stack_delete(&self, name: String) -> Result<Vec<PlannedItem>, ActionError> {
+        stack_name_ok(&name)?;
+        let stacks = self.stack_control()?;
+        match stacks.origin_of(&name).await? {
+            None => return Err(EngineError::NotFound(format!("stack {name}")).into()),
+            Some(crate::stacks::StackOrigin::Managed) => {}
+            Some(_) => {
+                return Err(EngineError::Conflict(
+                    "un stack vinculado se desvincula, no se borra (tus archivos no se tocan)"
+                        .into(),
+                )
+                .into());
+            }
+        }
+        if !self.project_containers(&name).await?.is_empty() {
+            return Err(EngineError::Conflict(format!(
+                "el stack {name} todavía tiene contenedores: bájalo antes de borrarlo"
+            ))
+            .into());
+        }
+        Ok(vec![PlannedItem {
+            kind: ItemKind::Stack,
+            id: name.clone(),
+            name: name.clone(),
+            action: Action::StackDelete { name },
+            force: false,
+            fingerprint: Some("managed".into()),
+            size_bytes: None,
+            state: None,
+        }])
+    }
+
+    async fn run_stack_item(&self, item: &PlannedItem) -> Result<(), ApiError> {
+        let changed = |m: String| ApiError::new(ApiErrorCode::StateChanged, m);
+        let stacks = self.stack_control().map_err(ApiError::from)?.clone();
+        match &item.action {
+            Action::StackDown { project } => {
+                let containers = self.project_containers(project).await?;
+                let exists = !containers.is_empty() || stacks.origin_of(project).await?.is_some();
+                if !exists {
+                    return Err(changed(format!("el stack {project} ya no existe")));
+                }
+                if Some(stack_fingerprint(&containers)) != item.fingerprint {
+                    return Err(changed(format!(
+                        "el stack {project} cambió desde que se planificó; no se bajó"
+                    )));
+                }
+                stacks.down(project).await?;
+                Ok(())
+            }
+            Action::StackDelete { name } => {
+                if stacks.origin_of(name).await? != Some(crate::stacks::StackOrigin::Managed) {
+                    return Err(changed(format!("el stack {name} cambió o ya no existe")));
+                }
+                if !self.project_containers(name).await?.is_empty() {
+                    return Err(changed(format!(
+                        "el stack {name} ahora tiene contenedores; no se borró"
+                    )));
+                }
+                stacks.delete_files(name).await?;
+                Ok(())
+            }
+            _ => Err(ApiError::new(
+                ApiErrorCode::PolicyDenied,
+                "acción de stack no reconocida",
+            )),
+        }
     }
 
     async fn plan_containers(
@@ -564,6 +749,7 @@ impl ActionService {
                 }
                 self.engine.remove_volume(&item.name).await?;
             }
+            ItemKind::Stack => self.run_stack_item(item).await?,
             ItemKind::Network => {
                 if networks.is_none() {
                     *networks = Some(self.engine.list_networks().await?);
@@ -586,6 +772,29 @@ impl ActionService {
         }
         Ok(())
     }
+}
+
+/// Misma regla que un nombre de proyecto de Compose: `^[a-z0-9][a-z0-9_-]{0,62}$`.
+fn stack_name_ok(name: &str) -> Result<(), EngineError> {
+    let ok = !name.is_empty()
+        && name.len() <= 63
+        && name.bytes().enumerate().all(|(i, b)| {
+            b.is_ascii_lowercase() || b.is_ascii_digit() || (i > 0 && (b == b'_' || b == b'-'))
+        });
+    if ok {
+        Ok(())
+    } else {
+        Err(EngineError::InvalidInput(
+            "nombre de stack con caracteres no permitidos".into(),
+        ))
+    }
+}
+
+/// Huella de un stack: ids completos de sus contenedores, ordenados.
+fn stack_fingerprint(containers: &[crate::model::Container]) -> String {
+    let mut ids: Vec<&str> = containers.iter().map(|c| c.id.as_str()).collect();
+    ids.sort_unstable();
+    ids.join(",")
 }
 
 fn image_item(i: &crate::Image, action: Action) -> PlannedItem {

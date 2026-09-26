@@ -1,0 +1,63 @@
+/* Ola 1: stacks, editor, terminal xterm, pull, crear. Solo tokens del tema (var(--…)); sin colores fijos. */
+.progress.is-indeterminate i { width: 40%; animation: indet 1.2s ease-in-out infinite; }
+@keyframes indet { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
+@media (prefers-reduced-motion: reduce) { .progress.is-indeterminate i { animation: none; width: 100%; opacity: 0.5; } }
+
+/* ---- Terminal xterm ---- */
+.term-tab { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.term-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.term-bar .spacer { flex: 1; }
+.term-status { display: inline-flex; align-items: center; gap: 4px; color: var(--muted-foreground); min-width: 0; overflow-wrap: anywhere; }
+.term-sr { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-xs); color: var(--muted-foreground); }
+.term-help { font-size: var(--text-xs); margin: 0; }
+.term-x {
+  background: var(--console-bg); color: var(--console-fg); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  padding: 8px 4px 8px 10px; height: clamp(240px, calc(100vh - 360px), 660px); overflow: hidden; cursor: text;
+}
+.term-x .xterm { height: 100%; }
+.term-x .xterm-viewport { background-color: transparent !important; }
+.term-x:focus-within { box-shadow: inset 0 0 0 2px var(--ring); }
+.term-loading { display: flex; align-items: center; justify-content: center; color: var(--console-muted); font-family: var(--font-mono); font-size: var(--text-xs); }
+
+/* ---- Diálogos con formulario ---- */
+.dlg-fields { border: 0; padding: 0; margin: 12px 0 0; min-width: 0; display: grid; gap: 12px; }
+.dlg-fields .f-row { display: grid; gap: 4px; }
+.dlg-fields .f-hint, .f-hint { color: var(--muted-foreground); font-size: var(--text-xs); }
+
+/* ---- Stacks ---- */
+.op-panel { padding: 10px 16px; border-bottom: 1px solid var(--border); display: grid; gap: 8px; }
+.op-panel .up-row { padding-left: 0; padding-right: 0; }
+.op-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.op-log summary { cursor: pointer; color: var(--muted-foreground); font-size: var(--text-xs); }
+.op-log pre { margin: 6px 0 0; max-height: 180px; overflow: auto; background: var(--console-bg); color: var(--console-fg); padding: 8px 10px; border-radius: var(--radius-md); font-size: var(--text-xs); white-space: pre-wrap; }
+.op-issues { margin: 4px 0 0; padding-left: 18px; }
+.link-name { color: inherit; text-decoration: none; }
+.link-name:hover b { text-decoration: underline; }
+.stack-card > header h3 .tag { margin-left: 6px; vertical-align: middle; font-weight: 500; }
+.code-wrap.is-cm { display: block; }
+.code-wrap.is-cm .cm-host, .code-wrap.is-cm .cm-editor { width: 100%; }
+.code-wrap textarea.code-fallback { width: 100%; }
+.editor-loading { padding: 14px; display: grid; gap: 10px; min-height: 320px; align-content: start; }
+.val-summary { padding: 8px 14px; border-bottom: 1px solid var(--border); font-weight: 500; }
+.unsaved { font-size: var(--text-xs); color: var(--muted-foreground); }
+.diag-btn { background: none; border: 0; padding: 0; text-align: left; color: var(--foreground); cursor: pointer; overflow-wrap: anywhere; text-decoration: underline dotted; text-underline-offset: 3px; }
+.diag-btn:hover { text-decoration-style: solid; }
+
+/* ---- Crear contenedor ---- */
+.rep.port-row { grid-template-columns: minmax(130px, 1.1fr) minmax(70px, 1fr) minmax(70px, 1fr) 80px auto; }
+.rep.vol-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto; }
+.ro-check { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); white-space: nowrap; }
+@container vb (max-width: 620px) {
+  .rep.port-row, .rep.vol-row { grid-template-columns: 1fr 1fr auto; }
+  .rep.port-row > :nth-child(3):not(:last-child), .rep.vol-row > :nth-child(3):not(:last-child) { display: block; }
+}
+
+/* ---- Fila recién creada (volumen/red) ---- */
+tr.row-flash > td { animation: row-flash 2s ease-out; }
+@keyframes row-flash { 0% { background: color-mix(in oklch, var(--primary) 22%, transparent); } 100% { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { tr.row-flash > td { animation: none; background: color-mix(in oklch, var(--primary) 14%, transparent); } }
+.op-issue { display: block; margin-top: 4px; }
+
+/* Texto tenue (SGR 2): xterm lo dibuja con opacity .5 (contraste ≈4.2:1); se sube para mantener ≥ 4.5:1 sobre el fondo de la consola. */
+.term-x .xterm-dim { opacity: 0.8 !important; }
+.stack-why { margin: 0; padding: 8px 16px; border-bottom: 1px solid var(--border); }

@@ -1,7 +1,7 @@
 // Vista «Redes». Datos REALES: listar y eliminar. Las redes del sistema o con contenedores conectados no se eliminan.
-// «Nueva red» es SIMULADO (aún sin comando de creación): avisa con un toast «No conectado aún».
+// «Nueva red» es REAL (create_network): diálogo con validación de nombre/subred; la fila nueva se resalta unos segundos.
 import { safeText } from '@/lib/safeText'
-import { useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { usePreviewState } from '@/app/devFlags'
 import { useGuardedAction } from '@/components/shared/ConfirmDialog'
 import { Icon } from '@/components/shared/Icon'
@@ -10,13 +10,12 @@ import { EmptyState } from '@/components/shared/StateViews'
 import { Button } from '@/components/ui/button'
 import { useEngineStoreApi, useNetworks } from '@/data/store/hooks'
 import type { Network } from '@/data/types'
-import { toast } from '@/lib/toastStore'
 import { useViewGate } from '../common/gate'
 import { resourceState } from '../common/listStates'
 import { VirtualTable } from '../common/VirtualTable'
+import { NewNetworkDialog } from './NewNetworkDialog'
 
 const COLS = 5
-const newNetwork = () => toast.warn('Simulado — no conectado aún', { sub: 'Crear redes todavía no está conectado al motor de Docker: no se creó nada.' })
 
 export default function NetworksPage() {
   const { list, status, error } = useNetworks()
@@ -25,6 +24,15 @@ export default function NetworksPage() {
   const gate = useViewGate(COLS, 6)
   const preview = usePreviewState()
   const scrollRef = useRef<HTMLDivElement>(null)
+  const [newOpen, setNewOpen] = useState(false)
+  const [flash, setFlash] = useState<string | null>(null)
+  useEffect(() => {
+    if (!flash) return
+    const t = setTimeout(() => setFlash(null), 2200)
+    return () => clearTimeout(t)
+  }, [flash])
+  const newNetwork = () => setNewOpen(true)
+  const dialog = <NewNetworkDialog open={newOpen} existing={list} onClose={() => setNewOpen(false)} onCreated={(n) => { setNewOpen(false); setFlash(n.id) }} />
 
   const remove = async (n: Network) => {
     const r = await guard({ type: 'remove_network', id: n.id })
@@ -38,20 +46,21 @@ export default function NetworksPage() {
     <PageHeader
       title="Redes"
       count={gate.isError ? null : list.length}
-      primary={<Button variant="primary" locked={gate.locked} title="Todavía no conectado al motor (simulado)" onClick={newNetwork}><Icon name="plus" />Nueva red</Button>}
+      primary={<Button variant="primary" locked={gate.locked} onClick={newNetwork}><Icon name="plus" />Nueva red</Button>}
     />
   )
   if (gate.blocked) return <>{head}{gate.blocked}</>
   const st = resourceState({ status, hasRows: list.length > 0, preview, error, refresh: () => void store.getState().refresh('networks'), what: 'las redes', cols: COLS, rows: 6 })
-  if (st) return <>{head}{st}</>
+  if (st) return <>{head}{st}{dialog}</>
   if (preview === 'empty' || (status === 'ready' && list.length === 0)) {
     return (
       <>
         {head}
         <div className="view-body">
           <EmptyState icon="network" title="No hay redes personalizadas" text="Crea una red para que tus contenedores se encuentren por nombre."
-            actions={<Button variant="primary" onClick={newNetwork}><Icon name="plus" />Nueva red</Button>} />
+            actions={<Button variant="primary" locked={gate.locked} onClick={newNetwork}><Icon name="plus" />Nueva red</Button>} />
         </div>
+        {dialog}
       </>
     )
   }
@@ -79,7 +88,7 @@ export default function NetworksPage() {
           renderRow={(n, { index, measure }) => {
             const subnet = n.subnets.length ? n.subnets.join(', ') : '—'
             return (
-              <tr ref={measure} data-index={index} aria-rowindex={index + 2}>
+              <tr ref={measure} data-index={index} aria-rowindex={index + 2} className={flash === n.id ? 'row-flash' : undefined}>
                 <td className="cell-name">
                   <div className="name-cell">
                     <b title={safeText(n.name, { singleLine: true })}>{safeText(n.name, { singleLine: true })}</b>
@@ -101,6 +110,7 @@ export default function NetworksPage() {
         />
         <p className="muted" style={{ fontSize: 'var(--text-xs)' }}>Las redes del sistema y las que tienen contenedores conectados no se pueden eliminar.</p>
       </div>
+      {dialog}
     </>
   )
 }

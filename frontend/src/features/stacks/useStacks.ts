@@ -1,44 +1,17 @@
-// Carga de los stacks Compose (SIMULADOS: capacidad `stacks` no conectada aún) y de la disponibilidad de `docker compose`.
-// Contrato: useStacks() -> { list, status: 'loading'|'ready'|'error', available: boolean|null, error, reload(), recheck() }
-import { useCallback, useEffect, useState } from 'react'
+// Stacks Compose: envoltorio del store (FUENTE ÚNICA: la misma lista alimenta la página, la cabecera y el contador del menú).
+// Contrato: useStacks() -> { list, status: 'loading'|'ready'|'error', available: boolean|null, compose, error, reload(), recheck() }
+//   available: null = aún no comprobado; false = Docker Compose ausente o no soportado (v1).
+import { useCallback } from 'react'
 import { apiErrorMessage } from '@/data/errors'
-import { useEngineApi } from '@/data/store/hooks'
-import type { StackSummary } from '@/data/types'
+import { useCompose, useEngineStoreApi, useStackList } from '@/data/store/hooks'
 
 export function useStacks() {
-  const api = useEngineApi()
-  const [list, setList] = useState<StackSummary[]>([])
-  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
-  const [error, setError] = useState<string | null>(null)
-  const [available, setAvailable] = useState<boolean | null>(null)
-
-  const reload = useCallback(async () => {
-    try {
-      const [l, a] = await Promise.all([api.stacks.list(), api.stacks.composeAvailable()])
-      setList(l)
-      setAvailable(a)
-      setError(null)
-      setStatus('ready')
-    } catch (e) {
-      setError(apiErrorMessage(e).detail)
-      setStatus('error')
-    }
-  }, [api])
-
-  useEffect(() => {
-    let alive = true
-    Promise.all([api.stacks.list(), api.stacks.composeAvailable()]).then(
-      ([l, a]) => { if (alive) { setList(l); setAvailable(a); setStatus('ready') } },
-      (e) => { if (alive) { setError(apiErrorMessage(e).detail); setStatus('error') } },
-    )
-    return () => { alive = false }
-  }, [api])
-
-  const recheck = useCallback(async (): Promise<boolean> => {
-    const a = await api.stacks.composeAvailable().catch(() => false)
-    setAvailable(a)
-    return a
-  }, [api])
-
-  return { list, status, available, error, reload, recheck }
+  const store = useEngineStoreApi()
+  const { list, status, error } = useStackList()
+  const compose = useCompose()
+  const reload = useCallback(async () => { await store.getState().refresh('stacks') }, [store])
+  const recheck = useCallback(() => store.getState().checkCompose(true), [store])
+  const s: 'loading' | 'ready' | 'error' = status === 'ready' ? 'ready' : status === 'error' ? 'error' : 'loading'
+  const available = compose === null ? null : compose.available && compose.supported
+  return { list, status: s, available, compose, error: error ? apiErrorMessage(error).detail : null, reload, recheck }
 }

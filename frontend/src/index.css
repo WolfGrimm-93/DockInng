@@ -12,6 +12,7 @@
 @import "./styles/fonts.css";
 /* Estilos de la plantilla portados (layout + componentes propios), en la capa components. */
 @import "./styles/app.css" layer(components);
+@import "./styles/ola1.css" layer(components);
 
 @custom-variant dark (&:is(.dark *));
 

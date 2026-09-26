@@ -11,7 +11,7 @@ import { useContext, useMemo } from 'react'
 import { useStore } from 'zustand'
 import type { EngineApi, Capability, Feature } from '../api'
 import { EngineContext } from '../EngineProvider'
-import type { ConnectionIssue, ConnectionProfile, ConnectionState, Container, ContainerStats, GpuInfo, SystemUsage } from '../types'
+import type { ComposeInfo, ConnectionIssue, ConnectionProfile, ConnectionState, Container, ContainerStats, GpuInfo, PullOp, StackOpState, SystemUsage } from '../types'
 import type { EngineStore, EngineStoreState, RowOp } from './engineStore'
 import { containerCounts, findContainer, listOf, navCounts, totalImageBytes } from './selectors'
 
@@ -81,6 +81,14 @@ export function useNetworks() {
   const e = useEngineStore((s) => s.networks)
   return useMemo(() => ({ list: listOf(e), status: e.status, error: e.error }), [e])
 }
+export function useStackList() {
+  const e = useEngineStore((s) => s.stacks)
+  return useMemo(() => ({ list: listOf(e), status: e.status, error: e.error }), [e])
+}
+export const useStackOp = (project: string): StackOpState | undefined => useEngineStore((s) => s.stackOps[project])
+export const usePull = (reference: string): PullOp | undefined => useEngineStore((s) => s.pulls[reference.trim()])
+/** Estado de Docker Compose (null = aún no comprobado). */
+export const useCompose = (): ComposeInfo | null => useEngineStore((s) => s.compose)
 export const useStats = (id: string): ContainerStats | undefined => useEngineStore((s) => s.stats[id])
 /** Todas las muestras de CPU/memoria por id de contenedor (la franja de consumo y las cabeceras de stack las suman). */
 export const useAllStats = (): Record<string, ContainerStats> => useEngineStore((s) => s.stats)
@@ -96,9 +104,10 @@ export function useNavCounts(): Record<string, string | number> {
   const images = useEngineStore((s) => s.images)
   const volumes = useEngineStore((s) => s.volumes)
   const networks = useEngineStore((s) => s.networks)
+  const stacks = useEngineStore((s) => s.stacks)
   return useMemo(
-    () => navCounts({ containers, images, volumes, networks }),
-    [containers, images, volumes, networks],
+    () => navCounts({ containers, images, volumes, networks, stacks }),
+    [containers, images, volumes, networks, stacks],
   )
 }
 export function useCapability(f: Feature): Capability {

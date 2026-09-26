@@ -29,16 +29,24 @@ export interface ConfirmRequest {
   levelNote?: ReactNode
   okLabel: string
   okIcon?: IconName
+  /** Texto del botón de cancelar (por defecto «Cancelar»). */
+  cancelLabel?: string
+  /** Tercera opción (p. ej. «Guardar y salir»): con ella `confirm` devuelve 'ok' | 'alt' | 'cancel'. */
+  alt?: { label: string; icon?: IconName }
   /** Obligatorio si level = 'confirm_typed': texto que hay que escribir (nombre o 'ELIMINAR'). */
   typed?: string
 }
 export interface BlockedRequest { title?: string; description?: ReactNode; bullets?: string[] }
 
 type Pending =
-  | { kind: 'confirm'; req: ConfirmRequest; resolve(v: boolean): void }
+  | { kind: 'confirm'; req: ConfirmRequest; resolve(v: boolean | 'alt'): void }
   | { kind: 'blocked'; req: BlockedRequest; resolve(): void }
 
-interface ConfirmApi { confirm(req: ConfirmRequest): Promise<boolean>; blocked(req?: BlockedRequest): Promise<void> }
+type ConfirmFn = {
+  (req: ConfirmRequest & { alt: NonNullable<ConfirmRequest['alt']> }): Promise<'ok' | 'alt' | 'cancel'>
+  (req: ConfirmRequest): Promise<boolean>
+}
+interface ConfirmApi { confirm: ConfirmFn; blocked(req?: BlockedRequest): Promise<void> }
 const Ctx = createContext<ConfirmApi | null>(null)
 
 /**
@@ -65,18 +73,19 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
 
   const api = useMemo<ConfirmApi>(
     () => ({
-      confirm: (req) => new Promise<boolean>((resolve) => open({ kind: 'confirm', req, resolve })),
+      // Con `alt` el resultado es 'ok' | 'alt' | 'cancel'; sin `alt`, boolean.
+      confirm: ((req: ConfirmRequest) => new Promise<boolean | 'ok' | 'alt' | 'cancel'>((resolve) => open({ kind: 'confirm', req, resolve: (v) => resolve(req.alt ? (v === 'alt' ? 'alt' : v ? 'ok' : 'cancel') : v === true) }))) as ConfirmFn,
       blocked: (req = {}) => new Promise<void>((resolve) => open({ kind: 'blocked', req, resolve })),
     }),
     [open],
   )
 
-  const close = (result?: boolean) => {
+  const close = (result?: boolean | 'alt') => {
     const p = pendingRef.current
     pendingRef.current = null
     setPending(null)
     if (!p) return
-    if (p.kind === 'confirm') p.resolve(!!result)
+    if (p.kind === 'confirm') p.resolve(result === 'alt' ? 'alt' : !!result)
     else p.resolve()
   }
 
@@ -127,7 +136,8 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
                 </div>
               </div>
               <div className="dlg-foot">
-                <Button ref={cancelRef} variant="secondary" onClick={() => close(false)}>Cancelar</Button>
+                <Button ref={cancelRef} variant="secondary" onClick={() => close(false)}>{req.cancelLabel ?? 'Cancelar'}</Button>
+                {req.alt ? <Button variant="primary" onClick={() => close('alt')}><Icon name={req.alt.icon ?? 'check'} /><span>{req.alt.label}</span></Button> : null}
                 <Button variant="destructive" disabled={okDisabled} onClick={() => close(true)}>
                   <Icon name={req.okIcon ?? 'trash'} />
                   <span>{req.okLabel}</span>
@@ -184,7 +194,7 @@ export type GuardedDescribe = (plan: ActionPlan) => PlanDescription
 
 const LABEL: Record<ActionRequest['type'], string> = {
   remove_containers: 'Eliminar contenedores', remove_image: 'Eliminar imagen', prune_images: 'Eliminar imágenes sin usar', remove_volume: 'Eliminar volumen',
-  prune_volumes: 'Eliminar volúmenes sin usar', remove_network: 'Eliminar red', stack_down: 'Bajar stack', prune_system: 'Limpiar todo el sistema',
+  prune_volumes: 'Eliminar volúmenes sin usar', remove_network: 'Eliminar red', stack_down: 'Bajar stack', stack_delete: 'Eliminar stack', prune_system: 'Limpiar todo el sistema',
 }
 
 /**

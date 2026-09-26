@@ -1,24 +1,25 @@
-// Vista «Stacks (Compose)». SIMULADA: la gestión Compose todavía no está conectada al motor (marca «No conectado aún»).
-// «Bajar…» sí pasa por el flujo de política (confirmación escrita con el nombre del stack).
+// Vista «Stacks (Compose)». Datos REALES: la lista sale del store (FUENTE ÚNICA, igual que el contador del menú).
+// Levantar/Reiniciar con progreso en vivo (store.stackOps); «Bajar…» y «Eliminar stack…» pasan por la política (confirmación escrita con el nombre).
+// Sin Docker Compose: la lista sigue visible con las acciones desactivadas (aviso compacto); sin stacks, panel a página completa.
 import { safeText } from '@/lib/safeText'
 import { useState } from 'react'
-import { devFlagsEnabled, getDevFlags, setComposeMissing, usePreviewState, useComposeMissing } from '@/app/devFlags'
+import { devFlagsEnabled, getDevFlags, setComposeMissing, useComposeMissing, usePreviewState } from '@/app/devFlags'
 import { useHashRoute } from '@/app/useHashRoute'
 import { useGuardedAction } from '@/components/shared/ConfirmDialog'
 import { Icon } from '@/components/shared/Icon'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { AlertBox, ComposeMissing, EmptyState } from '@/components/shared/StateViews'
-import { StatusBadge } from '@/components/shared/StatusBadge'
 import { Button } from '@/components/ui/button'
-import { useConnection, useEngineApi, useEngineStoreApi, useIsSimulatedWorld } from '@/data/store/hooks'
+import { apiErrorMessage } from '@/data/errors'
+import { useCapability, useConnection, useContainers, useEngineApi, useEngineStore, useEngineStoreApi } from '@/data/store/hooks'
 import type { StackSummary } from '@/data/types'
 import { toast } from '@/lib/toastStore'
 import { useStartupOnce } from '../common/devOnce'
 import { useViewGate } from '../common/gate'
-import { LinkButton } from '../common/LinkButton'
+import { LinkStackDialog } from './LinkStackDialog'
+import { NewStackDialog } from './NewStackDialog'
+import { StackCard } from './StackCard'
 import { useStacks } from './useStacks'
-
-const HEALTH: Record<string, string> = { running: 'var(--status-running)', paused: 'var(--status-paused)', restarting: 'var(--status-restarting)' }
 
 export default function StacksPage() {
   const api = useEngineApi()
@@ -29,63 +30,81 @@ export default function StacksPage() {
   const connected = useConnection().state.status === 'connected'
   const preview = usePreviewState()
   const composeFlag = useComposeMissing()
-  const browserWorld = useIsSimulatedWorld()
-  const { list, status, available, reload, recheck } = useStacks()
-  const [running, setRunning] = useState<Record<string, boolean>>({})
+  const cap = useCapability('stacks')
+  const { list, status, available, compose, reload, recheck } = useStacks()
+  const ops = useEngineStore((s) => s.stackOps)
+  const { list: containers } = useContainers()
+  const [busy, setBusy] = useState<Record<string, boolean>>({})
+  const [newOpen, setNewOpen] = useState(false)
+  const [link, setLink] = useState<{ open: boolean; path: string }>({ open: false, path: '' })
   const missing = composeFlag || available === false
 
-  const down = async (s: StackSummary) => {
-    if (missing) { toast.err('Docker Compose no está instalado', { sub: 'Instálalo para levantar o bajar stacks.' }); return }
+  const withBusy = async (name: string, fn: () => Promise<void>) => {
+    setBusy((b) => ({ ...b, [name]: true }))
+    try { await fn() } finally { setBusy((b) => ({ ...b, [name]: false })) }
+  }
+  const down = (s: StackSummary) => withBusy(s.name, async () => {
     const r = await guard({ type: 'stack_down', project: s.name })
     if (r.status === 'done') {
-      void store.getState().refresh('all')
-      void reload()
+      store.getState().noteStackDown(s.name)
       document.getElementById('viewTitle')?.focus({ preventScroll: true })
     }
-  }
-  const up = (s: StackSummary) => {
-    if (missing) { toast.err('Docker Compose no está instalado', { sub: 'Instálalo para levantar o bajar stacks.' }); return }
-    setRunning((r) => ({ ...r, [s.name]: true }))
-    api.stacks.up(s.name, (p) => {
-      if (p.state === 'done') {
-        setRunning((r) => ({ ...r, [s.name]: false }))
-        if (browserWorld) toast.ok(`Stack ${safeText(s.name, { singleLine: true })} levantado`)
-        else toast.warn(`Simulado — no conectado aún`, { sub: `«${safeText(s.name, { singleLine: true })}» no se levantó: la gestión Compose todavía no está conectada.` })
-      }
-    })
-  }
-  const restart = async (s: StackSummary) => {
-    if (missing) { toast.err('Docker Compose no está instalado', { sub: 'Instálalo para levantar o bajar stacks.' }); return }
-    await api.stacks.restart(s.name)
-    if (browserWorld) toast.ok(`Stack ${safeText(s.name, { singleLine: true })} reiniciado`)
-    else toast.warn('Simulado — no conectado aún', { sub: `«${safeText(s.name, { singleLine: true })}» no se reinició: la gestión Compose todavía no está conectada.` })
-  }
+  })
+  const del = (s: StackSummary) => withBusy(s.name, async () => {
+    const r = await guard({ type: 'stack_delete', name: s.name })
+    if (r.status === 'done') {
+      void store.getState().refresh('stacks')
+      document.getElementById('viewTitle')?.focus({ preventScroll: true })
+    }
+  })
+  const unlink = (s: StackSummary) => withBusy(s.name, async () => {
+    try {
+      await api.stacks.unlink(s.name)
+      toast.ok(`Stack ${safeText(s.name, { singleLine: true })} desvinculado`, { sub: 'No se borró ningún archivo.' })
+      await store.getState().refresh('stacks')
+    } catch (e) {
+      const m = apiErrorMessage(e)
+      toast.err(m.title, { sub: m.detail })
+    }
+  })
   const onRecheck = async () => {
     setComposeMissing(false)
     const ok = await recheck()
     if (ok) toast.ok('Docker Compose disponible')
     else {
       setComposeMissing(true)
-      toast.err('Docker Compose sigue sin encontrarse', { sub: 'docker compose version no devolvió nada.' })
+      toast.err('Docker Compose sigue sin encontrarse', { sub: compose?.flavor === 'standalone' && !compose.supported ? 'Solo se admite Docker Compose v2.' : 'docker compose version no devolvió nada.' })
     }
+  }
+  const serviceHref = (s: StackSummary) => (svc: string): string | undefined => {
+    const c = containers.find((x) => x.compose_project === s.name && x.compose_service === svc)
+    return c ? route.href('detail', { c: c.names[0] }) : undefined
   }
 
   // ?dialog=stack-down (solo simulado/DEV)
-  const ready = connected && status === 'ready' && list.length > 0 && !preview && !missing && devFlagsEnabled(api)
+  const ready = connected && status === 'ready' && list.length > 0 && !preview && devFlagsEnabled(api)
   useStartupOnce('stacks.dialog', ready, () => {
-    if (getDevFlags().dialog === 'stack-down') void down(list[0])
+    const first = list.find((s) => s.containers > 0)
+    if (getDevFlags().dialog === 'stack-down' && first) void down(first)
   })
 
   const head = (
     <PageHeader
       title="Stacks (Compose)"
       count={gate.isError ? null : list.length}
-      simulated
-      primary={<LinkButton variant="primary" locked={gate.locked} href={route.href('stack-edit')}><Icon name="file" />Abrir archivo Compose</LinkButton>}
+      simulated={cap !== 'live'}
+      secondary={<Button variant="secondary" locked={gate.locked} onClick={() => setNewOpen(true)}><Icon name="plus" />Nuevo stack</Button>}
+      primary={<Button variant="primary" locked={gate.locked} onClick={() => setLink({ open: true, path: '' })}><Icon name="file" />Abrir archivo Compose</Button>}
     />
   )
+  const dialogs = (
+    <>
+      <NewStackDialog open={newOpen} existing={list.map((s) => s.name)} onClose={() => setNewOpen(false)} onCreated={(s) => { setNewOpen(false); route.go('stack-edit', { stack: s.name }) }} />
+      <LinkStackDialog open={link.open} initialPath={link.path} onClose={() => setLink({ open: false, path: '' })} onLinked={(s) => { setLink({ open: false, path: '' }); route.go('stack-edit', { stack: s.name }) }} />
+    </>
+  )
   if (gate.blocked) return <>{head}{gate.blocked}</>
-  if (missing) return <>{head}<div className="view-body">{gate.lostBanner}<ComposeMissing onRecheck={() => void onRecheck()} /></div></>
+  if (missing && list.length === 0 && status !== 'loading') return <>{head}<div className="view-body">{gate.lostBanner}<ComposeMissing detail={compose?.flavor === 'standalone' && !compose.supported ? 'Se encontró Docker Compose v1, que no es compatible: instala Compose v2.' : null} onRecheck={() => void onRecheck()} /></div>{dialogs}</>
   if (preview === 'loading' || status === 'loading') {
     return (
       <>
@@ -101,7 +120,7 @@ export default function StacksPage() {
       </>
     )
   }
-  if (status === 'error') {
+  if (status === 'error' && list.length === 0) {
     return <>{head}<div className="view-body"><AlertBox kind="error" icon="alert" title="No se pudieron cargar los stacks" text="Reintenta en unos segundos." actions={<Button variant="secondary" size="sm" onClick={() => void reload()}><Icon name="refresh" size="sm" />Reintentar</Button>} /></div></>
   }
   if (preview === 'empty' || list.length === 0) {
@@ -109,9 +128,10 @@ export default function StacksPage() {
       <>
         {head}
         <div className="view-body">
-          <EmptyState icon="grid" title="No se detectó ningún stack" text="DockInng encuentra los stacks a partir de los contenedores creados con docker compose. Abre un archivo Compose para levantar el primero."
-            actions={<LinkButton variant="primary" href={route.href('stack-edit')}><Icon name="file" />Abrir archivo Compose</LinkButton>} />
+          <EmptyState icon="grid" title="No hay stacks todavía" text="DockInng encuentra los stacks a partir de los contenedores creados con docker compose y de los que crees aquí."
+            actions={<><Button variant="primary" locked={gate.locked} onClick={() => setNewOpen(true)}><Icon name="plus" />Nuevo stack</Button><Button variant="secondary" locked={gate.locked} onClick={() => setLink({ open: true, path: '' })}><Icon name="file" />Abrir archivo Compose</Button></>} />
         </div>
+        {dialogs}
       </>
     )
   }
@@ -121,41 +141,19 @@ export default function StacksPage() {
       {head}
       <div className="view-body">
         {gate.lostBanner}
-        {!browserWorld ? <AlertBox kind="info" icon="flask" title="Datos de ejemplo: no conectado aún" text="La gestión de stacks Compose todavía no está conectada al motor. Los stacks de esta lista son una demostración, no los de tu equipo." /> : null}
-        {list.map((s) => {
-          const okN = s.services.filter((x) => x.state === 'running').length
-          const n = s.services.length
-          return (
-            <section className="card stack-card" aria-label={`Stack ${safeText(s.name, { singleLine: true })}`} key={s.name}>
-              <header>
-                <div>
-                  <h3 style={{ overflowWrap: 'anywhere' }}>{safeText(s.name, { singleLine: true })}</h3>
-                  <div className="path" style={{ overflowWrap: 'anywhere' }}>{safeText(s.path, { singleLine: true })}</div>
-                </div>
-                <span className="spacer">
-                  <span className="health" role="img" aria-label={`${okN} de ${n} servicios en ejecución`}>
-                    {s.services.map((x) => <i key={x.name} style={{ flex: 1, background: HEALTH[x.state] ?? 'var(--status-exited)' }} />)}
-                  </span>
-                  <span className="muted" style={{ minWidth: 84, textAlign: 'right' }}>{okN} de {n} activos</span>
-                  <LinkButton variant="secondary" size="sm" locked={gate.locked} href={route.href('stack-edit', { stack: s.name })}><Icon name="edit" size="sm" />Editar</LinkButton>
-                  <Button variant="secondary" size="sm" locked={gate.locked || !!running[s.name]} onClick={() => up(s)}><Icon name={running[s.name] ? 'loader' : 'play'} size="sm" fill={!running[s.name]} spin={!!running[s.name]} />Levantar</Button>
-                  <Button variant="secondary" size="sm" locked={gate.locked} onClick={() => void restart(s)}><Icon name="rotate" size="sm" />Reiniciar</Button>
-                  <span className="sep" aria-hidden="true" />
-                  <Button variant="outline-destructive" size="sm" locked={gate.locked} onClick={() => void down(s)}><Icon name="square" size="sm" fill />Bajar…</Button>
-                </span>
-              </header>
-              {s.services.map((x) => (
-                <div className="svc" key={x.name}>
-                  <b>{safeText(x.name, { singleLine: true })}</b>
-                  <span><StatusBadge state={x.state} /></span>
-                  <span className="mono svc-image" title={safeText(x.image, { singleLine: true })}>{safeText(x.image, { singleLine: true })}</span>
-                  <span className="muted" style={{ textAlign: 'right' }} title="Réplicas en ejecución">{x.replicas}</span>
-                </div>
-              ))}
-            </section>
-          )
-        })}
+        {missing ? <ComposeMissing compact detail={compose?.flavor === 'standalone' && !compose.supported ? 'Se encontró Docker Compose v1, que no es compatible.' : null} onRecheck={() => void onRecheck()} /> : null}
+        {list.map((s) => (
+          <StackCard
+            key={s.name} stack={s} op={ops[s.name]} locked={gate.locked} composeMissing={missing} policyBusy={!!busy[s.name]}
+            editHref={route.href('stack-edit', { stack: s.name })} serviceHref={serviceHref(s)}
+            onUp={() => store.getState().runStackOp(s.name, 'up')} onRestart={() => store.getState().runStackOp(s.name, 'restart')} onStop={() => store.getState().runStackOp(s.name, 'stop')} onStart={() => store.getState().runStackOp(s.name, 'start')} onPull={() => store.getState().runStackOp(s.name, 'pull')}
+            onDown={() => void down(s)} onDelete={() => void del(s)} onUnlink={() => void unlink(s)}
+            onLink={() => setLink({ open: true, path: s.config_files[0] ?? '' })}
+            onCancelOp={() => store.getState().cancelStackOp(s.name)} onDismissOp={() => store.getState().dismissStackOp(s.name)}
+          />
+        ))}
       </div>
+      {dialogs}
     </>
   )
 }

@@ -1,9 +1,13 @@
 //! Adaptador de `EngineClient` sobre la Docker Engine API usando `bollard`.
 
 mod convert;
+mod create;
 mod diagnose;
 mod error_map;
+mod exec;
 mod logs;
+mod pull;
+mod stacks;
 mod stats;
 
 use std::collections::HashMap;

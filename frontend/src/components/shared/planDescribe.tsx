@@ -128,18 +128,35 @@ export function describePlan(plan: ActionPlan, request: ActionRequest, ctx: { vo
         okLabel: 'Eliminar red',
         success: () => ({ msg: 'Red eliminada' }),
       }
-    case 'stack_down':
+    case 'stack_down': {
+      // `affected` trae además una entrada de tipo «stack»: solo se listan y cuentan los contenedores.
+      const cs = plan.affected.filter((a) => a.kind === 'container')
+      const kept = warnOf(plan.warnings, 'volumes_kept')?.items ?? []
       return {
         title: `Bajar stack ${safeText(request.project, { singleLine: true })}`,
         description: (
           <>
-            <p>Se detendrán y eliminarán los <b>{n} contenedores</b> del stack y su red. Los volúmenes se conservan.</p>
-            <DialogList label="Contenedores afectados" items={listOf(plan.affected)} />
+            <p>Se detendrán y eliminarán los <b>{cs.length} contenedores</b> del stack y su red. Los volúmenes se conservan{kept.length ? ` (${kept.length})` : ''}.</p>
+            <DialogList label="Contenedores afectados" items={listOf(cs)} />
           </>
         ),
         levelNote: <><b>Nivel Confirmar con nombre.</b> Equivale a <code>docker compose down</code>.</>,
         okLabel: 'Bajar stack',
-        success: (o) => ({ msg: `Stack ${safeText(request.project, { singleLine: true })} bajado`, sub: `${o.succeeded.length} contenedores eliminados` }),
+        success: (o) => ({ msg: `Stack ${safeText(request.project, { singleLine: true })} bajado`, sub: `${o.succeeded.filter((x) => x.kind === 'container').length} contenedores eliminados` }),
+      }
+    }
+    case 'stack_delete':
+      return {
+        title: `Eliminar stack ${safeText(request.name, { singleLine: true })}`,
+        description: (
+          <>
+            <p>Se borrarán los archivos <code>compose.yaml</code> y <code>.env</code> del stack propio <b><SafeName mono>{request.name}</SafeName></b>.</p>
+            <p style={{ marginTop: 8 }}>El <code>.env</code> puede contener secretos: <b>no se puede recuperar</b>.</p>
+          </>
+        ),
+        levelNote: <><b>Nivel Confirmar con nombre.</b> No toca contenedores, imágenes ni volúmenes.</>,
+        okLabel: 'Eliminar stack',
+        success: () => ({ msg: `Stack ${safeText(request.name, { singleLine: true })} eliminado` }),
       }
     default:
       return { title: 'Confirmar acción', description: <p>Se aplicará a {n} elemento(s).</p>, okLabel: 'Confirmar' }

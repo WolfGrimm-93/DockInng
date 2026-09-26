@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it } from 'vitest'
-import { renderView, resetGlobals } from '../testUtils'
+import { makeApi, renderView, resetGlobals } from '../testUtils'
 import ContainerDetailPage from './ContainerDetailPage'
 
 afterEach(resetGlobals)
@@ -67,7 +67,8 @@ describe('ContainerDetailPage', () => {
     await u.keyboard('{ArrowLeft}{ArrowLeft}{ArrowLeft}')
     expect(screen.getByRole('tab', { name: 'Logs' })).toHaveFocus()
     await u.keyboard('{ArrowRight}')
-    expect(document.getElementById('termIn')).not.toHaveFocus()
+    // La terminal no roba el foco al activar la pestaña con las flechas: el foco sigue en la pestaña.
+    expect(screen.getByRole('tab', { name: 'Terminal' })).toHaveFocus()
   })
 
   it('inspeccionar: rótulo honesto (modelo tipado) y JSON como texto', async () => {
@@ -82,17 +83,14 @@ describe('ContainerDetailPage', () => {
     expect(screen.queryByRole('region', { name: /JSON de inspección/ })).toBeNull()
   })
 
-  it('terminal SIMULADA: marca «No conectado aún» y ejecuta comandos de la demo', async () => {
-    const u = userEvent.setup()
-    renderView(<ContainerDetailPage />, { hash: '#detail?c=tienda-api-1&tab=terminal' })
-    expect(await screen.findByText('No conectado aún')).toBeInTheDocument()
-    const input = await screen.findByLabelText('Comando')
-    await u.click(input)
-    await u.type(input, 'ls{Enter}')
-    expect(await screen.findByText(/package.json/)).toBeInTheDocument()
-    await u.type(input, 'help{Enter}')
-    await u.keyboard('{Control>}l{/Control}')
-    await waitFor(() => expect(screen.queryByText(/package.json/)).toBeNull())
+  it('terminal: en un contenedor detenido explica el motivo y no abre sesión', async () => {
+    const api = makeApi()
+    renderView(<ContainerDetailPage />, { api, hash: '#detail?c=minio-dev&tab=terminal' })
+    expect(await screen.findByText('La terminal necesita el contenedor en ejecución')).toBeInTheDocument()
+    expect(screen.getByText('Está detenido: inícialo para abrir una terminal.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Iniciar contenedor' })).toBeInTheDocument()
+    expect(api.sim.exec.opened).toBe(0)
+    expect(screen.queryByText('No conectado aún')).toBeNull()
   })
 
   it('estadísticas: sparklines de CPU y memoria con datos del motor', async () => {

@@ -138,7 +138,22 @@ export function LostBanner({ onRetry, onChangeConnection, since }: { onRetry(): 
   )
 }
 
-export function ComposeMissing({ onRecheck }: { onRecheck(): void }) {
+export function ComposeMissing({ onRecheck, compact, detail }: { onRecheck(): void; /** Aviso en una línea (hay stacks descubiertos que se muestran igualmente). */ compact?: boolean; /** Motivo devuelto por el sistema (p. ej. «versión 1 no soportada»). */ detail?: string | null }) {
+  if (compact) {
+    return (
+      <div className="alert alert-warn" role="status">
+        <Icon name="warn" />
+        <div>
+          <b>Docker Compose no está instalado</b>
+          <p>{detail ? `${detail} ` : ''}Puedes ver tus stacks, pero levantar, reiniciar, bajar y validar necesitan el plugin <code>docker compose</code>.</p>
+          <div className="btns">
+            <Button variant="secondary" size="sm" onClick={onRecheck}><Icon name="refresh" size="sm" />Volver a comprobar</Button>
+            <Button variant="ghost" size="sm" onClick={() => void copyCommand('sudo pacman -S docker-compose')}><Icon name="copy" size="sm" />Copiar comando</Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
   return (
     <div className="card error-panel is-info" role="status">
       <header>
@@ -153,7 +168,7 @@ export function ComposeMissing({ onRecheck }: { onRecheck(): void }) {
           <span className="step-ico"><Icon name="x" size="sm" /></span>
           <div>
             <b>docker compose version</b>
-            <p>Comando no encontrado.</p>
+            <p>{detail || 'Comando no encontrado.'}</p>
             <code>sudo pacman -S docker-compose</code>
             <p style={{ marginTop: 6 }}>En Debian o Ubuntu: <code style={{ display: 'inline', padding: '0 4px', margin: 0 }}>sudo apt install docker-compose-plugin</code></p>
           </div>

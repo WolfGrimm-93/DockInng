@@ -1,0 +1,26 @@
+{"id":"1","status":"Pulling from dockinng-test/layers"}
+{"id":"c8e91746bdfc","status":"Pulling fs layer","progressDetail":{}}
+{"id":"80cb7bcf5d4b","status":"Pulling fs layer","progressDetail":{}}
+{"id":"648890eaed45","status":"Pulling fs layer","progressDetail":{}}
+{"id":"80cb7bcf5d4b","status":"Downloading","progressDetail":{"current":1048576,"total":3002106}}
+{"id":"648890eaed45","status":"Downloading","progressDetail":{"current":1048576,"total":5001771}}
+{"id":"c8e91746bdfc","status":"Downloading","progressDetail":{"current":1048576,"total":2001759}}
+{"id":"c8e91746bdfc","status":"Downloading","progressDetail":{"current":1048576,"total":2001759}}
+{"id":"80cb7bcf5d4b","status":"Downloading","progressDetail":{"current":1048576,"total":3002106}}
+{"id":"648890eaed45","status":"Downloading","progressDetail":{"current":1048576,"total":5001771}}
+{"id":"c8e91746bdfc","status":"Download complete","progressDetail":{}}
+{"id":"80cb7bcf5d4b","status":"Downloading","progressDetail":{"current":2097152,"total":3002106}}
+{"id":"648890eaed45","status":"Downloading","progressDetail":{"current":2097152,"total":5001771}}
+{"id":"648890eaed45","status":"Downloading","progressDetail":{"current":2097152,"total":5001771}}
+{"id":"80cb7bcf5d4b","status":"Downloading","progressDetail":{"current":2097152,"total":3002106}}
+{"id":"80cb7bcf5d4b","status":"Download complete","progressDetail":{}}
+{"id":"648890eaed45","status":"Downloading","progressDetail":{"current":3145728,"total":5001771}}
+{"id":"80cb7bcf5d4b","status":"Pull complete","progressDetail":{}}
+{"id":"648890eaed45","status":"Downloading","progressDetail":{"current":3145728,"total":5001771}}
+{"id":"648890eaed45","status":"Downloading","progressDetail":{"current":4194304,"total":5001771}}
+{"id":"648890eaed45","status":"Downloading","progressDetail":{"current":4194304,"total":5001771}}
+{"id":"648890eaed45","status":"Download complete","progressDetail":{}}
+{"id":"c8e91746bdfc","status":"Pull complete","progressDetail":{}}
+{"id":"648890eaed45","status":"Pull complete","progressDetail":{}}
+{"status":"Digest: sha256:d9fabe20c723b3db027f7319ddb3f81256f332b1d25a8d03424547ac5e36ac2e"}
+{"status":"Status: Downloaded newer image for localhost:54109/dockinng-test/layers:1"}

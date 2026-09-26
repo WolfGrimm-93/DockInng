@@ -37,6 +37,12 @@ pub const BACKOFF_MAX: Duration = Duration::from_secs(30);
 /// Límites por ventana (anti-DoS).
 pub const MAX_LOG_STREAMS: usize = 6;
 pub const MAX_STATS_STREAMS: usize = 6;
+/// Terminales por ventana.
+pub const MAX_EXEC_STREAMS: usize = 4;
+/// Descargas simultáneas por ventana.
+pub const MAX_PULL_STREAMS: usize = 2;
+/// Operaciones de stack simultáneas por ventana.
+pub const MAX_STACK_OPS: usize = 3;
 
 /// Destino de los mensajes. `false` = el destino ya no existe: la tarea debe terminar.
 pub trait Sink<T>: Send + Sync + 'static {
@@ -426,11 +432,19 @@ pub enum StreamKind {
     Events,
     Logs,
     Stats,
+    /// Terminal (exec) real.
+    Exec,
+    /// Descarga de imagen.
+    Pull,
+    /// Operación de stack (compose).
+    StackOp,
 }
 
 struct Entry {
     window: String,
     kind: StreamKind,
+    /// Época de la página de la ventana cuando se creó (ver `begin_page`).
+    epoch: u64,
     handle: JoinHandle<()>,
 }
 
@@ -438,6 +452,8 @@ struct Entry {
 #[derive(Default)]
 pub struct StreamRegistry {
     inner: Mutex<HashMap<String, Entry>>,
+    /// Época de carga de página por ventana (sube en cada carga/recarga del webview).
+    epochs: Mutex<HashMap<String, u64>>,
 }
 
 /// Al terminar la tarea (por cualquier vía) se quita del registro.
@@ -507,11 +523,23 @@ impl StreamRegistry {
                     !stale
                 });
             }
-            StreamKind::Logs | StreamKind::Stats => {
-                let max = if kind == StreamKind::Logs {
-                    MAX_LOG_STREAMS
-                } else {
-                    MAX_STATS_STREAMS
+            StreamKind::Logs
+            | StreamKind::Stats
+            | StreamKind::Exec
+            | StreamKind::Pull
+            | StreamKind::StackOp => {
+                let max = match kind {
+                    StreamKind::Logs => MAX_LOG_STREAMS,
+                    StreamKind::Stats => MAX_STATS_STREAMS,
+                    StreamKind::Exec => MAX_EXEC_STREAMS,
+                    StreamKind::Pull => MAX_PULL_STREAMS,
+                    _ => MAX_STACK_OPS,
+                };
+                let what = match kind {
+                    StreamKind::Exec => "terminales abiertas",
+                    StreamKind::Pull => "descargas simultáneas",
+                    StreamKind::StackOp => "operaciones de stack simultáneas",
+                    _ => "suscripciones abiertas",
                 };
                 let n = map
                     .values()
@@ -520,7 +548,7 @@ impl StreamRegistry {
                 if n >= max {
                     return Err(ApiError::new(
                         ApiErrorCode::Conflict,
-                        format!("demasiadas suscripciones abiertas (máximo {max})"),
+                        format!("demasiadas {what} (máximo {max})"),
                     ));
                 }
             }
@@ -540,15 +568,69 @@ impl StreamRegistry {
                 on_panic();
             }
         });
+        let epoch = self.epoch_of(window);
         map.insert(
             id.clone(),
             Entry {
                 window: window.to_string(),
                 kind,
+                epoch,
                 handle,
             },
         );
         Ok(id)
+    }
+
+    fn epoch_of(&self, window: &str) -> u64 {
+        *self
+            .epochs
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(window)
+            .unwrap_or(&0)
+    }
+
+    /// Una página nueva empieza a cargarse en `window` (primera carga o recarga): sube la
+    /// época y aborta todo lo anterior, cuyos canales JS ya no existen. Ocurre ANTES de que
+    /// corra el JS de la página, así que no puede alcanzar suscripciones creadas después.
+    pub fn begin_page(&self, window: &str) {
+        {
+            let mut e = self.epochs.lock().unwrap_or_else(|e| e.into_inner());
+            *e.entry(window.to_string()).or_insert(0) += 1;
+        }
+        self.abort_for_window(window);
+    }
+
+    /// `reset_subscriptions`: aborta solo lo de épocas ANTERIORES a la actual de la ventana.
+    /// Determinista aunque el frontend no espere su respuesta: lo creado después de la carga
+    /// de la página actual nunca se toca.
+    pub fn reset_stale(&self, window: &str) -> usize {
+        let current = self.epoch_of(window);
+        let mut map = self.lock();
+        let ids: Vec<String> = map
+            .iter()
+            .filter(|(_, e)| e.window == window && e.epoch < current)
+            .map(|(k, _)| k.clone())
+            .collect();
+        for id in &ids {
+            if let Some(e) = map.remove(id) {
+                e.handle.abort();
+            }
+        }
+        ids.len()
+    }
+
+    /// Aborta `id` solo si pertenece a `window`. Un id ajeno o inexistente se comporta igual
+    /// (no se aborta y `false`): no revela que existe en otra ventana.
+    pub fn abort_in(&self, window: &str, id: &str) -> bool {
+        let mut map = self.lock();
+        if map.get(id).is_some_and(|e| e.window == window) {
+            if let Some(e) = map.remove(id) {
+                e.handle.abort();
+            }
+            return true;
+        }
+        false
     }
 
     pub fn abort(&self, id: &str) -> bool {
@@ -928,6 +1010,35 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
         assert_eq!(reg.total(), 0);
+    }
+
+    /// Límites por ventana de los streams nuevos: 4 terminales, 2 descargas, 3 operaciones de stack.
+    #[tokio::test]
+    async fn limites_de_terminales_descargas_y_operaciones_de_stack() {
+        for (kind, max) in [
+            (StreamKind::Exec, MAX_EXEC_STREAMS),
+            (StreamKind::Pull, MAX_PULL_STREAMS),
+            (StreamKind::StackOp, MAX_STACK_OPS),
+        ] {
+            let reg = StreamRegistry::new();
+            for _ in 0..max {
+                reg.spawn("main", kind, std::future::pending::<()>(), || {})
+                    .expect("cabe");
+            }
+            let err = reg
+                .spawn("main", kind, std::future::pending::<()>(), || {})
+                .expect_err("sobre el tope");
+            assert_eq!(err.code, ApiErrorCode::Conflict);
+            // Otra ventana tiene su propio cupo.
+            reg.spawn("otra", kind, std::future::pending::<()>(), || {})
+                .expect("otra ventana");
+            // Cerrar la ventana libera todo.
+            assert_eq!(reg.abort_for_window("main"), max);
+            assert_eq!(reg.count("main", kind), 0);
+        }
+        assert_eq!(MAX_EXEC_STREAMS, 4);
+        assert_eq!(MAX_PULL_STREAMS, 2);
+        assert_eq!(MAX_STACK_OPS, 3);
     }
 
     #[tokio::test]

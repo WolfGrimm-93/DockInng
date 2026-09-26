@@ -8,7 +8,8 @@ import { createTauriApi } from './adapters/tauri'
 export const isDesktop = (): boolean => isTauri()
 
 export function createEngineApi(): EngineApi {
-  return isDesktop() ? createTauriApi() : createSimApi()
+  if (isDesktop()) return createTauriApi()
+  return createSimApi()
 }
 
 /** Acceso a los controles del simulado (devFlags/tests) solo si el adaptador activo lo es. */

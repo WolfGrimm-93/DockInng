@@ -1,5 +1,6 @@
 use thiserror::Error;
 
+use crate::api::ApiErrorCode;
 use crate::connection::ConnectionCause;
 
 /// Errores del motor, independientes del cliente concreto.
@@ -30,4 +31,26 @@ pub enum EngineError {
     Timeout,
     #[error("error interno: {0}")]
     Internal(String),
+    /// Error con código propio de la API (imagen ausente, registro, sin shell, compose...).
+    /// Solo `api.rs` y `error_map.rs` lo tratan de forma especial.
+    #[error("{message}")]
+    Coded { code: ApiErrorCode, message: String },
+}
+
+impl EngineError {
+    /// Atajo para construir un error con código propio.
+    pub fn coded(code: ApiErrorCode, message: impl Into<String>) -> Self {
+        Self::Coded {
+            code,
+            message: message.into(),
+        }
+    }
+
+    /// Atajo para las operaciones aún no implementadas (andamiaje).
+    pub fn not_implemented(what: &str) -> Self {
+        Self::coded(
+            ApiErrorCode::NotImplemented,
+            format!("{what} aún no está disponible"),
+        )
+    }
 }

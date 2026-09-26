@@ -22,6 +22,20 @@ pub enum ApiErrorCode {
     StateChanged,
     NotImplemented,
     Internal,
+    /// No hay `docker compose` instalado.
+    ComposeMissing,
+    /// Compose terminó con error.
+    ComposeFailed,
+    /// El archivo compose no es válido.
+    InvalidCompose,
+    /// La imagen no existe (ni local ni en el registro).
+    ImageMissing,
+    /// El registro exige credenciales.
+    AuthRequired,
+    /// No se pudo alcanzar el registro.
+    RegistryUnreachable,
+    /// El contenedor no tiene shell utilizable.
+    NoShell,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -52,12 +66,14 @@ impl From<&EngineError> for ApiError {
             Engine { .. } => (ApiErrorCode::Engine, None),
             Protocol(_) | Internal(_) => (ApiErrorCode::Internal, None),
             Timeout => (ApiErrorCode::Timeout, None),
+            Coded { code, .. } => (*code, None),
         };
         // Para errores del daemon se conserva su mensaje tal cual.
         let message = match e {
             NotFound(m) | Conflict(m) | InvalidInput(m) => m.clone(),
             Engine { message, .. } => message.clone(),
             Connection { message, .. } => message.clone(),
+            Coded { message, .. } => message.clone(),
             other => other.to_string(),
         };
         Self {

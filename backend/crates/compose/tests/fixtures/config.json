@@ -1,0 +1,44 @@
+{
+  "name": "dockinng-test-recon",
+  "networks": {
+    "default": {
+      "name": "dockinng-test-recon_default",
+      "ipam": {}
+    }
+  },
+  "services": {
+    "second": {
+      "command": [
+        "sleep",
+        "300"
+      ],
+      "entrypoint": null,
+      "environment": {
+        "GREETING": "hola"
+      },
+      "image": "alpine:latest",
+      "labels": {
+        "dev.dockinng.test": "1"
+      },
+      "networks": {
+        "default": null
+      },
+      "pull_policy": "never"
+    },
+    "sleeper": {
+      "command": [
+        "sleep",
+        "300"
+      ],
+      "entrypoint": null,
+      "image": "alpine:latest",
+      "labels": {
+        "dev.dockinng.test": "1"
+      },
+      "networks": {
+        "default": null
+      },
+      "pull_policy": "never"
+    }
+  }
+}

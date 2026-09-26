@@ -35,14 +35,14 @@ export function totalImageBytes(images: Image[]): number {
 }
 
 /** Contadores del menú. Solo se incluye una colección cuando ya hay datos (no se muestran «0» mientras carga o hay error). */
-export function navCounts(s: Pick<EngineStoreState, 'containers' | 'images' | 'volumes' | 'networks'>): Record<string, string | number> {
+export function navCounts(s: Pick<EngineStoreState, 'containers' | 'images' | 'volumes' | 'networks'> & Partial<Pick<EngineStoreState, 'stacks'>>): Record<string, string | number> {
   const out: Record<string, string | number> = {}
   if (s.containers.status === 'ready') {
     const c = containerCounts(s)
     out.containers = `${c.running}/${c.total}`
-    // Stacks = proyectos Compose distintos que aparecen en las etiquetas de los contenedores reales.
-    out.stacks = new Set(listOf(s.containers).map((x) => x.compose_project).filter(Boolean)).size
   }
+  // Stacks: MISMA fuente que la página (list_stacks), incluye stacks propios sin contenedores.
+  if (s.stacks?.status === 'ready') out.stacks = s.stacks.ids.length
   if (s.images.status === 'ready') out.images = s.images.ids.length
   if (s.volumes.status === 'ready') out.volumes = s.volumes.ids.length
   if (s.networks.status === 'ready') out.networks = s.networks.ids.length

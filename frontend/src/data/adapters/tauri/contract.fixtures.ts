@@ -2,7 +2,8 @@
 // backend/crates/engine-core/src/{model,resources,connection,actions,api,events,logs,stats}.rs y app/src/streams.rs.
 // Están anotadas con los tipos de `data/types.ts`: si un tipo diverge del backend, `tsc` falla aquí.
 import type {
-  ActionOutcome, ActionPlan, ActionRequest, ApiError, ConnectionStatus, Container, ContainerDetail, EngineFeed, Image, LogFeed, Network,
+  ActionOutcome, ActionPlan, ActionRequest, ApiError, ComposeInfo, ConnectionStatus, Container, ContainerDetail, CreateContainerSpec, CreatePlan,
+  CreateResult, EngineFeed, ExecFeed, Image, LogFeed, Network, PullFeed, StackFiles, StackOpFeed, StackSummary, StackValidation,
   GpuInfo, StatsFeed, StatsSnapshotItem, SystemUsage, Volume,
 } from '../../types'
 
@@ -84,3 +85,79 @@ export const systemUsage: SystemUsage = {
 export const gpus: GpuInfo[] = [
   { index: 0, name: 'NVIDIA GeForce RTX 5060 Laptop GPU', utilization_percent: 13, mem_used_bytes: 42_991_616, mem_total_bytes: 8_547_991_552, temperature_c: 57 },
 ]
+
+// ---------------------------------------------------------------- Ola 1 (forma serde del backend: PLAN_ola1_backend §A–E)
+// Los valores salen de las muestras reales saneadas (Compose 5.5.1 / bollard 0.21): proyecto dockinng-test-recon, capas c8e91746bdfc…, L2.C3.
+export const composeInfo: ComposeInfo = { available: true, flavor: 'plugin', version: '5.5.1', supported: true, docker_cli: true }
+export const composeMissing: ComposeInfo = { available: false, flavor: 'missing', version: null, supported: false, docker_cli: true }
+export const stackSummary: StackSummary = {
+  name: 'dockinng-test-recon', origin: 'linked', path: '/home/user/stacks/recon/compose.yaml', config_files: ['/home/user/stacks/recon/compose.yaml'],
+  working_dir: '/home/user/stacks/recon', editable: true, status: 'partial', containers: 2, running: 1,
+  services: [
+    { name: 'sleeper', image: 'alpine:3.20', state: 'running', replicas: '1/1', running: 1, total: 1 },
+    { name: 'second', image: 'alpine:3.20', state: 'exited', replicas: '0/1', running: 0, total: 1 },
+  ],
+}
+export const stackDeclared: StackSummary = { ...stackSummary, name: 'declarado', origin: 'managed', status: 'declared', containers: 0, running: 0, services: [] }
+export const stackFiles: StackFiles = {
+  name: 'dockinng-test-recon', origin: 'linked', yaml: 'services:\n  sleeper:\n    image: alpine:3.20\n', env: 'TZ=UTC\n', path: '/home/user/stacks/recon/compose.yaml',
+  env_path: '/home/user/stacks/recon/.env', editable: true, config_files: ['/home/user/stacks/recon/compose.yaml'], revision: '1790000000000000000:71',
+}
+export const validationBad: StackValidation = {
+  ok: false,
+  issues: [{ line: 2, column: 3, kind: 'syntax', message: 'go-yaml load error in parser (while parsing a block mapping) at L2.C3-L4.C4: did not find expected key' },
+    { line: null, column: null, kind: 'schema', message: "services.web additional properties 'imagen' not allowed" }],
+  services: [], risks: [{ type: 'privileged' }, { type: 'sensitive_bind', path: '/etc' }, { type: 'docker_sock' }],
+}
+// run_stack_op: los eventos reales de `--progress json` ya vienen resumidos por el backend.
+export const opStarted: StackOpFeed = { type: 'started', op: 'up', stack: 'dockinng-test-recon', compose_version: '5.5.1' }
+export const opProgress: StackOpFeed = {
+  type: 'progress',
+  items: [{ id: 'Container dockinng-test-recon-sleeper-1', kind: 'container', name: 'dockinng-test-recon-sleeper-1', status: 'working', text: 'Starting', details: null, current: null, total: null, percent: null, parent_id: null }],
+  services: [{ name: 'sleeper', percent: 80, phase: 'creating' }, { name: 'second', percent: 0, phase: 'waiting' }],
+}
+export const opLog: StackOpFeed = { type: 'log', text: ' Network dockinng-test-recon_default  Creating' }
+export const opEndedOk: StackOpFeed = { type: 'ended', outcome: 'success', exit_code: 0, error: null, issues: [] }
+export const opEndedFail: StackOpFeed = {
+  type: 'ended', outcome: 'failed', exit_code: 1, issues: [],
+  error: { code: 'compose_failed', message: 'Error response from daemon: No such image: dockinng-test-noexiste:latest', cause: null },
+}
+export const opEndedCanceled: StackOpFeed = { type: 'ended', outcome: 'canceled', exit_code: null, error: null, issues: [] }
+
+export const execOpened: ExecFeed = { type: 'opened', shell: '/bin/sh', risk: { privileged: false, docker_socket: true, host_pid: false, host_network: false } }
+// "héllo €" en UTF-8, PARTIDO entre dos chunks en mitad de «é» (c3 | a9) y de «€» (e2 82 | ac): xterm debe recibir bytes crudos.
+export const execChunkA: ExecFeed = { type: 'output', data: btoa(String.fromCharCode(0x68, 0xc3)) }
+export const execChunkB: ExecFeed = { type: 'output', data: btoa(String.fromCharCode(0xa9, 0x6c, 0x6c, 0x6f, 0x20, 0xe2, 0x82)) }
+export const execChunkC: ExecFeed = { type: 'output', data: btoa(String.fromCharCode(0xac)) }
+export const execEnded: ExecFeed = { type: 'ended', reason: 'process_exited', exit_code: 7, error: null }
+export const execStopped: ExecFeed = { type: 'ended', reason: 'container_stopped', exit_code: null, error: null }
+
+export const pullStarted: PullFeed = { type: 'started', reference: 'localhost:54109/dockinng-test/layers:1' }
+export const pullProgress: PullFeed = {
+  type: 'progress', done_bytes: 3145728, total_bytes: 10005636,
+  layers: [
+    { id: '80cb7bcf5d4b', phase: 'downloading', total: 3002106, done: 1048576 },
+    { id: '648890eaed45', phase: 'downloading', total: 5001771, done: 1048576 },
+    { id: 'c8e91746bdfc', phase: 'complete', total: 2001759, done: 2001759 },
+  ],
+}
+export const pullEnded: PullFeed = { type: 'ended', outcome: 'done', up_to_date: false, digest: 'sha256:d9fa', error: null }
+export const pullEndedErr: PullFeed = {
+  type: 'ended', outcome: 'error', up_to_date: false, digest: null,
+  error: { code: 'registry_unreachable', message: 'failed to resolve reference "localhost:1/dockinng-test/x:1": failed to do request: connection refused', cause: null },
+}
+
+export const createSpec: CreateContainerSpec = {
+  image: 'alpine:3.20', name: 'dockinng-test-c1', ports: [{ host_ip: '127.0.0.1', host_port: 54108, container_port: 80, protocol: 'tcp' }],
+  volumes: [{ source: '/srv/datos', target: '/data', read_only: true }], env: [{ key: 'A', value: 'b=c' }], network: 'bridge',
+  restart: 'unless-stopped', restart_max_retries: null, command: null, labels: {},
+}
+export const createPlanConfirm: CreatePlan = {
+  ok: true, field_errors: [], normalized: createSpec, ticket: '01935f00-0000-7000-8000-000000000003', expires_in_secs: 120,
+  decision: { type: 'confirm' },
+  warnings: [{ type: 'sensitive_bind', source: '/etc', reason: 'da acceso a /etc' }, { type: 'docker_socket' }, { type: 'host_network' }, { type: 'port_in_use', port: 8080, by: 'tienda-web-1' }, { type: 'published_all_interfaces', port: 8080 }],
+}
+export const createPlanBad: CreatePlan = {
+  ok: false, field_errors: [{ field: 'volumes[0].source', message: 'usa una ruta absoluta' }], normalized: createSpec, ticket: null, expires_in_secs: 120, decision: { type: 'allow' }, warnings: [],
+}
+export const createResult: CreateResult = { id: 'f'.repeat(64), name: 'dockinng-test-c1', started: false, warnings: [], start_error: { code: 'conflict', message: 'port is already allocated', cause: null } }

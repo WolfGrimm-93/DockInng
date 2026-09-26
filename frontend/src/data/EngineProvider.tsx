@@ -2,7 +2,7 @@
 // Contrato: <EngineProvider api?={EngineApi} store?={EngineStore}>…</EngineProvider>; hooks en data/store/hooks.ts.
 import { createContext, useEffect, useMemo, type ReactNode } from 'react'
 import type { EngineApi } from './api'
-import { createEngineApi } from './createEngineApi'
+import { asSim, createEngineApi } from './createEngineApi'
 import { createEngineStore, type EngineStore } from './store/engineStore'
 import { resetSubscriptions } from './adapters/tauri'
 
@@ -31,9 +31,18 @@ export function EngineProvider({ api, store, prepare, onReady, children }: Engin
   useEffect(() => {
     const { api: a, store: s } = value
     // Tras una recarga del webview pueden quedar suscripciones huérfanas en el backend.
-    if (a.mode === 'tauri') void resetSubscriptions()
-    void s.getState().bootstrap().then(() => onReady?.(a, s))
-    return () => s.getState().dispose()
+    // Recargar/cerrar la ventana aborta descargas y operaciones de stack en curso (los Channels mueren con el webview): se pide confirmación.
+    const onBefore = (e: BeforeUnloadEvent) => {
+      const st = s.getState()
+      if (Object.values(st.stackOps).some((o) => o.state === 'running') || Object.values(st.pulls).some((p) => p.state === 'pulling')) { e.preventDefault(); e.returnValue = '' }
+    }
+    window.addEventListener('beforeunload', onBefore)
+    // Solo en desarrollo: expone los controles del simulado para depurar y para los guiones E2E (contadores de sesiones, fallos forzados).
+    if (import.meta.env.DEV) (window as unknown as { __dockinngSim?: unknown }).__dockinngSim = asSim(a) ?? undefined
+    // Se cierran las suscripciones huérfanas ANTES de bootstrap (si no, el reset podría matar las recién abiertas).
+    const reset = a.mode === 'tauri' ? resetSubscriptions() : Promise.resolve()
+    void reset.then(() => s.getState().bootstrap()).then(() => onReady?.(a, s))
+    return () => { window.removeEventListener('beforeunload', onBefore); s.getState().dispose() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value])
 

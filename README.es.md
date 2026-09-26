@@ -4,7 +4,7 @@
 
 Aplicación de escritorio nativa para Linux que administra Docker desde una interfaz gráfica, al estilo de Docker Desktop. Habla directo con la Docker Engine API. Una CLI complementaria (`dockinng`) comparte el mismo núcleo.
 
-> Estado: en desarrollo. La interfaz completa está implementada. **Datos reales de Docker:** contenedores (listar, iniciar, detener, reiniciar, eliminar, eventos en vivo, logs, stats, inspect) e imágenes, volúmenes y redes (listar, eliminar). **Simulado y marcado como "No conectado aún" en la UI:** terminal embebida, pull de imágenes, crear contenedor, stacks de Compose y conexiones SSH/TLS. Detalle en [PENDIENTES.md](PENDIENTES.md).
+> Estado: en desarrollo. **Datos reales de Docker:** contenedores (listar, iniciar, detener, reiniciar, eliminar, eventos en vivo, logs, stats, inspect, terminal embebida, crear), imágenes (listar, eliminar, pull con progreso por capa), volúmenes y redes (listar, crear, eliminar) y stacks de Docker Compose (descubrir, up/down/reiniciar/detener/iniciar, progreso en vivo, editor de YAML y `.env` con validación, stacks propios y vinculados). **Aún simulado y marcado como "No conectado aún":** conexiones remotas SSH/TLS. Detalle en [PENDIENTES.md](PENDIENTES.md).
 
 ## Stack
 
@@ -53,6 +53,12 @@ cd frontend && pnpm test && pnpm build && pnpm lint
 ## Apariencia
 
 Configuración > Apariencia permite elegir modo claro, oscuro o sistema, un color de acento (presets o matiz personalizado), un tinte de superficies independiente y combinaciones con nombre. Los tokens se calculan en OKLCH y se validan con contraste WCAG AA en todos los matices. Los colores de estado y el logo no cambian con el acento.
+
+## Stacks, terminal, pull y crear
+
+- **Stacks:** los proyectos de Compose se descubren por sus etiquetas; también puedes crear los tuyos (se guardan en `~/.local/share/dockinng/stacks/`) o vincular un archivo compose existente. Levantar/reiniciar/detener/iniciar/actualizar muestran progreso en vivo y se pueden cancelar; *bajar* y *eliminar* exigen escribir el nombre del stack. Un stack creado fuera de la app es de solo lectura hasta que vincules su archivo.
+- **Terminal:** un shell real dentro de un contenedor en marcha (xterm.js), con ajuste de tamaño, copiar/pegar y un aviso de riesgo si el contenedor es privilegiado o monta `docker.sock`. Cerrar la pestaña termina el shell.
+- **Pull y crear:** el pull muestra el progreso por capa y sigue en segundo plano; crear un contenedor nunca hace pull por su cuenta (te lleva al pull si falta la imagen) y las opciones de riesgo (binds sensibles, `network=host`, `docker.sock`) piden confirmación.
 
 ## Puertos e IPs
 

@@ -1,19 +1,22 @@
 // ADAPTADOR SIMULADO: implementa TODO EngineApi en memoria con las fixtures de la plantilla.
 // - Modo navegador (`pnpm dev` sin Tauri) y tests: mundo coherente y mutable (crear/eliminar/iniciar…).
-// - Dentro de Tauri se reutilizan solo las partes «no conectadas aún» (exec, pull, create, stacks,
-//   connections); con `mutateWorld:false` NO se insertan datos falsos en listas reales.
+// - Dentro de Tauri solo se reutiliza `connections` (perfiles remotos, Ola 2); con `mutateWorld:false` NO se insertan datos falsos.
+// - Áreas de la Ola 1 en módulos propios: stacks.ts · exec.ts · pull.ts · create.ts · resources.ts (este archivo solo los cablea).
 // Contrato adicional `sim`: controles para devFlags y tests (emitir eventos, forzar fallos de conexión).
 import { uuidv7 } from '@/lib/uuid7'
 import type { Capability, EngineApi, Feature } from '../../api'
 import type {
   ActionOutcome, ActionPlan, ActionRequest, AffectedItem, ApiError, ConnSpec, ConnectionProfile, ConnectionStatus,
   Container, ContainerDetail, ContainerState, ContainerStats, EngineFeed, LogFeed, LogLine, PlanDecision,
-  PlanWarning, PullProgress, StackSummary, UpProgress,
+  PlanWarning,
 } from '../../types'
-import { createSimTerminal } from './exec'
-import {
-  BROKEN_YAML, FAIL_START, LIVE_LOGS, LOG_SEED, PULL_LAYERS, SAMPLE_ENV, SAMPLE_YAML, UP_SERVICES, buildWorld, type World,
-} from './fixtures'
+import { createSimCreate } from './create'
+import type { SimCtx } from './ctx'
+import { createSimExec, type ExecStats } from './exec'
+import { FAIL_START, LIVE_LOGS, LOG_SEED, buildWorld, type World } from './fixtures'
+import { createSimPull } from './pull'
+import { createSimResources } from './resources'
+import { createSimStacks, type SimStackControls } from './stacks'
 
 export type SimFault = 'permission' | 'daemon' | null
 export interface SimOptions {
@@ -33,6 +36,10 @@ export interface SimControls {
   /** Fuerza el error de conexión de los paneles «permission» / «daemon» hasta `reconnect()` con éxito. */
   setFault(f: SimFault): void
   failStart: Record<string, string>
+  /** Controles de stacks: Compose ausente, conflicto de guardado, YAML roto de la plantilla. */
+  stacks: SimStackControls
+  /** Contadores de sesiones de terminal (detección de fugas en tests/E2E). */
+  exec: ExecStats
 }
 export type SimEngineApi = EngineApi & { sim: SimControls }
 
@@ -54,6 +61,7 @@ export function createSimApi(opts: SimOptions = {}): SimEngineApi {
   let active = 'local'
   let fault: SimFault = null
   const tickets = new Map<string, { request: ActionRequest; decision: PlanDecision; ids: string[]; expires: number; attempts: number }>()
+  const stopHooks: ((id: string) => void)[] = []
 
   const emit = (feed: EngineFeed) => {
     for (const s of subs) s(feed)
@@ -63,11 +71,22 @@ export function createSimApi(opts: SimOptions = {}): SimEngineApi {
   const emitKind = (kind: 'image' | 'volume' | 'network', action: string, id: string) =>
     emit({ type: 'events', resync: false, items: [{ kind, action, id, name: null, time_nano: Date.now() * 1e6, attributes: {} }] })
 
-  const find = (idOrName: string): Container => {
+  const ctxFind = (idOrName: string): Container => {
     const c = world.containers.find((x) => x.id === idOrName || x.names.includes(idOrName) || (idOrName.length >= 4 && x.id.startsWith(idOrName)))
     if (!c) throw apiError('not_found', `No existe el contenedor ${idOrName}`)
     return c
   }
+  const find = ctxFind
+  const ctx: SimCtx = {
+    world, latency, tick, mutate, emit, emitContainer, emitKind, find,
+    onContainerStopped: (cb) => { stopHooks.push(cb) },
+    notifyStopped: (id) => { for (const h of stopHooks) h(id) },
+  }
+  const stacksMod = createSimStacks(ctx)
+  const execMod = createSimExec(ctx)
+  const pullMod = createSimPull(ctx)
+  const createMod = createSimCreate(ctx)
+  const resMod = createSimResources(ctx)
   const profile = (): ConnectionProfile => world.profiles.find((p) => p.id === active) ?? world.profiles[0]
   const isOn = (s: ContainerState) => s === 'running' || s === 'paused' || s === 'restarting'
 
@@ -136,6 +155,7 @@ export function createSimApi(opts: SimOptions = {}): SimEngineApi {
       world.usage[c.names[0]] = { cpu: 0.5, memMb: 20 }
     }
     emitContainer(c, op === 'stop' ? 'die' : op)
+    if (op === 'stop') ctx.notifyStopped(c.id)
   }
 
   // ------------------------------------------------------------- política
@@ -192,7 +212,13 @@ export function createSimApi(opts: SimOptions = {}): SimEngineApi {
       case 'stack_down': {
         const cs = world.containers.filter((c) => c.compose_project === req.project)
         if (!cs.length) throw apiError('not_found', `No existe el stack ${req.project}`)
-        return mk({ type: 'confirm_typed', expected: req.project }, cs.map((c) => ({ kind: 'container', id: c.id, name: c.names[0], state: c.state })), [], null, cs.map((c) => c.id))
+        return mk({ type: 'confirm_typed', expected: req.project }, [{ kind: 'stack', id: req.project, name: req.project }, ...cs.map((c): AffectedItem => ({ kind: 'container', id: c.id, name: c.names[0], state: c.state }))], [], null, cs.map((c) => c.id))
+      }
+      case 'stack_delete': {
+        const o = world.ownStacks.find((x) => x.name === req.name && x.origin === 'managed')
+        if (!o) throw apiError('not_found', `No existe el stack propio ${req.name}`)
+        if (world.containers.some((c) => c.compose_project === req.name)) throw apiError('conflict', `El stack «${req.name}» todavía tiene contenedores: bájalo antes de eliminarlo.`)
+        return mk({ type: 'confirm_typed', expected: req.name }, [{ kind: 'stack', id: req.name, name: req.name, detail: o.path }], [], null, [req.name])
       }
       case 'prune_system':
         return mk({ type: 'deny', reason: 'forbidden' }, [])
@@ -229,6 +255,9 @@ export function createSimApi(opts: SimOptions = {}): SimEngineApi {
         }
         out.succeeded.push({ kind: 'container', id, name: c.names[0] })
       }
+    } else if (req.type === 'stack_delete') {
+      if (mutate) world.ownStacks = world.ownStacks.filter((x) => x.name !== req.name)
+      out.succeeded.push({ kind: 'stack', id: req.name, name: req.name })
     } else if (req.type === 'remove_image' || req.type === 'prune_images') {
       for (const id of t.ids) {
         const im = world.images.find((x) => x.id === id)
@@ -261,12 +290,9 @@ export function createSimApi(opts: SimOptions = {}): SimEngineApi {
     return out
   }
 
-  // ------------------------------------------------------------- flujos simulados
-  const layers = PULL_LAYERS
-
   const capabilities: Record<Feature, Capability> = {
     connection: 'live', containers: 'live', images: 'live', volumes: 'live', networks: 'live', actions: 'live', events: 'live', logs: 'live', stats: 'live', inspect: 'live', system: 'live',
-    exec: 'simulated', pull: 'simulated', create: 'simulated', stacks: 'simulated', connections: 'simulated',
+    exec: 'live', pull: 'live', create: 'live', stacks: 'live', connections: 'simulated',
   }
 
   const api: SimEngineApi = {
@@ -280,6 +306,8 @@ export function createSimApi(opts: SimOptions = {}): SimEngineApi {
       setFault(f) {
         fault = f
       },
+      stacks: stacksMod.controls,
+      exec: execMod.stats,
     },
     connection: {
       async status() {
@@ -348,6 +376,8 @@ export function createSimApi(opts: SimOptions = {}): SimEngineApi {
         setTimeout(() => on(statsFor(c)), 0)
         return () => clearInterval(iv)
       },
+      planCreate: createMod.planCreate,
+      create: createMod.create,
     },
     system: {
       // Datos de ejemplo coherentes con el mundo simulado (la capa real vive en el adaptador Tauri).
@@ -373,9 +403,9 @@ export function createSimApi(opts: SimOptions = {}): SimEngineApi {
         return [{ index: 0, name: 'NVIDIA GeForce RTX 3060 (ejemplo)', utilization_percent: 8 + Math.round(Math.random() * 10), mem_used_bytes: 1.2 * 1024 ** 3, mem_total_bytes: 12 * 1024 ** 3, temperature_c: 52 }]
       },
     },
-    images: { list: async () => world.images.map((i) => ({ ...i })) },
-    volumes: { list: async () => world.volumes.map((v) => ({ ...v })) },
-    networks: { list: async () => world.networks.map((n) => ({ ...n })) },
+    images: { list: async () => world.images.map((i) => ({ ...i })), pull: pullMod },
+    volumes: { list: async () => world.volumes.map((v) => ({ ...v })), create: resMod.createVolume },
+    networks: { list: async () => world.networks.map((n) => ({ ...n })), create: resMod.createNetwork },
     actions: {
       async plan(req) {
         return plan(req)
@@ -391,73 +421,8 @@ export function createSimApi(opts: SimOptions = {}): SimEngineApi {
         return () => subs.delete(on)
       },
     },
-    exec: { open: (id) => createSimTerminal(id.slice(0, 12)) },
-    pull: {
-      start(ref, on) {
-        let stopped = false
-        const pct = layers.map(() => 0)
-        const snap = (state: PullProgress['state'], error?: string): PullProgress => ({ state, error, layers: layers.map((l, i) => ({ id: l[0], total: l[1], done: (l[1] * pct[i]) / 100 })) })
-        const rate = /429|ratelimit/i.test(ref)
-        const iv = setInterval(() => {
-          if (stopped) return
-          const i = pct.findIndex((v) => v < 100)
-          if (i < 0) { clearInterval(iv); on(snap('done')); return }
-          if (rate && i === 2 && pct[i] > 12) { clearInterval(iv); on(snap('error', 'El registro respondió 429 (demasiadas peticiones). Espera unos minutos o inicia sesión en el registro.')); return }
-          pct[i] = Math.min(100, pct[i] + 7 + Math.random() * 9)
-          if (i + 1 < pct.length && pct[i] > 40) pct[i + 1] = Math.min(100, pct[i + 1] + 4)
-          on(snap('pulling'))
-        }, tick)
-        on(snap('pulling'))
-        return () => { stopped = true; clearInterval(iv) }
-      },
-    },
-    create: {
-      async submit(spec, mode) {
-        await sleep(Math.min(latency, 300))
-        const name = spec.name || spec.image.split('/').pop()!.split(':')[0] + '-1'
-        if (mutate) {
-          if (world.containers.some((c) => c.names.includes(name))) throw apiError('conflict', `Ya existe un contenedor llamado ${name}.`)
-          const c: Container = {
-            id: uuidv7().replace(/-/g, '').padEnd(64, '0').slice(0, 64), names: [name], image: spec.image, image_id: 'sha256:' + '0'.repeat(64), state: mode === 'start' ? 'running' : 'created',
-            status: mode === 'start' ? 'Up Less than a second' : 'Created', created: Math.floor(Date.now() / 1000), compose_project: null, compose_service: null,
-            ports: spec.ports.filter((p) => p.host && p.container).map((p) => ({ ip: '0.0.0.0', private_port: Number(p.container), public_port: Number(p.host), protocol: p.protocol })),
-            mounts: [], networks: [spec.network], endpoints: [],
-          }
-          world.containers.unshift(c)
-          if (mode === 'start') world.usage[name] = { cpu: 0.3, memMb: 18 }
-          emitContainer(c, 'create')
-        }
-        return { simulated: true as const, name }
-      },
-    },
-    stacks: {
-      async list() {
-        return structuredClone(world.stacks)
-      },
-      up(name, on) {
-        let stopped = false
-        const p = UP_SERVICES.map(() => 0)
-        const snap = (state: UpProgress['state']): UpProgress => ({ state, services: UP_SERVICES.map((s, i) => ({ name: s, percent: p[i], phase: p[i] >= 100 ? 'started' : p[i] >= 70 ? 'creating' : p[i] > 0 ? 'pulling' : 'waiting' })) })
-        void name
-        const iv = setInterval(() => {
-          if (stopped) return
-          const i = p.findIndex((v) => v < 100)
-          if (i < 0) { clearInterval(iv); on(snap('done')); return }
-          p[i] = Math.min(100, p[i] + 14 + Math.random() * 12)
-          on(snap('running'))
-        }, tick)
-        on(snap('running'))
-        return () => { stopped = true; clearInterval(iv) }
-      },
-      async down() { await sleep(Math.min(latency, 300)) },
-      async restart() { await sleep(Math.min(latency, 300)) },
-      async read(name) {
-        const s = world.stacks.find((x) => x.name === name)
-        return { yaml: name === 'broken' ? BROKEN_YAML : SAMPLE_YAML, env: SAMPLE_ENV, path: s ? s.path.replace(/[^/]+$/, '') : `~/proyectos/${name}/` }
-      },
-      async save() { await sleep(Math.min(latency, 200)) },
-      async composeAvailable() { return true },
-    },
+    exec: { open: execMod.open },
+    stacks: stacksMod.api,
     connections: {
       async test(spec: ConnSpec) {
         await sleep(Math.min(latency + 500, 1400))
@@ -473,4 +438,3 @@ export function createSimApi(opts: SimOptions = {}): SimEngineApi {
   return api
 }
 
-export type { StackSummary }

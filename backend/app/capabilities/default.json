@@ -26,6 +26,25 @@
     "allow-subscribe-logs",
     "allow-subscribe-stats",
     "allow-unsubscribe",
-    "allow-reset-subscriptions"
+    "allow-reset-subscriptions",
+    "allow-compose-info",
+    "allow-list-stacks",
+    "allow-stack-read",
+    "allow-stack-save",
+    "allow-stack-validate",
+    "allow-stack-create",
+    "allow-stack-link",
+    "allow-stack-unlink",
+    "allow-run-stack-op",
+    "allow-cancel-stack-op",
+    "allow-subscribe-exec",
+    "allow-exec-write",
+    "allow-exec-resize",
+    "allow-exec-close",
+    "allow-subscribe-pull",
+    "allow-plan-create-container",
+    "allow-create-container",
+    "allow-create-volume",
+    "allow-create-network"
   ]
 }

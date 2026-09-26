@@ -2,9 +2,19 @@
 //! No contiene lógica de negocio; solo traduce entre la UI y `EngineClient`.
 
 mod commands;
+mod commands_engine;
+mod commands_stacks;
+mod exec_sessions;
 mod gpu;
+mod pull_feed;
+mod stack_ops;
 mod state;
 mod streams;
+
+#[cfg(test)]
+mod tests_engine;
+#[cfg(test)]
+mod tests_stacks;
 
 use std::sync::Arc;
 
@@ -41,21 +51,63 @@ pub fn run() {
             commands::subscribe_stats,
             commands::unsubscribe,
             commands::reset_subscriptions,
+            commands_stacks::compose_info,
+            commands_stacks::list_stacks,
+            commands_stacks::stack_read,
+            commands_stacks::stack_save,
+            commands_stacks::stack_validate,
+            commands_stacks::stack_create,
+            commands_stacks::stack_link,
+            commands_stacks::stack_unlink,
+            commands_stacks::run_stack_op,
+            commands_stacks::cancel_stack_op,
+            commands_engine::subscribe_exec,
+            commands_engine::exec_write,
+            commands_engine::exec_resize,
+            commands_engine::exec_close,
+            commands_engine::subscribe_pull,
+            commands_engine::plan_create_container,
+            commands_engine::create_container,
+            commands_engine::create_volume,
+            commands_engine::create_network,
         ])
+        // Cada carga/recarga de página aborta lo anterior de esa ventana ANTES de que corra su
+        // JS: sus canales ya no existen y `reset_subscriptions` no puede pisar lo nuevo.
+        .on_page_load(|webview, payload| {
+            if payload.event() == tauri::webview::PageLoadEvent::Started {
+                webview
+                    .app_handle()
+                    .state::<AppState>()
+                    .streams
+                    .begin_page(webview.label());
+            }
+        })
         // Cierre de ventana: se cancelan sus streams y se invalidan los tickets pendientes.
         .on_window_event(|window, event| {
             if let WindowEvent::Destroyed = event {
                 let state = window.state::<AppState>();
                 state.streams.abort_for_window(window.label());
                 state.actions.invalidate_all();
+                state.create.invalidate_all();
             }
         })
         .build(tauri::generate_context!());
 
     match built {
         Ok(app) => app.run(|handle, event| {
-            if let RunEvent::Exit = event {
-                handle.state::<AppState>().streams.abort_all();
+            match event {
+                // Antes de salir se cierran las terminales (matan su shell dentro del
+                // contenedor); con tope de 3 s para no bloquear el cierre.
+                RunEvent::ExitRequested { .. } => {
+                    let state = handle.state::<AppState>();
+                    tauri::async_runtime::block_on(
+                        state
+                            .exec_sessions
+                            .close_all(std::time::Duration::from_secs(3)),
+                    );
+                }
+                RunEvent::Exit => handle.state::<AppState>().streams.abort_all(),
+                _ => {}
             }
         }),
         Err(e) => {
@@ -204,13 +256,38 @@ mod tests {
             .expect("generate_handler");
         let in_handler: Vec<&str> = handler
             .split(',')
-            .filter_map(|s| s.trim().strip_prefix("commands::"))
+            .filter_map(|s| {
+                let s = s.trim();
+                // Acepta cualquier módulo `commands*::` (commands, commands_stacks, commands_engine).
+                let (module, name) = s.split_once("::")?;
+                module.starts_with("commands").then_some(name)
+            })
             .collect();
         let mut a: Vec<&str> = in_handler.clone();
         let mut b: Vec<&str> = COMMAND_NAMES.to_vec();
         a.sort_unstable();
         b.sort_unstable();
         assert_eq!(a, b, "lista de comandos y de permisos desalineadas");
+        // Bidireccional: ningún `allow-*` del capability sin comando (permiso huérfano).
+        let caps_json: serde_json::Value =
+            serde_json::from_str(include_str!("../capabilities/default.json")).expect("json");
+        let mut in_caps: Vec<String> = caps_json["permissions"]
+            .as_array()
+            .expect("permissions")
+            .iter()
+            .filter_map(|p| p.as_str())
+            .map(String::from)
+            .collect();
+        in_caps.sort_unstable();
+        let mut expected: Vec<String> = COMMAND_NAMES
+            .iter()
+            .map(|n| format!("allow-{}", n.replace('_', "-")))
+            .collect();
+        expected.sort_unstable();
+        assert_eq!(
+            in_caps, expected,
+            "sobran o faltan permisos en capabilities/default.json"
+        );
         // Y cada permiso del capability existe.
         let caps = include_str!("../capabilities/default.json");
         for n in COMMAND_NAMES {

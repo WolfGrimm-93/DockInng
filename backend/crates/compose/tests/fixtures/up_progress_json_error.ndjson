@@ -1,0 +1,7 @@
+{"id":"Network dockinng-test-fail_default","status":"Working","text":"Creating"}
+{"id":"Network dockinng-test-fail_default","status":"Working","text":"Creating"}
+{"id":"Network dockinng-test-fail_default","status":"Done","text":"Created"}
+{"id":"Network dockinng-test-fail_default","status":"Done","text":"Created"}
+{"id":"Container dockinng-test-fail-x-1","status":"Working","text":"Creating"}
+{"id":"service:x:1","status":"Error","text":"Error response from daemon: No such image: dockinng-test-noexiste:latest"}
+{"error":true,"message":"Error response from daemon: No such image: dockinng-test-noexiste:latest"}

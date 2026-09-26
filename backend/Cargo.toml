@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "crates/engine-core",
     "crates/engine-docker",
+    "crates/compose",
     "crates/dockinng-cli",
     "app",
 ]
@@ -22,3 +23,6 @@ uuid = { version = "1", features = ["v7"] }
 futures-util = "0.3"
 futures-core = "0.3"
 async-trait = "0.1"
+libc = "0.2"
+base64 = "0.22"
+shlex = "2"

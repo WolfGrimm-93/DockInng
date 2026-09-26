@@ -1,5 +1,4 @@
-import { act, render, renderHook, screen, waitFor, within } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import { act, render, renderHook, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { describe, expect, it } from 'vitest'
 import { createSimApi } from '@/data/adapters/sim'
@@ -7,7 +6,6 @@ import { EngineProvider } from '@/data/EngineProvider'
 import type { LogFeed, LogLine } from '@/data/types'
 import { LogViewer } from './LogViewer'
 import { Sparkline } from './Sparkline'
-import { TerminalView } from './TerminalView'
 import { LayerProgress } from './LayerProgress'
 import { appendRing, useLogStream } from './useLogStream'
 
@@ -51,32 +49,17 @@ describe('useLogStream + adaptador simulado', () => {
   })
 })
 
-describe('TerminalView', () => {
-  it('ejecuta comandos, historial con ↑ y Ctrl+L limpia; la salida es texto', async () => {
-    const u = userEvent.setup()
-    const api = createSimApi({ latency: 0 })
-    render(<EngineProvider api={api}><TerminalView containerId="abcdef123456xxxx" containerName="tienda-api-1" autoFocus /></EngineProvider>)
-    const input = screen.getByLabelText('Comando')
-    expect(input).toHaveFocus()
-    await u.type(input, 'pwd{Enter}')
-    const out = within(screen.getByRole('log', { name: 'Salida de la terminal' }))
-    expect(await out.findByText('/app')).toBeInTheDocument()
-    await u.type(input, 'algo-raro{Enter}')
-    expect(await out.findByText(/no se encontró la orden/)).toBeInTheDocument()
-    await u.keyboard('{ArrowUp}')
-    expect(input).toHaveValue('algo-raro')
-    await u.keyboard('{Control>}l{/Control}')
-    await waitFor(() => expect(out.queryByText('/app')).not.toBeInTheDocument())
-    expect(screen.getByRole('region', { name: 'Terminal de tienda-api-1' })).toBeInTheDocument()
-  })
-})
-
 describe('Sparkline y LayerProgress', () => {
   it('Sparkline es un img con etiqueta; LayerProgress expone progressbar por capa', () => {
     render(
       <>
         <Sparkline values={[1, 50, 100]} color="var(--chart-1)" label="Uso de CPU" />
-        <LayerProgress pulling layers={[{ id: 'a3b8c1d92e07', total: 30.4, done: 30.4 }, { id: '5f1e9a7b3c42', total: 12.1, done: 0 }]} />
+        <LayerProgress pulling layers={[
+          { id: 'a3b8c1d92e07', phase: 'complete', total: 3002106, done: 3002106 },
+          { id: '5f1e9a7b3c42', phase: 'waiting', total: 0, done: 0 },
+          { id: 'c8e91746bdfc', phase: 'downloading', total: 0, done: 1048576 },
+          { id: '648890eaed45', phase: 'extracting', total: 5001771, done: 5001771 },
+        ]} />
       </>,
     )
     expect(screen.getByRole('img', { name: 'Uso de CPU' })).toBeInTheDocument()
@@ -84,6 +67,11 @@ describe('Sparkline y LayerProgress', () => {
     expect(bars[0]).toHaveAttribute('aria-valuenow', '100')
     expect(bars[0]).toHaveClass('is-done')
     expect(screen.getByText('En espera')).toBeInTheDocument()
+    expect(screen.getByText('2.9 MiB / 2.9 MiB')).toBeInTheDocument()
+    // Total desconocido: barra indeterminada (sin aria-valuenow) y «Calculando…»; extrayendo también es indeterminada.
+    expect(bars[2]).not.toHaveAttribute('aria-valuenow')
+    expect(screen.getByText('Calculando…')).toBeInTheDocument()
+    expect(screen.getByText('Extrayendo')).toBeInTheDocument()
     act(() => {})
   })
 })
@@ -112,20 +100,5 @@ describe('useLogStream: ventana oculta y tope de pendientes', () => {
     expect(result.current.dropped).toBe(7 + 500)
     expect(result.current.lines.at(-1)?.message).toBe(`[INFO] l${LOG_PENDING_MAX + 499}`)
     raf.mockRestore()
-  })
-})
-
-describe('transcripciones del terminal acotadas', () => {
-  it('máx. 20 sesiones (las más antiguas se descartan) y 500 líneas', async () => {
-    const { saveTranscript, transcripts, TRANSCRIPT_MAX_SESSIONS, TRANSCRIPT_MAX_LINES } = await import('./terminalTranscripts')
-    transcripts.clear()
-    for (let i = 0; i < 30; i++) saveTranscript(`c${i}`, ['x'])
-    expect(transcripts.size).toBe(TRANSCRIPT_MAX_SESSIONS)
-    expect(transcripts.has('c0')).toBe(false)
-    expect(transcripts.has('c29')).toBe(true)
-    saveTranscript('big', Array.from({ length: 2000 }, (_, i) => String(i)))
-    const t = transcripts.get('big')!
-    expect(t).toHaveLength(TRANSCRIPT_MAX_LINES)
-    expect(t[t.length - 1]).toBe('1999')
   })
 })

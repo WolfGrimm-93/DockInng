@@ -1,24 +1,31 @@
 // Progreso por capa (pull) y por servicio (stack up). Contratos:
-//   <LayerProgress layers={[{id,total,done}]} pulling />   fila: id · barra · «x / y MB» · etiqueta (Completa/Descargando/En espera/No iniciada)
-//   <ServiceProgress services={[{name,percent,phase}]} />   fila .up-row: nombre · barra · estado (StatusBadge running al 100 %)
-import type { PullProgress, UpProgress } from '@/data/types'
+//   <LayerProgress layers={PullLayer[]} pulling />          fila: id · barra · «x / y» (bytes) · etiqueta (En espera/Descargando/Extrayendo/Completa)
+//                                                            total desconocido (0) => barra indeterminada y «Calculando…»
+//   <ServiceProgress services={ServiceProgressRow[]} />      fila .up-row: nombre · barra · estado (StatusBadge running al 100 %)
+import type { PullLayer, ServiceProgressRow } from '@/data/types'
 import { Progress } from '@/components/ui/progress'
+import { formatBytesPrecise } from '@/lib/format'
+import { safeText } from '@/lib/safeText'
 import { Icon } from './Icon'
 import { StatusBadge } from './StatusBadge'
 
-export function LayerProgress({ layers, pulling }: { layers: PullProgress['layers']; pulling: boolean }) {
+const LAYER_LABEL: Record<PullLayer['phase'], string> = { waiting: 'En espera', downloading: 'Descargando', downloaded: 'Descargada', extracting: 'Extrayendo', complete: 'Completa' }
+
+export function LayerProgress({ layers, pulling }: { layers: PullLayer[]; pulling: boolean }) {
   return (
     <>
       {layers.map((l) => {
-        const pct = l.total ? (l.done / l.total) * 100 : 0
-        const v = Math.round(pct)
-        const done = v >= 100
-        const label = done ? 'Completa' : v === 0 ? (pulling ? 'En espera' : 'No iniciada') : 'Descargando'
+        const known = l.total > 0
+        const pct = known ? (l.done / l.total) * 100 : 0
+        const done = l.phase === 'complete'
+        const indeterminate = pulling && !done && (l.phase === 'extracting' || (l.phase === 'downloading' && !known))
+        const label = !pulling && !done && l.phase === 'waiting' ? 'No iniciada' : LAYER_LABEL[l.phase]
+        const id = safeText(l.id, { singleLine: true })
         return (
           <div className="layer" key={l.id}>
-            <span className="mono">{l.id}</span>
-            <Progress value={pct} label={`Capa ${l.id}`} />
-            <span className="mono muted">{l.done.toFixed(1)} / {l.total} MB</span>
+            <span className="mono">{id}</span>
+            <Progress value={done ? 100 : pct} label={`Capa ${id}`} indeterminate={indeterminate} />
+            <span className="mono muted">{known ? `${formatBytesPrecise(l.done)} / ${formatBytesPrecise(l.total)}` : l.phase === 'waiting' ? '—' : 'Calculando…'}</span>
             <span className={done ? '' : 'muted'}>{done ? <><Icon name="check" size="sm" />{' '}</> : null}{label}</span>
           </div>
         )
@@ -27,15 +34,15 @@ export function LayerProgress({ layers, pulling }: { layers: PullProgress['layer
   )
 }
 
-const PHASE: Record<UpProgress['services'][number]['phase'], string> = { waiting: 'En espera', pulling: 'Descargando imagen', creating: 'Creando contenedor', started: 'Iniciado' }
+const PHASE: Record<ServiceProgressRow['phase'], string> = { waiting: 'En espera', pulling: 'Descargando imagen', creating: 'Creando contenedor', started: 'Iniciado' }
 
-export function ServiceProgress({ services }: { services: UpProgress['services'] }) {
+export function ServiceProgress({ services }: { services: ServiceProgressRow[] }) {
   return (
     <>
       {services.map((s) => (
         <div className="up-row" key={s.name}>
-          <b>{s.name}</b>
-          <Progress value={s.percent} label={s.name} />
+          <b>{safeText(s.name, { singleLine: true })}</b>
+          <Progress value={s.percent} label={`Servicio ${safeText(s.name, { singleLine: true })}`} />
           <span>
             {s.percent >= 100 ? <StatusBadge state="running" /> : <span className="muted">{s.percent > 0 ? <><Icon name="loader" size="sm" spin />{' '}</> : null}{PHASE[s.phase]}</span>}
           </span>

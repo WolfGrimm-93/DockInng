@@ -3,6 +3,7 @@
 // `go` cambia location.hash (la vista se actualiza por `hashchange`). El foco a <h1 id="viewTitle"> en cada cambio de
 // ruta lo hace AppShell (`useRouteFocus`), como la plantilla.
 import { useCallback, useMemo, useSyncExternalStore } from 'react'
+import './navGuard' // instala la guarda en fase de captura ANTES de que el router se suscriba
 import { buildHref, parseRoute, type ParsedRoute, type RouteId } from './routes'
 
 function subscribe(cb: () => void): () => void {

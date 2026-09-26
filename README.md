@@ -4,7 +4,7 @@
 
 A native Linux desktop app to manage Docker from a graphical interface, in the spirit of Docker Desktop. It talks directly to the Docker Engine API. A companion CLI (`dockinng`) shares the same core.
 
-> Status: in development. The full interface is implemented. **Real Docker data:** containers (list, start, stop, restart, remove, live events, logs, stats, inspect), and images, volumes and networks (list, remove). **Simulated and marked "Not connected yet" in the UI:** embedded terminal, image pull, create container, Compose stacks and SSH/TLS connections. Details in [PENDIENTES.md](PENDIENTES.md).
+> Status: in development. **Real Docker data:** containers (list, start, stop, restart, remove, live events, logs, stats, inspect, embedded terminal, create), images (list, remove, pull with per-layer progress), volumes and networks (list, create, remove), and Docker Compose stacks (discover, up/down/restart/stop/start, live progress, YAML and `.env` editor with validation, own and linked stacks). **Still simulated and marked "Not connected yet":** SSH/TLS remote connections. Details in [PENDIENTES.md](PENDIENTES.md).
 
 ## Stack
 
@@ -53,6 +53,12 @@ cd frontend && pnpm test && pnpm build && pnpm lint
 ## Appearance
 
 Settings > Appearance lets you pick light, dark or system mode, an accent color (presets or a custom hue), an independent surface tint and named combinations. Tokens are computed in OKLCH and validated for WCAG AA contrast across all hues. Status colors and the logo do not change with the accent.
+
+## Stacks, terminal, pull and create
+
+- **Stacks:** Compose projects are discovered by their labels; you can also create your own (stored in `~/.local/share/dockinng/stacks/`) or link an existing compose file. Up/restart/stop/start/pull show live progress and can be cancelled; *down* and *delete* need you to type the stack name. A stack created outside the app is read-only until you link its file.
+- **Terminal:** a real shell inside a running container (xterm.js), with resize, copy/paste and a risk banner for privileged containers or ones that mount `docker.sock`. Closing the tab ends the shell.
+- **Pull and create:** pull shows per-layer progress and keeps running in the background; creating a container never pulls by itself (it sends you to Pull when the image is missing), and risky choices (sensitive bind mounts, `network=host`, `docker.sock`) need a confirmation.
 
 ## Ports and IPs
 

@@ -148,6 +148,7 @@ pub async fn connection_status(state: State<'_, AppState>) -> Result<ConnectionS
 pub async fn reconnect(state: State<'_, AppState>) -> Result<ConnectionStatus, ApiError> {
     // Al cambiar la conexión no se puede confiar en tickets emitidos antes.
     state.actions.invalidate_all();
+    state.create.invalidate_all();
     Ok(state.engine.reconnect().await)
 }
 
@@ -317,18 +318,26 @@ pub async fn subscribe_stats<R: Runtime>(
 }
 
 #[tauri::command]
-pub async fn unsubscribe(state: State<'_, AppState>, subscription_id: String) -> ApiResult<()> {
-    state.streams.abort(&subscription_id);
+pub async fn unsubscribe<R: Runtime>(
+    state: State<'_, AppState>,
+    window: Window<R>,
+    subscription_id: String,
+) -> ApiResult<()> {
+    // Solo las suscripciones de ESTA ventana; un id ajeno responde igual que uno inexistente
+    // (Ok, idempotente) y no se aborta.
+    state.streams.abort_in(window.label(), &subscription_id);
     Ok(())
 }
 
-/// Al recargar la página los canales JS desaparecen: el frontend lo llama al arrancar.
+/// Al recargar la página los canales JS desaparecen: el frontend lo llama al arrancar. La
+/// limpieza real la hace `begin_page` (hook de carga de página); aquí solo se abortan las
+/// suscripciones de épocas anteriores, nunca las creadas tras la carga actual.
 #[tauri::command]
 pub async fn reset_subscriptions<R: Runtime>(
     state: State<'_, AppState>,
     window: Window<R>,
 ) -> ApiResult<()> {
-    state.streams.abort_for_window(window.label());
+    state.streams.reset_stale(window.label());
     Ok(())
 }
 

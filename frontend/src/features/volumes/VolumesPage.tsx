@@ -1,7 +1,7 @@
 // Vista «Volúmenes». Datos REALES: listar y eliminar (confirmación con nombre / ELIMINAR según el motor de política).
-// «Nuevo volumen» es SIMULADO (todavía no hay comando de creación): avisa con un toast «No conectado aún».
+// «Nuevo volumen» es REAL (create_volume): diálogo con validación; la fila nueva se resalta unos segundos.
 import { safeText } from '@/lib/safeText'
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { devFlagsEnabled, getDevFlags, usePreviewState } from '@/app/devFlags'
 import { useGuardedAction } from '@/components/shared/ConfirmDialog'
 import { Icon } from '@/components/shared/Icon'
@@ -16,10 +16,10 @@ import { useStartupOnce } from '../common/devOnce'
 import { useViewGate } from '../common/gate'
 import { resourceState } from '../common/listStates'
 import { VirtualTable } from '../common/VirtualTable'
+import { NewVolumeDialog } from './NewVolumeDialog'
 
 const COLS = 4
 
-const newVolume = () => toast.warn('Simulado — no conectado aún', { sub: 'Crear volúmenes todavía no está conectado al motor de Docker: no se creó nada.' })
 
 export default function VolumesPage() {
   const { list, status, error } = useVolumes()
@@ -29,6 +29,15 @@ export default function VolumesPage() {
   const gate = useViewGate(COLS, 6)
   const preview = usePreviewState()
   const scrollRef = useRef<HTMLDivElement>(null)
+  const [newOpen, setNewOpen] = useState(false)
+  const [flash, setFlash] = useState<string | null>(null)
+  useEffect(() => {
+    if (!flash) return
+    const t = setTimeout(() => setFlash(null), 2200)
+    return () => clearTimeout(t)
+  }, [flash])
+  const newVolume = () => setNewOpen(true)
+  const dialog = <NewVolumeDialog open={newOpen} existing={list.map((v) => v.name)} onClose={() => setNewOpen(false)} onCreated={(v) => { setNewOpen(false); setFlash(v.name) }} />
   const total = useMemo(() => list.reduce((a, v) => a + (v.size_bytes ?? 0), 0), [list])
 
   const after = () => {
@@ -61,20 +70,21 @@ export default function VolumesPage() {
       title="Volúmenes"
       count={gate.isError ? null : `${list.length} · ${formatBytes(total)}`}
       secondary={<Button variant="outline-destructive" locked={gate.locked} onClick={() => void prune()}><Icon name="trash" />Eliminar sin usar…</Button>}
-      primary={<Button variant="primary" locked={gate.locked} title="Todavía no conectado al motor (simulado)" onClick={newVolume}><Icon name="plus" />Nuevo volumen</Button>}
+      primary={<Button variant="primary" locked={gate.locked} onClick={newVolume}><Icon name="plus" />Nuevo volumen</Button>}
     />
   )
   if (gate.blocked) return <>{head}{gate.blocked}</>
   const st = resourceState({ status, hasRows: list.length > 0, preview, error, refresh: () => void store.getState().refresh('volumes'), what: 'los volúmenes', cols: COLS, rows: 6 })
-  if (st) return <>{head}{st}</>
+  if (st) return <>{head}{st}{dialog}</>
   if (preview === 'empty' || (status === 'ready' && list.length === 0)) {
     return (
       <>
         {head}
         <div className="view-body">
           <EmptyState icon="database" title="No hay volúmenes" text="Los volúmenes guardan datos que sobreviven a los contenedores, como una base de datos."
-            actions={<Button variant="primary" onClick={newVolume}><Icon name="plus" />Nuevo volumen</Button>} />
+            actions={<Button variant="primary" locked={gate.locked} onClick={newVolume}><Icon name="plus" />Nuevo volumen</Button>} />
         </div>
+        {dialog}
       </>
     )
   }
@@ -99,7 +109,7 @@ export default function VolumesPage() {
             </tr>
           }
           renderRow={(v, { index, measure }) => (
-            <tr ref={measure} data-index={index} aria-rowindex={index + 2}>
+            <tr ref={measure} data-index={index} aria-rowindex={index + 2} className={flash === v.name ? 'row-flash' : undefined}>
               <td className="cell-name">
                 <div className="name-cell">
                   <b title={safeText(v.name, { singleLine: true })}>{safeText(v.name, { singleLine: true })}</b>
@@ -122,6 +132,7 @@ export default function VolumesPage() {
         />
         <p className="muted" style={{ fontSize: 'var(--text-xs)' }}>Los volúmenes en uso no se pueden eliminar: elimina primero el contenedor que los usa. Eliminar un volumen pide escribir su nombre.</p>
       </div>
+      {dialog}
     </>
   )
 }

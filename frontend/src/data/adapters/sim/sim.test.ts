@@ -100,21 +100,9 @@ describe('adaptador simulado: política plan → ticket → execute', () => {
 describe('adaptador simulado: mutateWorld=false (modo Tauri)', () => {
   it('crear contenedor no inserta datos falsos', async () => {
     const api = createSimApi({ latency: 0, mutateWorld: false })
-    const r = await api.create.submit({ image: 'nginx', name: 'x', ports: [], volumes: [], env: [], network: 'bridge', restart: 'no' }, 'start')
-    expect(r).toEqual({ simulated: true, name: 'x' })
+    const spec = { image: 'nginx:1.27-alpine', name: 'x', ports: [], volumes: [], env: [], network: 'bridge', restart: 'no' as const, restart_max_retries: null, command: null, labels: {} }
+    const r = await api.containers.create(spec, true, null)
+    expect(r.name).toBe('x')
     expect((await api.containers.list())).toHaveLength(13)
-  })
-})
-
-describe('terminal simulada', () => {
-  it('ejecuta comandos de la demo y no rompe con nombres de prototipo', async () => {
-    const api = mk()
-    const t = api.exec.open('abc123abc123')
-    const out: string[] = []
-    t.onData((c) => out.push(c))
-    t.write('pwd')
-    t.write('constructor')
-    expect(out[0]).toBe('/app\n')
-    expect(out[1]).toContain('no se encontró la orden')
   })
 })

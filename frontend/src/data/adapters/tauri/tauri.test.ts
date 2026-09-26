@@ -102,13 +102,10 @@ describe('adaptador Tauri (contrato IPC del backend)', () => {
     await new Promise((r) => setTimeout(r, 5))
     expect(calls.some((c) => c.cmd === 'unsubscribe' && (c.args as { subscriptionId: string }).subscriptionId === 'sub-1')).toBe(true)
   })
-  it('lo no conectado (create) se delega en el simulado SIN insertar datos', async () => {
+  it('Ola 1: exec, pull, create y stacks ya son reales (solo connections sigue simulado)', () => {
     const api = createTauriApi()
-    const r = await api.create.submit({ image: 'nginx', name: 'x', ports: [], volumes: [], env: [], network: 'bridge', restart: 'no' }, 'only')
-    expect(r).toEqual({ simulated: true, name: 'x' })
+    expect(api.capabilities).toMatchObject({ exec: 'live', pull: 'live', create: 'live', stacks: 'live', containers: 'live', connections: 'simulated' })
     expect(calls).toHaveLength(0)
-    expect(api.capabilities.create).toBe('simulated')
-    expect(api.capabilities.containers).toBe('live')
   })
 })
 

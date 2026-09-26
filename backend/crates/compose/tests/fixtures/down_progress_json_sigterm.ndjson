@@ -1,0 +1,5 @@
+{"id":"Container dockinng-test-recon-sleeper-1","status":"Working","text":"Stopping"}
+{"id":"Container dockinng-test-recon-second-1","status":"Working","text":"Stopping"}
+{"id":"Container dockinng-test-recon-sleeper-1","status":"Error","text":"Error","details":"Error while Stopping"}
+{"id":"Container dockinng-test-recon-second-1","status":"Error","text":"Error","details":"Error while Stopping"}
+{"error":true}

@@ -24,6 +24,14 @@ pub enum Action {
     StackDown {
         project: String,
     },
+    /// Borrar los archivos de un stack propio (irreversible: contiene `.env`).
+    /// Confirmación escrita: el nombre del stack.
+    StackDelete {
+        name: String,
+    },
+    /// Crear un contenedor con riesgos (bind sensible, `network=host`, `docker.sock`):
+    /// confirmación simple, `--yes` la salta.
+    CreateSensitive,
     /// Limpieza total del sistema (equivale a `system prune`). Prohibida.
     PruneSystem,
 }
@@ -128,10 +136,11 @@ impl ConfirmationPolicy {
                     Decision::Deny(DenyReason::NeedsConfirmationNonInteractive)
                 }
             }
-            RemoveContainer { .. } | RemoveImage | RemoveNetwork => simple(),
+            RemoveContainer { .. } | RemoveImage | RemoveNetwork | CreateSensitive => simple(),
             RemoveVolume { name } => typed(name),
             PruneVolumes => typed(CONFIRM_WORD),
             StackDown { project } => typed(project),
+            StackDelete { name } => typed(name),
         }
     }
 
@@ -224,6 +233,29 @@ mod tests {
     #[test]
     fn remove_image_matriz_completa() {
         matriz_simple(Action::RemoveImage);
+    }
+
+    #[test]
+    fn create_sensitive_es_confirmacion_simple() {
+        matriz_simple(Action::CreateSensitive);
+    }
+
+    #[test]
+    fn stack_delete_pide_el_nombre_y_yes_no_lo_salta() {
+        let a = Action::StackDelete {
+            name: "tienda".into(),
+        };
+        let dec = d(&a, Interactive, true);
+        assert_eq!(
+            dec,
+            Decision::ConfirmTyped {
+                expected: "tienda".into()
+            }
+        );
+        assert!(dec.accepts(Some("tienda")));
+        assert!(!dec.accepts(Some("ELIMINAR")));
+        assert_eq!(d(&a, NonInteractive, true), NCNI);
+        assert_eq!(d(&a, NonInteractive, false), NCNI);
     }
 
     #[test]

@@ -1,6 +1,6 @@
 // Datos de ejemplo del adaptador simulado: portados de platilla-html/js/data.js (nada aquí es real).
 // `buildWorld(now)` devuelve una copia NUEVA y mutable en cada llamada (tests y recargas parten de cero).
-import type { Container, ConnectionProfile, Image, Network, NetworkEndpoint, StackSummary, Volume, UiStatus, ContainerState } from '../../types'
+import type { Container, ConnectionProfile, Image, Network, NetworkEndpoint, StackOrigin, Volume, UiStatus, ContainerState } from '../../types'
 
 const MB = 1024 * 1024
 const DAY = 86400
@@ -79,12 +79,15 @@ function parsePorts(s: string): Container['ports'] {
   })
 }
 
+/** Stack con archivos en el mundo simulado (managed = propio; linked = compose externo vinculado). Los `discovered` se derivan de los contenedores. */
+export interface SimOwnStack { name: string; origin: Exclude<StackOrigin, 'discovered'>; path: string; yaml: string; env: string; revision: number }
+
 export interface World {
   containers: Container[]
   images: Image[]
   volumes: Volume[]
   networks: Network[]
-  stacks: StackSummary[]
+  ownStacks: SimOwnStack[]
   profiles: ConnectionProfile[]
   /** Memoria/CPU de muestra por nombre de contenedor (en marcha). */
   usage: Record<string, { cpu: number; memMb: number }>
@@ -144,21 +147,14 @@ export function buildWorld(now: number = Date.now()): World {
     id: fullId(n.name.replace(/[^a-f0-9]/g, '') + 'a1b2c3'), name: n.name, driver: n.driver, scope: 'local', subnets: n.subnet ? [n.subnet] : [], internal: false, system: n.sys,
     connected: containers.filter((c) => c.networks.includes(n.name)).map((c) => c.names[0]), compose_project: n.name.endsWith('_default') ? n.name.replace('_default', '') : null,
   }))
-  const stacks: StackSummary[] = [
-    { name: 'tienda', path: '~/proyectos/tienda/docker-compose.yml', services: [
-      { name: 'web', image: 'nginx:1.27-alpine', state: 'running', replicas: '1/1' }, { name: 'api', image: 'tienda-api:2.4.1', state: 'running', replicas: '1/1' },
-      { name: 'postgres', image: 'postgres:16.4', state: 'running', replicas: '1/1' }, { name: 'redis', image: 'redis:7.4-alpine', state: 'running', replicas: '1/1' },
-      { name: 'worker', image: 'tienda-worker:2.4.1', state: 'restarting', replicas: '0/1' }] },
-    { name: 'monitoreo', path: '~/infra/monitoreo/compose.yaml', services: [
-      { name: 'prometheus', image: 'prom/prometheus:v2.54.1', state: 'running', replicas: '1/1' }, { name: 'grafana', image: 'grafana/grafana:11.2.0', state: 'running', replicas: '1/1' },
-      { name: 'loki', image: 'grafana/loki:3.1.1', state: 'paused', replicas: '1/1' }] },
-  ]
+  // «tienda» está vinculado (editable); «monitoreo» solo se descubre por etiquetas (Editar pide vincularlo).
+  const ownStacks: SimOwnStack[] = [{ name: 'tienda', origin: 'linked', path: '~/proyectos/tienda/docker-compose.yml', yaml: SAMPLE_YAML, env: SAMPLE_ENV, revision: 1 }]
   const profiles: ConnectionProfile[] = [
     { id: 'local', name: 'Local', target: 'unix:///var/run/docker.sock', kind: 'local', icon: 'monitor', remote: false, version: 'Docker 27.3.1 · API 1.47', simulated: false },
     { id: 'prod', name: 'prod-hetzner', target: 'ssh://deploy@203.0.113.10', kind: 'ssh', icon: 'server', remote: true, version: 'Docker 26.1.4 · API 1.45', simulated: true },
     { id: 'staging', name: 'staging-lab', target: 'ssh://ops@192.168.1.40', kind: 'ssh', icon: 'server', remote: true, version: '', simulated: true, failsToConnect: true },
   ]
-  return { containers, images, volumes, networks, stacks, profiles, usage }
+  return { containers, images, volumes, networks, ownStacks, profiles, usage }
 }
 
 /** Arrancar estos contenedores falla la primera vez (estado de error por fila). */

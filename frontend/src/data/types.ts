@@ -177,6 +177,8 @@ export type StatsFeed =
 export type ApiErrorCode =
   | 'connection' | 'not_found' | 'conflict' | 'invalid_input' | 'engine' | 'timeout' | 'policy_denied'
   | 'ticket_invalid' | 'ticket_expired' | 'typed_mismatch' | 'state_changed' | 'not_implemented' | 'internal'
+  // Ola 1 (contrato canónico del backend): Compose, imágenes y exec.
+  | 'compose_missing' | 'compose_failed' | 'invalid_compose' | 'image_missing' | 'auth_required' | 'registry_unreachable' | 'no_shell'
 /** `cause` siempre viaja (null salvo code = 'connection'). */
 export interface ApiError { code: ApiErrorCode; message: string; cause?: ConnectionCause | null }
 
@@ -190,6 +192,8 @@ export type ActionRequest =
   | { type: 'prune_volumes' }
   | { type: 'remove_network'; id: string }
   | { type: 'stack_down'; project: string }
+  /** Borra los archivos de un stack propio (irreversible: contiene .env). Confirmación escrita con el nombre. */
+  | { type: 'stack_delete'; name: string }
   | { type: 'prune_system' }
 
 export type DenyReason = 'forbidden' | 'needs_confirmation_non_interactive'
@@ -202,7 +206,7 @@ export type PlanDecision =
 /** Los 4 niveles de la UI (Libre / Confirmar / Confirmar con nombre / Bloqueado). */
 export type ConfirmLevel = 'allow' | 'confirm' | 'confirm_typed' | 'blocked'
 
-export type AffectedKind = 'container' | 'image' | 'volume' | 'network' // ItemKind del backend
+export type AffectedKind = 'container' | 'image' | 'volume' | 'network' | 'stack' // ItemKind del backend
 export interface AffectedItem { kind: AffectedKind; id: string; name: string; state?: ContainerState | null; size_bytes?: number | null; detail?: string | null }
 /** PlanWarning del backend (actions.rs): etiquetado por `type`. */
 export type PlanWarning =
@@ -225,22 +229,142 @@ export interface ActionOutcome {
   freed_bytes: number | null
 }
 
-// ---------------------------------------------------------------- Simulados (no conectados aún)
-export interface TerminalSession { write(data: string): void; onData(cb: (chunk: string) => void): Unsubscribe; close(): void }
+// ---------------------------------------------------------------- Comunes
 export interface Unsubscribe { (): void }
-export interface PullProgress { state: 'pulling' | 'done' | 'error'; layers: { id: string; total: number; done: number }[]; error?: string }
-export interface UpProgress { state: 'running' | 'done'; services: { name: string; percent: number; phase: 'waiting' | 'pulling' | 'creating' | 'started' }[] }
-export interface StackService { name: string; image: string; state: UiStatus; replicas: string }
-export interface StackSummary { name: string; path: string; services: StackService[] }
-export interface CreateSpec {
-  image: string
+
+// ---------------------------------------------------------------- Compose / Stacks (contrato backend Ola 1, snake_case)
+/** `compose_info`. `flavor: 'standalone'` con `supported:false` = Compose v1 (no se usa). */
+export interface ComposeInfo { available: boolean; flavor: 'plugin' | 'standalone' | 'missing'; version: string | null; supported: boolean; docker_cli: boolean }
+/** managed = creado en la app (~/.local/share/dockinng/stacks/<n>) · linked = archivo compose externo vinculado · discovered = solo por etiquetas. */
+export type StackOrigin = 'managed' | 'linked' | 'discovered'
+export type StackStatus = 'running' | 'partial' | 'stopped' | 'declared'
+export interface StackService { name: string; image: string; state: ContainerState; replicas: string; running: number; total: number }
+export interface StackSummary {
   name: string
-  ports: { host: string; container: string; protocol: 'tcp' | 'udp' }[]
-  volumes: { host: string; container: string; readOnly: boolean }[]
-  env: { key: string; value: string }[]
-  network: string
-  restart: 'no' | 'always' | 'unless-stopped' | 'on-failure'
+  origin: StackOrigin
+  /** Primer archivo de configuración ('' si se desconoce). */
+  path: string
+  config_files: string[]
+  working_dir: string | null
+  editable: boolean
+  status: StackStatus
+  containers: number
+  running: number
+  services: StackService[]
 }
+/** `stack_read` / `stack_save`. `revision` = mtime_ns:len de ambos archivos (detecta cambios externos). */
+export interface StackFiles { name: string; origin: StackOrigin; yaml: string; env: string; path: string; env_path: string; editable: boolean; config_files: string[]; revision: string }
+export type ValidationKind = 'syntax' | 'schema' | 'interpolation' | 'other'
+export interface ValidationIssue { line: number | null; column: number | null; kind: ValidationKind; message: string }
+/** Riesgos informativos del YAML (banner, no bloquean). `path` solo en sensitive_bind. */
+export type StackRiskType = 'privileged' | 'host_network' | 'docker_sock' | 'sensitive_bind' | 'pid_host' | 'cap_add_sys_admin'
+export interface StackRisk { type: StackRiskType; path?: string }
+export interface StackValidation { ok: boolean; issues: ValidationIssue[]; services: string[]; risks: StackRisk[] }
+export type StackOpKind = 'up' | 'restart' | 'stop' | 'start' | 'pull'
+export interface StackOpRequest { type: StackOpKind; services?: string[] }
+export type ProgressKind = 'network' | 'container' | 'volume' | 'image' | 'service' | 'other'
+export interface ProgressItem {
+  id: string; kind: ProgressKind; name: string; status: 'working' | 'done' | 'warning' | 'error'; text: string
+  details: string | null; current: number | null; total: number | null; percent: number | null; parent_id: string | null
+}
+export type ServicePhase = 'waiting' | 'pulling' | 'creating' | 'started'
+/** Instantánea por servicio (= contrato de UpProgress de la plantilla). */
+export interface ServiceProgressRow { name: string; percent: number; phase: ServicePhase }
+export type StackOutcome = 'success' | 'failed' | 'canceled' | 'timeout'
+export type StackOpFeed =
+  | { type: 'started'; op: StackOpKind; stack: string; compose_version: string }
+  | { type: 'progress'; items: ProgressItem[]; services: ServiceProgressRow[] }
+  | { type: 'log'; text: string }
+  | { type: 'ended'; outcome: StackOutcome; exit_code: number | null; error: ApiError | null; issues: ValidationIssue[] }
+/** Estado de una operación de stack en el store (sobrevive a la navegación). */
+export interface StackOpState {
+  kind: StackOpKind
+  state: 'running' | 'done' | 'error' | 'canceled'
+  services: ServiceProgressRow[]
+  log: string[]
+  error: ApiError | null
+  issues: ValidationIssue[]
+  startedAt: number
+}
+
+// ---------------------------------------------------------------- Terminal (exec)
+export interface ExecRisk { privileged: boolean; docker_socket: boolean; host_pid: boolean; host_network: boolean }
+export interface ExecInfo { shell: string; risk: ExecRisk }
+export type ExecEndReason = 'process_exited' | 'container_stopped' | 'closed' | 'no_shell' | 'error' | 'internal'
+export interface ExecExit { reason: ExecEndReason; exit_code: number | null; error: ApiError | null }
+/** Feed crudo del canal `subscribe_exec`. `data` = base64 de bytes crudos. */
+export type ExecFeed =
+  | { type: 'opened'; shell: string; risk: ExecRisk }
+  | { type: 'output'; data: string }
+  | { type: 'ended'; reason: ExecEndReason; exit_code: number | null; error: ApiError | null }
+export interface ExecOptions { cols: number; rows: number }
+/** Sesión de terminal. Los listeners se reproducen: lo emitido antes de suscribirse se entrega al suscribir. */
+export interface ExecSession {
+  write(data: string): void
+  resize(cols: number, rows: number): void
+  onOpen(cb: (info: ExecInfo) => void): Unsubscribe
+  onOutput(cb: (chunk: Uint8Array) => void): Unsubscribe
+  onExit(cb: (e: ExecExit) => void): Unsubscribe
+  /** Idempotente: cierra el exec en el backend. */
+  close(): void
+}
+
+// ---------------------------------------------------------------- Pull
+export type LayerPhase = 'waiting' | 'downloading' | 'downloaded' | 'extracting' | 'complete'
+export interface PullLayer { id: string; phase: LayerPhase; total: number; done: number }
+export type PullFeed =
+  | { type: 'started'; reference: string }
+  | { type: 'progress'; layers: PullLayer[]; done_bytes: number; total_bytes: number }
+  | { type: 'ended'; outcome: 'done' | 'error'; up_to_date: boolean; digest: string | null; error: ApiError | null }
+/** Estado de una descarga en el store (por referencia; sobrevive a la navegación). */
+export interface PullOp {
+  reference: string
+  state: 'pulling' | 'done' | 'error' | 'canceled'
+  layers: PullLayer[]
+  doneBytes: number
+  totalBytes: number
+  upToDate: boolean
+  digest: string | null
+  error: ApiError | null
+}
+
+// ---------------------------------------------------------------- Crear contenedor / volumen / red
+export type Restart = 'no' | 'always' | 'unless-stopped' | 'on-failure'
+export interface CreatePort { host_ip: string | null; host_port: number | null; container_port: number; protocol: 'tcp' | 'udp' }
+export interface CreateVolumeMount { source: string; target: string; read_only: boolean }
+export interface CreateContainerSpec {
+  image: string
+  name: string | null
+  ports: CreatePort[]
+  volumes: CreateVolumeMount[]
+  env: { key: string; value: string }[]
+  network: string | null
+  restart: Restart
+  restart_max_retries: number | null
+  command: string | null
+  labels: Record<string, string>
+}
+export interface FieldError { field: string; message: string }
+export type CreateWarning =
+  | { type: 'sensitive_bind'; source: string; reason: string }
+  | { type: 'docker_socket' }
+  | { type: 'host_network' }
+  | { type: 'port_in_use'; port: number; by: string }
+  | { type: 'published_all_interfaces'; port: number }
+/** `plan_create_container`. `decision` distinto de allow exige el ticket en `create_container`. */
+export interface CreatePlan {
+  ok: boolean
+  field_errors: FieldError[]
+  warnings: CreateWarning[]
+  decision: PlanDecision
+  ticket: string | null
+  expires_in_secs: number
+  normalized: CreateContainerSpec
+}
+export interface CreateResult { id: string; name: string; started: boolean; warnings: string[]; start_error: ApiError | null }
+export interface CreateVolumeSpec { name: string; labels: Record<string, string> }
+export interface CreateNetworkSpec { name: string; internal: boolean; subnet: string | null; gateway: string | null; labels: Record<string, string> }
+
 export interface ConnSpec { kind: 'ssh' | 'tls'; name: string; host: string; port: string; user: string; key: string }
 
 // ---------------------------------------------------------------- Sistema (espejo de engine-core/src/system.rs)

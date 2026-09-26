@@ -1,23 +1,27 @@
-// ADAPTADOR TAURI: implementa EngineApi contra los comandos IPC del backend (PLAN_backend §4.3).
-// Todo lo que el backend aún no expone (exec, pull, create, stacks, connections) se delega en el
-// adaptador simulado con `mutateWorld:false` (no inserta datos falsos en listas reales).
-//
-// RECONCILIADO con el backend implementado (backend/app/src/commands.rs, command_names.rs y engine-core):
-//  - 19 comandos: connection_status, reconnect, list_containers{all}, inspect_container{id}, list_images, list_volumes,
-//    list_networks, start/stop/restart_container{id}, plan_action{request}, execute_action{ticket,typed}, cancel_action{ticket},
-//    container_stats_snapshot{ids}, subscribe_engine_events{onEvent}, subscribe_logs{id,tail,follow,onEvent}, subscribe_stats{id,onEvent},
-//    unsubscribe{subscriptionId}, reset_subscriptions. Args camelCase (Tauri v2).
-//  - container_stats_snapshot{ids} (máx. 64): una muestra por contenedor SIN suscripciones (CPU% correcto).
-//  - Errores: ApiError{code,message,cause}; un String antiguo se normaliza a code:'internal'.
+// ADAPTADOR TAURI: implementa EngineApi contra los 40 comandos IPC del backend. Solo `connections` (perfiles remotos, Ola 2) se delega en el
+// adaptador simulado con `mutateWorld:false` (no inserta datos falsos en listas reales). Args camelCase (Tauri v2); errores = ApiError{code,message,cause}
+// (un String antiguo se normaliza a code:'internal').
+//  Conexión/motor:  connection_status, reconnect, system_usage, gpu_status, reset_subscriptions, unsubscribe
+//  Contenedores:    list_containers{all}, inspect_container{id}, start_container/stop_container/restart_container{id}, container_stats_snapshot{ids} (máx. 64)
+//  Recursos:        list_images, list_volumes, list_networks, create_volume{spec}, create_network{spec}
+//  Política:        plan_action{request}, execute_action{ticket,typed}, cancel_action{ticket}
+//  Streams:         subscribe_engine_events{onEvent}, subscribe_logs{id,tail,follow,onEvent}, subscribe_stats{id,onEvent}
+//  Crear:           plan_create_container{spec}, create_container{spec,start,ticket}
+//  Pull:            subscribe_pull{reference,onEvent}
+//  Terminal:        subscribe_exec{id,cols,rows,onEvent}, exec_write{subscriptionId,data}, exec_resize{subscriptionId,cols,rows}, exec_close{subscriptionId}
+//  Stacks:          compose_info{recheck?}, list_stacks, stack_read{name}, stack_save{name,yaml,env,expectedRevision}, stack_validate{name,yaml,env},
+//                   stack_create{name,yaml,env}, stack_link{path}, stack_unlink{name}, run_stack_op{name,op,onEvent}, cancel_stack_op{subscriptionId}
 import { invoke } from '@tauri-apps/api/core'
 import type { EngineApi } from '../../api'
 import { toApiError } from '../../errors'
 import type {
-  ActionOutcome, ActionPlan, ConnectionProfile, ConnectionStatus, Container, ContainerDetail, ContainerStats, EngineFeed, Image,
-  GpuInfo, LogFeed, Network, StatsFeed, StatsSnapshotItem, SystemUsage, Volume,
+  ActionOutcome, ActionPlan, ComposeInfo, ConnectionProfile, ConnectionStatus, Container, ContainerDetail, ContainerStats, CreatePlan, CreateResult,
+  EngineFeed, GpuInfo, Image, LogFeed, Network, PullFeed, StackFiles, StackOpFeed, StackSummary, StackValidation, StatsFeed, StatsSnapshotItem,
+  SystemUsage, Volume,
 } from '../../types'
 import { createSimApi } from '../sim'
-import { subscribe } from './streams'
+import { openExec } from './exec'
+import { subscribe, subscribeHandle } from './streams'
 
 async function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   try {
@@ -44,7 +48,7 @@ export function createTauriApi(): EngineApi {
     mode: 'tauri',
     capabilities: {
       connection: 'live', containers: 'live', images: 'live', volumes: 'live', networks: 'live', actions: 'live', events: 'live', logs: 'live', stats: 'live', inspect: 'live', system: 'live',
-      exec: 'simulated', pull: 'simulated', create: 'simulated', stacks: 'simulated', connections: 'simulated',
+      exec: 'live', pull: 'live', create: 'live', stacks: 'live', connections: 'simulated',
     },
     connection: {
       async status() {
@@ -91,6 +95,8 @@ export function createTauriApi(): EngineApi {
         subscribe<StatsFeed>('subscribe_stats', { id }, (f) => {
           if (f.type === 'sample') on(f.stats as ContainerStats)
         }),
+      planCreate: (spec) => call<CreatePlan>('plan_create_container', { spec }),
+      create: (spec, start, ticket) => call<CreateResult>('create_container', { spec, start, ticket }),
     },
     system: {
       usage: () => call<SystemUsage>('system_usage'),
@@ -104,9 +110,13 @@ export function createTauriApi(): EngineApi {
         }
       },
     },
-    images: { list: () => call<Image[]>('list_images') },
-    volumes: { list: () => call<Volume[]>('list_volumes') },
-    networks: { list: () => call<Network[]>('list_networks') },
+    images: {
+      list: () => call<Image[]>('list_images'),
+      pull: (reference, on) =>
+        subscribe<PullFeed>('subscribe_pull', { reference }, on, (error) => on({ type: 'ended', outcome: 'error', up_to_date: false, digest: null, error })),
+    },
+    volumes: { list: () => call<Volume[]>('list_volumes'), create: (spec) => call<Volume>('create_volume', { spec }) },
+    networks: { list: () => call<Network[]>('list_networks'), create: (spec) => call<Network>('create_network', { spec }) },
     actions: {
       plan: (request) => call<ActionPlan>('plan_action', { request }),
       execute: (ticket, typed) => call<ActionOutcome>('execute_action', { ticket, typed: typed ?? null }),
@@ -116,10 +126,26 @@ export function createTauriApi(): EngineApi {
       subscribe: (on) =>
         subscribe<EngineFeed>('subscribe_engine_events', {}, on, () => on({ type: 'ended', reason: 'error' })),
     },
-    exec: sim.exec,
-    pull: sim.pull,
-    create: sim.create,
-    stacks: sim.stacks,
+    exec: { open: (containerId, o) => openExec(containerId, o) },
+    stacks: {
+      composeInfo: (recheck) => call<ComposeInfo>('compose_info', recheck ? { recheck: true } : undefined),
+      list: () => call<StackSummary[]>('list_stacks'),
+      runOp(name, op, on) {
+        const h = subscribeHandle<StackOpFeed>('run_stack_op', { name, op }, on, (error) =>
+          on({ type: 'ended', outcome: 'failed', exit_code: null, error, issues: [] }))
+        return {
+          // Cancelación limpia: SIGTERM al subproceso y `ended: canceled`. El id puede llegar tarde.
+          cancel: () => { void h.id().then((id) => { if (id) return invoke('cancel_stack_op', { subscriptionId: id }) }).catch(() => {}) },
+          dispose: h.unsubscribe,
+        }
+      },
+      read: (name) => call<StackFiles>('stack_read', { name }),
+      save: (name, f) => call<StackFiles>('stack_save', { name, yaml: f.yaml, env: f.env, expectedRevision: f.expectedRevision }),
+      validate: (name, yaml, env) => call<StackValidation>('stack_validate', { name, yaml, env }),
+      create: (name, yaml, env) => call<StackSummary>('stack_create', { name, yaml, env }),
+      link: (path) => call<StackSummary>('stack_link', { path }),
+      unlink: (name) => call<void>('stack_unlink', { name }),
+    },
     connections: sim.connections,
   }
 }
