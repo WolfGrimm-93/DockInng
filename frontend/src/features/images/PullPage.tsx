@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button'
 import { useCapability, useEngineApi, useEngineStore, useEngineStoreApi, usePull } from '@/data/store/hooks'
 import type { ApiError, PullLayer, PullOp } from '@/data/types'
 import { formatBytesPrecise } from '@/lib/format'
-import { hasExplicitTag, validateImageRef } from '@/lib/imageRef'
+import { hasExplicitTag, registryOf, validateImageRef } from '@/lib/imageRef'
 import { pullErrorText } from '@/lib/resourceNames'
 import { useViewGate } from '../common/gate'
 import { LinkButton } from '../common/LinkButton'
@@ -112,7 +112,7 @@ export default function PullPage() {
         <div className="sr-only" role="status" aria-live="polite">{announce}</div>
         {op?.state === 'canceled' ? <AlertBox kind="info" icon="info" title="Descarga cancelada" text="Las capas ya descargadas se conservan en caché: si vuelves a descargar, se reanuda desde ahí." /> : null}
         {op?.state === 'error' ? (
-          <AlertBox kind="error" icon="alert" title={`No se pudo descargar ${safeText(target, { singleLine: true })}`} text={safeText(errText)} actions={<Button variant="secondary" size="sm" locked={gate.locked} onClick={start}><Icon name="refresh" size="sm" />Reintentar</Button>} />
+          <AlertBox kind="error" icon="alert" title={`No se pudo descargar ${safeText(target, { singleLine: true })}`} text={safeText(errText)} actions={<><Button variant="secondary" size="sm" locked={gate.locked} onClick={start}><Icon name="refresh" size="sm" />Reintentar</Button>{op.error?.code === 'auth_required' ? <LinkButton variant="primary" size="sm" href={route.href('settings', { tab: 'registries', registry: registryOf(target) })}><Icon name="lock" size="sm" />Añadir credenciales del registro</LinkButton> : null}</>} />
         ) : null}
         {op?.state === 'done' ? (
           <AlertBox

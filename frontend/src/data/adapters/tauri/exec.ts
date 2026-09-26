@@ -15,18 +15,37 @@ export function b64ToBytes(b64: string): Uint8Array {
   return out
 }
 
-/** Emisor que reproduce lo emitido antes de que alguien se suscriba (la sesión empieza a recibir antes de que la UI enganche xterm). */
-class Replay<T> {
+/** Tope de lo que se retiene antes de que alguien se suscriba (bytes de salida de la terminal). Evita crecer sin límite si la UI no engancha. */
+export const REPLAY_MAX_BYTES = 2 * 1024 * 1024
+const REPLAY_MAX_ITEMS = 64
+
+/**
+ * Emisor que reproduce lo emitido antes de que alguien se suscriba (la sesión empieza a recibir antes de que la UI enganche xterm).
+ * El búfer tiene TOPE (por «peso» de cada valor y por número de elementos): al superarlo se descarta lo más antiguo.
+ */
+export class Replay<T> {
   private buf: T[] = []
+  private weight = 0
   private subs = new Set<(v: T) => void>()
+  private readonly maxWeight: number
+  private readonly weigh: (v: T) => number
+  constructor(maxWeight = REPLAY_MAX_ITEMS, weigh: (v: T) => number = () => 1) {
+    this.maxWeight = maxWeight
+    this.weigh = weigh
+  }
   emit(v: T) {
-    if (this.subs.size === 0) this.buf.push(v)
-    else for (const s of this.subs) s(v)
+    if (this.subs.size === 0) {
+      this.buf.push(v)
+      this.weight += this.weigh(v)
+      // Siempre se conserva al menos el último valor, aunque solo él supere el tope.
+      while (this.weight > this.maxWeight && this.buf.length > 1) this.weight -= this.weigh(this.buf.shift() as T)
+    } else for (const s of this.subs) s(v)
   }
   on(cb: (v: T) => void): Unsubscribe {
     this.subs.add(cb)
     const pending = this.buf
     this.buf = []
+    this.weight = 0
     for (const v of pending) cb(v)
     return () => { this.subs.delete(cb) }
   }
@@ -54,7 +73,7 @@ const sleepMs = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
 export async function openExec(containerId: string, o: ExecOptions): Promise<ExecSession> {
   const opened = new Replay<ExecInfo>()
-  const output = new Replay<Uint8Array>()
+  const output = new Replay<Uint8Array>(REPLAY_MAX_BYTES, (b) => b.length)
   const exited = new Replay<ExecExit>()
   const channel = new Channel<ExecFeed>()
   channel.onmessage = (f) => {

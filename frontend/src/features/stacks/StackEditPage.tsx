@@ -31,6 +31,7 @@ const FILE_LABEL: Record<FileId, string> = { yaml: 'compose.yaml', env: '.env' }
 const RISK_TEXT: Record<StackRisk['type'], string> = {
   privileged: 'usa contenedores privilegiados (privileged)', host_network: 'usa la red del equipo (network_mode: host)', docker_sock: 'monta docker.sock (control total de Docker)',
   sensitive_bind: 'monta rutas sensibles del equipo', pid_host: 'comparte los procesos del equipo (pid: host)', cap_add_sys_admin: 'añade la capacidad SYS_ADMIN',
+  remote_bind: 'usa rutas relativas que el equipo REMOTO resolverá en su propio disco',
 }
 
 export default function StackEditPage() {
@@ -60,6 +61,7 @@ function Editor({ name, broken, run, startFile }: { name: string; broken: boolea
   const { available, recheck } = useStacks()
   const op = useStackOp(name)
   const connected = useEngineStore((s) => s.connection.status === 'connected')
+  const remoteName = useEngineStore((s) => s.profiles.find((p) => p.id === s.activeProfileId && p.remote)?.name ?? null)
 
   const [files, setFiles] = useState<StackFiles | null>(null)
   const [loadError, setLoadError] = useState<ApiError | null>(null)
@@ -206,8 +208,12 @@ function Editor({ name, broken, run, startFile }: { name: string; broken: boolea
             actions={<><Button variant="secondary" size="sm" onClick={() => void reloadFromDisk()}><Icon name="refresh" size="sm" />Recargar desde disco</Button><Button variant="outline-destructive" size="sm" onClick={() => void overwrite()}>Sobrescribir</Button></>} />
         ) : null}
         {loaded && !files.editable ? <AlertBox kind="info" icon="lock" title="Solo lectura" text="Solo lectura: fue descubierto por sus etiquetas de Compose; vincula su archivo para editarlo." actions={<LinkButton variant="secondary" size="sm" href={route.href('stacks')}><Icon name="file" size="sm" />Ir a Stacks para vincularlo</LinkButton>} /> : null}
-        {val.risks.length ? (
-          <AlertBox kind="warn" icon="warn" title="Este stack tiene configuración de riesgo" text={`El archivo ${val.risks.map((r) => (r.type === 'sensitive_bind' && r.path ? `monta ${safeText(r.path, { singleLine: true })}` : RISK_TEXT[r.type])).join('; ')}. Revísalo antes de levantarlo.`} />
+        {val.risks.some((r) => r.type === 'remote_bind') ? (
+          <AlertBox kind="warn" icon="server" title={`Conexión remota: rutas relativas${remoteName ? ` (${safeText(remoteName, { singleLine: true })})` : ''}`}
+            text={`Compose lee este archivo en tu equipo y resuelve ${val.risks.filter((r) => r.type === 'remote_bind').map((r) => `«${safeText(r.path ?? '', { singleLine: true })}»`).join(', ')} a una ruta absoluta LOCAL, pero el servidor remoto la interpretará en su propio disco: puede no existir o apuntar a otros datos. Usa rutas absolutas del servidor o volúmenes con nombre.`} />
+        ) : null}
+        {val.risks.some((r) => r.type !== 'remote_bind') ? (
+          <AlertBox kind="warn" icon="warn" title="Este stack tiene configuración de riesgo" text={`El archivo ${val.risks.filter((r) => r.type !== 'remote_bind').map((r) => (r.type === 'sensitive_bind' && r.path ? `monta ${safeText(r.path, { singleLine: true })}` : RISK_TEXT[r.type])).join('; ')}. Revísalo antes de levantarlo.`} />
         ) : null}
         <div className="toolbar" style={{ paddingBottom: 0 }}>
           <Segmented<FileId> ariaLabel="Archivo" value={file} onChange={setFile} options={[{ value: 'yaml', label: <>compose.yaml{dot(dirty.yaml)}</> }, { value: 'env', label: <>.env{dot(dirty.env)}</> }]} />

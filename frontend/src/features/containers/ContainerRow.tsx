@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Tooltip } from '@/components/ui/tooltip'
 import { containerName } from '@/data/store/engineStore'
-import { useRowOps, useStats } from '@/data/store/hooks'
+import { useRowOps, useStats, useStatsStale } from '@/data/store/hooks'
 import type { Container } from '@/data/types'
 import { statusTextEs } from '@/lib/format'
 import { isOn } from '../common/containerUtils'
@@ -38,6 +38,7 @@ function ContainerRowImpl({ c, selected, locked, href, index, measure, groupHue,
   const image = safeText(c.image, { singleLine: true })
   const op = useRowOps(c.id)
   const stats = useStats(c.id)
+  const stale = useStatsStale()
   const on = isOn(c.state)
   const busy = op.busy
   const portList = useMemo(() => portEntries(c.ports), [c.ports])
@@ -87,8 +88,8 @@ function ContainerRowImpl({ c, selected, locked, href, index, measure, groupHue,
           </Button>
         </Tooltip>
       </td>
-      <td className="num col-cpu">{c.state === 'running' && stats ? `${stats.cpu_percent.toFixed(1)}%` : '—'}</td>
-      <td className="num col-mem">
+      <td className={`num col-cpu${stale ? ' is-stale' : ''}`} title={stale ? 'Dato anterior: midiendo de nuevo…' : undefined}>{c.state === 'running' && stats ? `${stats.cpu_percent.toFixed(1)}%` : '—'}</td>
+      <td className={`num col-mem${stale ? ' is-stale' : ''}`}>
         {stats && memMib ? (
           <>
             <span className="bar" aria-hidden="true"><i style={{ width: `${memPct}%` }} /></span>

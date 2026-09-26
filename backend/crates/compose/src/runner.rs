@@ -84,7 +84,15 @@ pub(crate) struct Core {
     pub json_progress: AtomicBool,
     pub declared_cache: Mutex<DeclaredCache>,
     pub store: crate::files::StackStore,
+    /// ¿El daemon es remoto? (X3: los bind mounts se resuelven en el FS remoto). Se lee en
+    /// cada análisis porque el destino puede cambiar en caliente.
+    pub remote_source: Mutex<Option<Arc<dyn Fn() -> bool + Send + Sync>>>,
+    /// Variables extra por lanzamiento (TLS: `DOCKER_TLS_VERIFY`, `DOCKER_CERT_PATH`).
+    pub extra_env_source: Mutex<Option<ExtraEnvSource>>,
 }
+
+/// Origen de variables de entorno extra para los subprocesos.
+pub type ExtraEnvSource = Arc<dyn Fn() -> Vec<(String, String)> + Send + Sync>;
 
 /// Ejecutor de Compose (barato de clonar).
 #[derive(Clone)]
@@ -150,6 +158,8 @@ impl ComposeRunner {
                 json_progress: AtomicBool::new(true),
                 declared_cache: Mutex::new(std::collections::HashMap::new()),
                 store,
+                remote_source: Mutex::new(None),
+                extra_env_source: Mutex::new(None),
             }),
         }
     }
@@ -162,6 +172,21 @@ impl ComposeRunner {
         (self.core.endpoint)()
     }
 
+    /// Indica si el daemon actual es remoto (aditivo: por defecto siempre local).
+    pub fn set_remote_source(&self, f: Arc<dyn Fn() -> bool + Send + Sync>) {
+        *lock(&self.core.remote_source) = Some(f);
+    }
+
+    /// Variables extra para cada subproceso (aditivo; p. ej. TLS de un daemon remoto).
+    pub fn set_extra_env_source(&self, f: ExtraEnvSource) {
+        *lock(&self.core.extra_env_source) = Some(f);
+    }
+
+    /// ¿El daemon es remoto ahora mismo?
+    pub fn is_remote(&self) -> bool {
+        self.core.is_remote()
+    }
+
     /// Fija el entorno de origen (tests); por defecto se usa el del proceso.
     pub fn set_env_source(&self, vars: Vec<(std::ffi::OsString, std::ffi::OsString)>) {
         *lock(&self.core.env_source) = Some(vars);
@@ -169,13 +194,26 @@ impl ComposeRunner {
 }
 
 impl Core {
+    pub(crate) fn is_remote(&self) -> bool {
+        let f = lock(&self.remote_source).clone();
+        f.is_some_and(|f| f())
+    }
+
     fn child_env(&self) -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
         let src = lock(&self.env_source).clone();
         let host = (self.endpoint)();
-        match src {
+        let mut env = match src {
             Some(v) => build_env(v, host.as_deref()),
             None => build_env(std::env::vars_os(), host.as_deref()),
+        };
+        // Las variables extra del destino (TLS) mandan sobre las heredadas del proceso; y con
+        // un destino sin TLS se descartan las heredadas para no desviar la conexión.
+        let extra = lock(&self.extra_env_source).clone().map(|f| f());
+        if let Some(extra) = extra {
+            env.retain(|(k, _)| k != "DOCKER_TLS_VERIFY" && k != "DOCKER_CERT_PATH");
+            env.extend(extra.into_iter().map(|(k, v)| (k.into(), v.into())));
         }
+        env
     }
 
     /// Ejecuta un comando de lectura acotado (tiempo y tamaño).
@@ -836,5 +874,84 @@ pub(crate) fn project_of(r: &ResolvedStack) -> ProjectSpec {
 impl engine_core::StackOpRun for PreparedOp {
     async fn run(self: Box<Self>, sink: StackSink, cancel: CancelSignal) {
         (*self).execute(sink, cancel).await;
+    }
+}
+
+#[cfg(test)]
+mod tests_remote {
+    use std::ffi::OsString;
+
+    use super::*;
+
+    fn runner() -> ComposeRunner {
+        ComposeRunner::with_parts(
+            Some("tcp://127.0.0.1:2376".into()),
+            Arc::new(TokioSpawn),
+            Limits::default(),
+            crate::files::StackStore::unavailable(),
+        )
+    }
+
+    fn get(env: &[(OsString, OsString)], k: &str) -> Option<String> {
+        env.iter()
+            .find(|(n, _)| n == k)
+            .map(|(_, v)| v.to_string_lossy().into_owned())
+    }
+
+    fn inherited() -> Vec<(OsString, OsString)> {
+        vec![
+            ("PATH".into(), "/usr/bin".into()),
+            ("DOCKER_TLS_VERIFY".into(), "0".into()),
+            ("DOCKER_CERT_PATH".into(), "/heredado".into()),
+        ]
+    }
+
+    #[test]
+    fn remoto_es_falso_por_defecto_y_sigue_a_su_fuente() {
+        let r = runner();
+        assert!(!r.is_remote());
+        let flag = Arc::new(AtomicBool::new(false));
+        let f = flag.clone();
+        r.set_remote_source(Arc::new(move || {
+            f.load(std::sync::atomic::Ordering::Relaxed)
+        }));
+        assert!(!r.is_remote());
+        flag.store(true, std::sync::atomic::Ordering::Relaxed);
+        assert!(r.is_remote());
+    }
+
+    #[test]
+    fn el_entorno_extra_manda_sobre_el_heredado() {
+        let r = runner();
+        r.set_env_source(inherited());
+        // Sin fuente extra: se conserva lo heredado (comportamiento previo).
+        let env = r.core.child_env();
+        assert_eq!(get(&env, "DOCKER_TLS_VERIFY").as_deref(), Some("0"));
+        assert_eq!(
+            get(&env, "DOCKER_HOST").as_deref(),
+            Some("tcp://127.0.0.1:2376")
+        );
+        // Con TLS del destino: mandan las del destino.
+        r.set_extra_env_source(Arc::new(|| {
+            vec![
+                ("DOCKER_TLS_VERIFY".into(), "1".into()),
+                ("DOCKER_CERT_PATH".into(), "/run/dockinng/certs/x".into()),
+            ]
+        }));
+        let env = r.core.child_env();
+        assert_eq!(get(&env, "DOCKER_TLS_VERIFY").as_deref(), Some("1"));
+        assert_eq!(
+            get(&env, "DOCKER_CERT_PATH").as_deref(),
+            Some("/run/dockinng/certs/x")
+        );
+        assert_eq!(
+            env.iter().filter(|(k, _)| k == "DOCKER_TLS_VERIFY").count(),
+            1
+        );
+        // Destino sin TLS (fuente vacía): las heredadas no deben desviar la conexión.
+        r.set_extra_env_source(Arc::new(Vec::new));
+        let env = r.core.child_env();
+        assert_eq!(get(&env, "DOCKER_TLS_VERIFY"), None);
+        assert_eq!(get(&env, "DOCKER_CERT_PATH"), None);
     }
 }

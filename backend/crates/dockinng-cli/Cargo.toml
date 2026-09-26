@@ -12,5 +12,21 @@ path = "src/main.rs"
 [dependencies]
 engine-core = { path = "../engine-core" }
 engine-docker = { path = "../engine-docker" }
-clap = { version = "4", features = ["derive"] }
-tokio.workspace = true
+clap.workspace = true
+clap_complete.workspace = true
+tokio = { workspace = true, features = ["signal", "io-std", "io-util", "process"] }
+compose = { path = "../compose" }
+builder = { path = "../builder" }
+store = { path = "../store" }
+transport = { path = "../transport" }
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+libc.workspace = true
+futures-util.workspace = true
+
+[dev-dependencies]
+uuid.workspace = true
+compose = { path = "../compose" }
+engine-core = { path = "../engine-core", features = ["testing"] }
+tokio = { workspace = true, features = ["test-util", "rt-multi-thread", "process"] }

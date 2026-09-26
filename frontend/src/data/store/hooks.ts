@@ -7,7 +7,7 @@
 //   useStats(id): ContainerStats | undefined          · useRowOps(id): RowOp
 //   useNavCounts(): Record<string, string|number>     · useCapability(f): 'live'|'simulated'
 //   useIsSimulatedWorld(): boolean (true en navegador: todo el mundo es de ejemplo)
-import { useContext, useMemo } from 'react'
+import { useContext, useEffect, useMemo } from 'react'
 import { useStore } from 'zustand'
 import type { EngineApi, Capability, Feature } from '../api'
 import { EngineContext } from '../EngineProvider'
@@ -97,6 +97,13 @@ export const useSystemUsage = (): SystemUsage | null => useEngineStore((s) => s.
 /** GPU del equipo (vacío = sin GPU detectada). */
 export const useGpu = (): GpuInfo[] => useEngineStore((s) => s.gpu)
 const NO_OP: RowOp = {}
+/** Declara que la vista consume stats/GPU/disco: mientras esté montada se muestrea (sin consumidores el store no pide nada al motor). */
+export function useStatsConsumer(): void {
+  const store = useEngineStoreApi()
+  useEffect(() => store.getState().retainStats(), [store])
+}
+/** Las muestras mostradas son antiguas (se vuelve a consumir tras un rato sin hacerlo). */
+export const useStatsStale = (): boolean => useEngineStore((s) => s.statsStale)
 export const useRowOps = (id: string): RowOp => useEngineStore((s) => s.rowOps[id] ?? NO_OP)
 
 export function useNavCounts(): Record<string, string | number> {

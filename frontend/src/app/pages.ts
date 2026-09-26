@@ -15,4 +15,6 @@ export const PAGES: Record<RouteId, ComponentType> = {
   'stack-edit': lazy(() => import('@/features/stacks/StackEditPage')),
   settings: lazy(() => import('@/features/settings/SettingsPage')),
   'conn-new': lazy(() => import('@/features/settings/ConnNewPage')),
+  build: lazy(() => import('@/features/images/BuildPage')),
+  cleanup: lazy(() => import('@/features/cleanup/CleanupPage')),
 }

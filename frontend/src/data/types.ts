@@ -113,16 +113,19 @@ export interface Network {
 
 // ---------------------------------------------------------------- Conexión
 export interface EngineInfo { version: string; api_version: string; os: string; arch: string }
-export type ConnectionCause = 'socket_missing' | 'permission_denied' | 'daemon_down' | 'other'
+export type ConnectionCause =
+  | 'socket_missing' | 'permission_denied' | 'daemon_down' | 'other'
+  // Ola 2 (conexiones remotas SSH/TLS).
+  | 'host_key_unknown' | 'host_key_changed' | 'auth_failed' | 'unreachable' | 'remote_docker_missing' | 'tls_invalid'
 export type StepStatus = 'ok' | 'fail' | 'skipped'
 export type DiagStepId = 'socket' | 'permissions' | 'daemon'
 export interface DiagStepRaw { id: DiagStepId; status: StepStatus; detail: string }
 /** Respuesta de `connection_status` / `reconnect` (nunca es un error IPC). */
 export type ConnectionStatus =
   | { state: 'connected'; endpoint: string; server: EngineInfo }
-  | { state: 'failed'; endpoint: string; cause: ConnectionCause; message: string; steps: DiagStepRaw[] }
+  | { state: 'failed'; endpoint: string; cause: ConnectionCause; message: string; steps: DiagStepRaw[]; quiesced?: boolean }
 
-/** Perfil de conexión (solo «Local» es real; el resto es simulado en esta ronda). */
+/** Perfil de conexión. Ola 2: «Local» y las conexiones guardadas (`connection_list`) son reales; en el navegador (mundo simulado) son de ejemplo (`simulated:true`). */
 export interface ConnectionProfile {
   id: string
   name: string
@@ -132,6 +135,8 @@ export interface ConnectionProfile {
   remote: boolean
   version: string // "Docker 27.3.1 · API 1.47" ('' si desconocida)
   simulated: boolean
+  /** Huella SHA256 de la clave de host aceptada (solo SSH). */
+  host_key_fp?: string | null
   /** Solo perfiles simulados: si «Conectar» falla a propósito (staging-lab). */
   failsToConnect?: boolean
 }
@@ -180,7 +185,11 @@ export type ApiErrorCode =
   // Ola 1 (contrato canónico del backend): Compose, imágenes y exec.
   | 'compose_missing' | 'compose_failed' | 'invalid_compose' | 'image_missing' | 'auth_required' | 'registry_unreachable' | 'no_shell'
 /** `cause` siempre viaja (null salvo code = 'connection'). */
-export interface ApiError { code: ApiErrorCode; message: string; cause?: ConnectionCause | null }
+export interface ApiError {
+  code: ApiErrorCode; message: string; cause?: ConnectionCause | null
+  /** `connection_select` fallido: solo aparece como `true` cuando el backend YA abortó suscripciones, terminales y tickets antes de fallar (la UI debe reabrir sus streams). Ausente = no se tocó nada. */
+  quiesced?: boolean
+}
 
 // ---------------------------------------------------------------- Política: plan -> ticket -> ejecutar
 /** Verificado contra backend/crates/engine-core/src/actions.rs (`#[serde(tag="type")]`, campos en línea). */
@@ -195,6 +204,8 @@ export type ActionRequest =
   /** Borra los archivos de un stack propio (irreversible: contiene .env). Confirmación escrita con el nombre. */
   | { type: 'stack_delete'; name: string }
   | { type: 'prune_system' }
+  /** Limpieza guiada (Ola 2): SIEMPRE por elemento (nunca `prune`). Con volúmenes exige confirmación escrita (ELIMINAR). */
+  | { type: 'cleanup'; selection: CleanupSelection }
 
 export type DenyReason = 'forbidden' | 'needs_confirmation_non_interactive'
 /** Verificado contra actions.rs: `{"type":"confirm_typed","expected":"x"}` y `{"type":"deny","reason":..}`. */
@@ -214,6 +225,8 @@ export type PlanWarning =
   | { type: 'volumes_kept'; items: string[] }
   | { type: 'bind_mounts_kept'; items: string[] }
   | { type: 'in_use'; count: number }
+  /** Plan de `cleanup`: elementos omitidos porque ya no existen o pasaron a estar en uso (el plan sale con el resto). */
+  | { type: 'skipped'; items: string[] }
 export interface ActionPlan {
   decision: PlanDecision
   ticket: string | null // UUID v7; null si allow o deny
@@ -257,8 +270,8 @@ export interface StackFiles { name: string; origin: StackOrigin; yaml: string; e
 export type ValidationKind = 'syntax' | 'schema' | 'interpolation' | 'other'
 export interface ValidationIssue { line: number | null; column: number | null; kind: ValidationKind; message: string }
 /** Riesgos informativos del YAML (banner, no bloquean). `path` solo en sensitive_bind. */
-export type StackRiskType = 'privileged' | 'host_network' | 'docker_sock' | 'sensitive_bind' | 'pid_host' | 'cap_add_sys_admin'
-export interface StackRisk { type: StackRiskType; path?: string }
+export type StackRiskType = 'privileged' | 'host_network' | 'docker_sock' | 'sensitive_bind' | 'pid_host' | 'cap_add_sys_admin' | 'remote_bind'
+export interface StackRisk { type: StackRiskType; path?: string }  // remote_bind: `path` = ruta LOCAL ya resuelta que el daemon remoto interpretaría en su propio disco
 export interface StackValidation { ok: boolean; issues: ValidationIssue[]; services: string[]; risks: StackRisk[] }
 export type StackOpKind = 'up' | 'restart' | 'stop' | 'start' | 'pull'
 export interface StackOpRequest { type: StackOpKind; services?: string[] }
@@ -351,6 +364,8 @@ export type CreateWarning =
   | { type: 'host_network' }
   | { type: 'port_in_use'; port: number; by: string }
   | { type: 'published_all_interfaces'; port: number }
+  /** Ola 2: la conexión activa es remota; este bind se resuelve en el equipo REMOTO. */
+  | { type: 'remote_bind'; source: string }
 /** `plan_create_container`. `decision` distinto de allow exige el ticket en `create_container`. */
 export interface CreatePlan {
   ok: boolean
@@ -365,7 +380,96 @@ export interface CreateResult { id: string; name: string; started: boolean; warn
 export interface CreateVolumeSpec { name: string; labels: Record<string, string> }
 export interface CreateNetworkSpec { name: string; internal: boolean; subnet: string | null; gateway: string | null; labels: Record<string, string> }
 
-export interface ConnSpec { kind: 'ssh' | 'tls'; name: string; host: string; port: string; user: string; key: string }
+// ---------------------------------------------------------------- Conexiones remotas (Ola 2). Espejo de engine-core/src/connections.rs (serde snake_case).
+export type SshIdentity = { type: 'agent' } | { type: 'file'; path: string }
+/** SSH: solo RUTAS de llave (nunca su contenido). `mode:'alias'` = `host` es un alias de ~/.ssh/config. */
+export interface SshConnSpec { kind: 'ssh'; name: string; host: string; port: number; user: string; mode: 'explicit' | 'alias'; identity: SshIdentity }
+/** TLS mutuo: 3 rutas a PEM. No existe opción «insecure». */
+export interface TlsConnSpec { kind: 'tls'; name: string; host: string; port: number; ca_path: string; cert_path: string; key_path: string }
+export type ConnSpec = SshConnSpec | TlsConnSpec
+export type HostKeyState = 'unknown' | 'trusted' | 'changed'
+/** `connection_probe_host_key`. Con `state:'changed'` `fingerprint_sha256` es la NUEVA; `known_fingerprint_sha256` (solo simulado, el backend no lo envía) sería la guardada. */
+export interface HostKeyProbe { key_type: string; fingerprint_sha256: string; state: HostKeyState; known_fingerprint_sha256?: string | null }
+/** `connection_test`: nunca es un error IPC por fallo de conexión; el motivo va en `cause`/`error`. */
+export interface ConnTestResult { ok: boolean; server?: EngineInfo | null; error?: ApiError | null; cause?: ConnectionCause | null }
+
+// ---------------------------------------------------------------- Registries (Ola 2). El secreto entra UNA vez (`registry_save`) y no vuelve a salir.
+export interface RegistrySummary { id: string; server: string; username: string }
+/** El comando `registry_test` devuelve `()` o un ApiError: el adaptador Tauri lo convierte en `{ok, error?}` (nunca lanza por credenciales inválidas). */
+export interface RegistryTestResult { ok: boolean; error?: ApiError | null }
+
+// ---------------------------------------------------------------- Grupos persistentes (Ola 2, `groups_*`)
+export interface StoredGroup { id: string; name: string; hue: number }
+export interface GroupAssignment { connection_id: string; container_name: string; group_id: string }
+export interface GroupsSnapshot { groups: StoredGroup[]; assignments: GroupAssignment[]; stack_hues: Record<string, number>; legacy_imported: boolean }
+/** `#[serde(tag="type")]` (engine-core/connections.rs `GroupOp`). `create_group` NO lleva id: lo genera el backend (UUID v7) y llega en el snapshot. */
+export type GroupOp =
+  | { type: 'create_group'; name: string; hue: number | null }
+  | { type: 'rename_group'; id: string; name: string }
+  | { type: 'set_group_hue'; id: string; hue: number }
+  | { type: 'delete_group'; id: string }
+  | { type: 'assign'; connection_id: string; names: string[]; group_id: string | null }
+  | { type: 'set_stack_hue'; project: string; hue: number | null }
+/** Carga útil de `groups_import_legacy` = lo que produce `loadGroups()` de `dockinng.groups.v1`. */
+export interface LegacyGroupsPayload { v: 1; groups: StoredGroup[]; assign: Record<string, string>; stackHue: Record<string, number> }
+/** `LegacyImportReport` de engine-core: con `already_imported:true` no se escribió nada. */
+export interface GroupsImportResult { already_imported: boolean; imported_groups: number; imported_assignments: number; dropped_assignments: number; snapshot: GroupsSnapshot }
+/** Claves permitidas de `prefs_get/prefs_set` (lista blanca validada también en Rust). */
+export type PrefKey = 'polling' | 'last_connection_id'
+
+// ---------------------------------------------------------------- Builds de imagen (Ola 2, `build_plan` / `subscribe_build`)
+export interface BuildSpec {
+  context_dir: string
+  dockerfile: string | null
+  tag: string | null
+  build_args: [string, string][]
+  target: string | null
+  no_cache: boolean
+  pull: boolean
+}
+/** `BuildWarning` de engine-core (etiquetado por `type`); un tipo futuro desconocido se muestra con su nombre. */
+export type BuildWarning =
+  | { type: 'sensitive_context'; path: string }
+  | { type: 'secret_like_arg'; name: string }
+  | { type: string; [k: string]: unknown }
+export interface BuildPlan { warnings: BuildWarning[]; decision: PlanDecision; ticket: string | null; expires_in_secs?: number }
+export type BuildOutcome = 'ok' | 'failed' | 'canceled'
+export type BuildFeed =
+  | { type: 'line'; text: string; stream?: 'stdout' | 'stderr' }
+  | { type: 'lines'; lines: { text: string; stream?: 'stdout' | 'stderr' }[] }
+  | { type: 'step'; n: number; total: number }
+  | { type: 'ended'; outcome: BuildOutcome; image_id: string | null; error: ApiError | null }
+/** Estado de la construcción en la página. */
+export interface BuildRun {
+  state: 'running' | 'done' | 'error' | 'canceled'
+  step: { n: number; total: number } | null
+  lines: { text: string; stream: 'stdout' | 'stderr' }[]
+  imageId: string | null
+  error: ApiError | null
+}
+
+// ---------------------------------------------------------------- Limpieza guiada (Ola 2, `cleanup_report`). Solo lectura.
+export type CleanupCategoryId = 'stopped_containers' | 'dangling_images' | 'unused_images' | 'unused_volumes' | 'unused_networks' | 'build_cache'
+/** exact = tamaño exacto · upper_bound = cota superior (capas compartidas) · unknown = no se sabe. */
+export type CleanupEstimate = 'exact' | 'upper_bound' | 'unknown'
+export type CleanupRisk = 'low' | 'medium' | 'high'
+export interface CleanupItem {
+  kind: AffectedKind
+  id: string
+  name: string
+  size_bytes: number | null
+  estimate: CleanupEstimate
+  reason: string
+  risk: CleanupRisk
+  selected_by_default: boolean
+}
+export interface CleanupCategory { id: CleanupCategoryId; items: CleanupItem[]; reclaimable_bytes: number | null; executable: boolean }
+/** `defaults_truncated`: había más de 500 recomendados y solo los primeros 500 vienen marcados por defecto (tope de 500 por limpieza). */
+export interface CleanupReport { defaults_truncated?: boolean; categories: CleanupCategory[]; total_reclaimable_bytes: number | null; unknown_count: number; generated_at: string }
+export interface CleanupSelection { containers: string[]; images: string[]; volumes: string[]; networks: string[] }
+
+// ---------------------------------------------------------------- Podman (Ola 2, solo detección)
+export interface PodmanCandidate { path: string; rootless: boolean; source: string }
 
 // ---------------------------------------------------------------- Sistema (espejo de engine-core/src/system.rs)
 /** CPU y memoria del equipo donde corre el motor. */

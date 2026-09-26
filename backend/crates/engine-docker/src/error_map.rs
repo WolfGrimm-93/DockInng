@@ -36,8 +36,48 @@ fn find_io<'a>(e: &'a (dyn StdError + 'static)) -> Option<&'a io::Error> {
     None
 }
 
+/// Texto completo de un error y de toda su cadena `source()`.
+fn chain_text(e: &(dyn StdError + 'static)) -> String {
+    let mut out = e.to_string();
+    let mut cur = e.source();
+    while let Some(err) = cur {
+        out.push_str(": ");
+        out.push_str(&err.to_string());
+        cur = err.source();
+    }
+    out
+}
+
+/// ¿El texto describe un fallo de TLS/certificados? (Se detecta por texto porque rustls
+/// llega envuelto en `io::Error` con `kind` genérico.)
+pub fn is_tls_error_text(text: &str) -> bool {
+    let t = text.to_ascii_lowercase();
+    [
+        "certificate",
+        "handshake",
+        "unknownissuer",
+        "received fatal alert",
+        "close_notify",
+        "tls ",
+        "rustls",
+    ]
+    .iter()
+    .any(|n| t.contains(n))
+}
+
 /// Error de transporte (sin respuesta HTTP del daemon).
 fn transport(e: &BollardError) -> EngineError {
+    // Un fallo de TLS tiene causa propia (con mensaje guiado) aunque el errno sea genérico.
+    let text = chain_text(e);
+    if is_tls_error_text(&text) {
+        let detail: String = text.chars().filter(|c| !c.is_control()).take(160).collect();
+        return EngineError::Connection {
+            cause: ConnectionCause::TlsInvalid,
+            message: format!(
+                "falló la conexión TLS: revisa la CA, el certificado de cliente y que el nombre del servidor esté en su certificado ({detail})"
+            ),
+        };
+    }
     let (cause, detail) = match e {
         BollardError::IOError { err } => (cause_from_io(err), err.to_string()),
         other => match find_io(other) {
@@ -99,6 +139,17 @@ pub fn from_status(status: u16, message: &str) -> EngineError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn detecta_texto_de_tls() {
+        assert!(is_tls_error_text("invalid peer certificate: UnknownIssuer"));
+        assert!(is_tls_error_text("received fatal alert: BadCertificate"));
+        assert!(is_tls_error_text(
+            "peer closed connection without sending TLS close_notify"
+        ));
+        assert!(!is_tls_error_text("Connection refused (os error 111)"));
+        assert!(!is_tls_error_text("No such file or directory"));
+    }
 
     #[test]
     fn http_a_dominio() {

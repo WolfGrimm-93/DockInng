@@ -1,18 +1,21 @@
 //! Descarga de imágenes con progreso, sobre bollard.
 //!
-//! - Sin credenciales: las imágenes privadas fallan con `auth_required` hasta que exista la
-//!   gestión de registros.
+//! - Sin credenciales las imágenes privadas fallan con `auth_required`; con un registro
+//!   guardado (`pull_image_with_auth`) las credenciales viajan solo en la cabecera
+//!   `X-Registry-Auth` de esa petición y nunca se registran.
 //! - Soltar el stream aborta la descarga en el daemon (verificado contra un registro local).
 //! - Los errores llegan como HTTP 4xx/5xx ANTES del stream o como `DockerStreamError`
 //!   dentro; ambos pasan por el mismo clasificador.
 
 use std::time::Duration;
 
+use async_trait::async_trait;
+use bollard::auth::DockerCredentials;
 use bollard::errors::Error as BollardError;
 use bollard::models::CreateImageInfo;
 use bollard::query_parameters::CreateImageOptionsBuilder;
 use engine_core::pull::{classify_pull_error, split_reference, validate_reference};
-use engine_core::{EngineError, EngineStream, PullEngine, PullEvent};
+use engine_core::{EngineError, EngineStream, PullEngine, PullEvent, RegistryAuth};
 use futures_util::{StreamExt, stream};
 
 use crate::{DockerEngine, error_map};
@@ -57,27 +60,56 @@ pub(crate) fn convert_error(e: &BollardError) -> EngineError {
     }
 }
 
+/// Credenciales de bollard a partir de las del dominio.
+fn credentials_of(auth: &RegistryAuth) -> DockerCredentials {
+    DockerCredentials {
+        username: Some(auth.username.clone()),
+        password: Some(auth.secret.expose().to_string()),
+        serveraddress: Some(auth.server.clone()),
+        ..Default::default()
+    }
+}
+
+#[async_trait]
 impl PullEngine for DockerEngine {
     fn pull_image(&self, reference: &str) -> EngineStream<PullEvent> {
+        self.pull_stream(reference, None)
+    }
+
+    fn pull_image_with_auth(
+        &self,
+        reference: &str,
+        auth: Option<RegistryAuth>,
+    ) -> EngineStream<PullEvent> {
+        self.pull_stream(reference, auth)
+    }
+
+    async fn check_registry_auth(&self, auth: &RegistryAuth) -> Result<(), EngineError> {
+        crate::registry::check_auth(self, auth).await
+    }
+}
+
+impl DockerEngine {
+    fn pull_stream(&self, reference: &str, auth: Option<RegistryAuth>) -> EngineStream<PullEvent> {
         let this = self.clone();
         let reference = reference.to_string();
         Box::pin(
             stream::once(async move {
                 validate_reference(&reference)?;
-                Ok((this.client().await?, reference))
+                Ok((this.client().await?, reference, auth))
             })
             .flat_map(|setup: Result<_, EngineError>| match setup {
                 Err(e) => stream::once(async move { Err(e) }).boxed(),
-                Ok((d, reference)) => {
+                Ok((d, reference, auth)) => {
                     let (image, tag) = split_reference(&reference);
                     let mut opts = CreateImageOptionsBuilder::default().from_image(&image);
                     if let Some(t) = &tag {
                         opts = opts.tag(t);
                     }
-                    // Sin credenciales (`None`): la gestión de registros llega después.
+                    let credentials = auth.as_ref().map(credentials_of);
                     let inner = d
                         .with_timeout(HEADERS_TIMEOUT)
-                        .create_image(Some(opts.build()), None, None)
+                        .create_image(Some(opts.build()), None, credentials)
                         .boxed();
                     stream::unfold((inner, false), |(mut s, done)| async move {
                         if done {

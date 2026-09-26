@@ -1,16 +1,17 @@
 // INTERFAZ ÚNICA DE ACCESO A DATOS. La UI solo conoce `EngineApi` (nunca `invoke` ni Docker).
-// Hay dos adaptadores: `adapters/tauri` (real; solo `connections` sigue simulado hasta la Ola 2) y `adapters/sim` (mundo simulado completo en memoria, para el navegador/Vite y los tests).
+// Hay dos adaptadores: `adapters/tauri` (real, todo conectado desde la Ola 2) y `adapters/sim` (mundo simulado completo en memoria, para el navegador/Vite y los tests).
 // Selección: `createEngineApi()` (isTauri()). Firma de cada método = comando IPC de PLAN_backend §4.3.
 import type {
-  ActionOutcome, ActionPlan, ActionRequest, ComposeInfo, ConnSpec, ConnectionProfile, ConnectionStatus, Container,
-  ContainerDetail, ContainerStats, CreateContainerSpec, CreateNetworkSpec, CreatePlan, CreateResult, CreateVolumeSpec, EngineFeed,
-  ExecOptions, ExecSession, GpuInfo, Image, LogFeed, Network, PullFeed, StackFiles, StackOpFeed, StackOpRequest, StackSummary,
-  StackValidation, StatsSnapshotItem, SystemUsage, Unsubscribe, Volume,
+  ActionOutcome, ActionPlan, ActionRequest, BuildFeed, BuildPlan, BuildSpec, CleanupReport, ComposeInfo, ConnSpec, ConnTestResult,
+  ConnectionProfile, ConnectionStatus, Container, ContainerDetail, ContainerStats, CreateContainerSpec, CreateNetworkSpec, CreatePlan,
+  CreateResult, CreateVolumeSpec, EngineFeed, ExecOptions, ExecSession, GpuInfo, GroupOp, GroupsImportResult, GroupsSnapshot, HostKeyProbe,
+  Image, LegacyGroupsPayload, LogFeed, Network, PodmanCandidate, PrefKey, PullFeed, RegistrySummary, RegistryTestResult, StackFiles,
+  StackOpFeed, StackOpRequest, StackSummary, StackValidation, StatsSnapshotItem, SystemUsage, Unsubscribe, Volume,
 } from './types'
 
 export type Feature =
   | 'connection' | 'containers' | 'images' | 'volumes' | 'networks' | 'actions' | 'events' | 'logs' | 'stats' | 'inspect' | 'system'
-  | 'exec' | 'pull' | 'create' | 'stacks' | 'connections'
+  | 'exec' | 'pull' | 'create' | 'stacks' | 'connections' | 'store' | 'registries' | 'build' | 'cleanup'
 /** 'simulated' => la UI muestra <SimulatedTag/> «No conectado aún». */
 export type Capability = 'live' | 'simulated'
 
@@ -23,10 +24,8 @@ export interface EngineApi {
     status(): Promise<ConnectionStatus>
     /** `reconnect`. */
     reconnect(): Promise<ConnectionStatus>
-    profiles(): Promise<ConnectionProfile[]>
+    /** Id de la conexión activa (síncrono; arranca siempre en 'local'). */
     activeId(): string
-    /** Cambia de conexión activa. En modo tauri solo «local» es real: las demás se simulan (D6: solo toast). */
-    select(id: string): Promise<ConnectionStatus>
   }
   containers: {
     list(all?: boolean): Promise<Container[]>
@@ -46,9 +45,20 @@ export interface EngineApi {
     create(spec: CreateContainerSpec, start: boolean, ticket: string | null): Promise<CreateResult>
   }
   /** Franja de consumo: `usage` = `system_usage` (CPU/RAM del equipo + disco de Docker); `gpu` = `gpu_status` (nunca lanza: sin GPU => []). */
-  system: { usage(): Promise<SystemUsage>; gpu(): Promise<GpuInfo[]> }
+  system: {
+    usage(): Promise<SystemUsage>
+    gpu(): Promise<GpuInfo[]>
+    /** `cleanup_report`: informe de SOLO LECTURA de lo recuperable (sin ticket). `minAgeDays` filtra imágenes sin usar recientes. */
+    cleanupReport(o: { minAgeDays: number }): Promise<CleanupReport>
+    /** `podman_detect`: sockets de Podman candidatos (solo detección; no ejecuta `podman`). */
+    podmanDetect(): Promise<PodmanCandidate[]>
+  }
   images: {
     list(): Promise<Image[]>
+    /** `build_plan`: valida el contexto y emite ticket si hace falta confirmar. Nunca construye. */
+    planBuild(spec: BuildSpec): Promise<BuildPlan>
+    /** `subscribe_build`. Cancelar = el `Unsubscribe` (el backend termina el build y emite `ended: canceled` si aún hay canal). */
+    build(spec: BuildSpec, ticket: string | null, on: (f: BuildFeed) => void): Unsubscribe
     /** `subscribe_pull`. Cancelar = el `Unsubscribe` (aborta la descarga en el daemon; no hay `ended` tras un abort). */
     pull(reference: string, on: (f: PullFeed) => void): Unsubscribe
   }
@@ -86,5 +96,39 @@ export interface EngineApi {
     unlink(name: string): Promise<void>
   }
   // `stack_down` y `stack_delete` NO están aquí: pasan por actions.plan -> execute (confirmación escrita).
-  connections: { test(spec: ConnSpec): Promise<'ok' | 'fail'>; save(spec: ConnSpec): Promise<ConnectionProfile> }
+  /** Conexiones guardadas y contexto activo (Ola 2). */
+  connections: {
+    /** `connection_list`: siempre incluye «local» (primero). */
+    list(): Promise<ConnectionProfile[]>
+    /** `connection_probe_host_key`: escanea la clave de host SIN conectar y dice si es desconocida/confiable/cambiada. */
+    probeHostKey(spec: ConnSpec): Promise<HostKeyProbe>
+    /** `connection_trust_host_key`: escribe la huella SOLO si sigue coincidiendo con la que vio el usuario. */
+    trustHostKey(spec: ConnSpec, fingerprint: string): Promise<HostKeyProbe>
+    /** `connection_test`: nunca lanza por fallos de conexión (van en el resultado). */
+    test(spec: ConnSpec): Promise<ConnTestResult>
+    /** `connection_save {spec, id?}`: sin `id` CREA (nombre repetido = conflict); con `id` EDITA esa conexión (la activa no se puede editar). */
+    save(spec: ConnSpec, id?: string): Promise<ConnectionProfile>
+    /** `connection_delete`: `confirmed` solo tras el ConfirmDialog (el backend exige decide==Allow). */
+    remove(id: string, confirmed: boolean): Promise<void>
+    /** `connection_select`: cambia el motor activo. Al fallar, el motor queda en el destino previo (lanza; no cambia `activeId`). */
+    select(id: string): Promise<ConnectionStatus>
+  }
+  /** Registries con credenciales (llavero del sistema). El secreto entra por `save` y NUNCA sale. */
+  registries: {
+    list(): Promise<RegistrySummary[]>
+    save(input: { server: string; username: string; secret: string }): Promise<RegistrySummary>
+    remove(id: string, confirmed: boolean): Promise<void>
+    test(id: string): Promise<RegistryTestResult>
+  }
+  /** Grupos, asignaciones y color de stacks persistentes en el almacén del backend. */
+  groups: {
+    load(): Promise<GroupsSnapshot>
+    mutate(op: GroupOp): Promise<GroupsSnapshot>
+    importLegacy(payload: LegacyGroupsPayload): Promise<GroupsImportResult>
+  }
+  /** Preferencias (lista blanca de claves). `get` devuelve `null` si nunca se guardó. */
+  prefs: {
+    get(key: PrefKey): Promise<unknown>
+    set(key: PrefKey, value: unknown): Promise<void>
+  }
 }

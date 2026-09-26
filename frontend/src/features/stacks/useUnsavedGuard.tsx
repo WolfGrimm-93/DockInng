@@ -6,7 +6,7 @@ import { useEffect, useRef } from 'react'
 import { registerNavBlocker } from '@/app/navGuard'
 import { useConfirm } from '@/components/shared/ConfirmDialog'
 
-export function useUnsavedGuard(dirty: boolean, opts: { onSave?: () => Promise<boolean>; title?: string; description?: string } = {}): void {
+export function useUnsavedGuard(dirty: boolean, opts: { onSave?: () => Promise<boolean>; title?: string; description?: string; okLabel?: string; cancelLabel?: string; note?: string } = {}): void {
   const confirm = useConfirm()
   const dirtyRef = useRef(dirty)
   const o = useRef(opts)
@@ -18,14 +18,16 @@ export function useUnsavedGuard(dirty: boolean, opts: { onSave?: () => Promise<b
     window.addEventListener('beforeunload', onBefore)
     const off = registerNavBlocker(async () => {
       if (!dirtyRef.current) return true
-      const r = await confirm({
-        level: 'confirm',
+      const base = {
+        level: 'confirm' as const,
         title: o.current.title ?? 'Hay cambios sin guardar',
         description: o.current.description ?? 'Si sales ahora, se perderán los cambios de compose.yaml y .env.',
-        levelNote: <>Puedes guardar antes de salir o seguir editando.</>,
-        okLabel: 'Descartar cambios', okIcon: 'x', cancelLabel: 'Seguir editando',
-        alt: { label: 'Guardar y salir', icon: 'check' },
-      })
+        levelNote: <>{o.current.note ?? 'Puedes guardar antes de salir o seguir editando.'}</>,
+        okLabel: o.current.okLabel ?? 'Descartar cambios', okIcon: 'x' as const, cancelLabel: o.current.cancelLabel ?? 'Seguir editando',
+      }
+      // Sin `onSave` (p. ej. una construcción en curso) solo hay dos opciones: salir o quedarse.
+      if (!o.current.onSave) return await confirm(base)
+      const r = await confirm({ ...base, alt: { label: 'Guardar y salir', icon: 'check' } })
       if (r === 'alt') return (await o.current.onSave?.()) ?? false // sin onSave, «Guardar y salir» no sale
       return r === 'ok'
     })

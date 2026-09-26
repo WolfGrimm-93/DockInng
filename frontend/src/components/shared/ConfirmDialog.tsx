@@ -19,6 +19,7 @@ import { policyDenied, toast } from '@/lib/toastStore'
 import { Icon } from './Icon'
 import type { IconName } from './iconNames'
 import { LevelNote } from './LevelNote'
+import { SafeName } from './SafeName'
 import { describePlan, type PlanDescription } from './planDescribe'
 
 export interface ConfirmRequest {
@@ -183,6 +184,16 @@ function useCtx(): ConfirmApi {
 export const useConfirm = (): ConfirmApi['confirm'] => useCtx().confirm
 export const useBlockedDialog = (): ConfirmApi['blocked'] => useCtx().blocked
 
+/** Aviso de que la acción se ejecutará en un equipo REMOTO (no en el local). */
+export function RemoteNote({ name, target }: { name: string; target: string }) {
+  return (
+    <div className="dlg-warn dlg-remote" role="note">
+      <Icon name="server" size="sm" />
+      <span>Conexión remota: <b><SafeName>{name}</SafeName></b> <span className="muted">({safeText(target, { singleLine: true })})</span>. Esta acción se ejecuta en ese equipo, no en el tuyo.</span>
+    </div>
+  )
+}
+
 export type GuardedResult =
   | { status: 'done'; plan: ActionPlan; outcome: ActionOutcome }
   | { status: 'allowed'; plan: ActionPlan }
@@ -194,7 +205,7 @@ export type GuardedDescribe = (plan: ActionPlan) => PlanDescription
 
 const LABEL: Record<ActionRequest['type'], string> = {
   remove_containers: 'Eliminar contenedores', remove_image: 'Eliminar imagen', prune_images: 'Eliminar imágenes sin usar', remove_volume: 'Eliminar volumen',
-  prune_volumes: 'Eliminar volúmenes sin usar', remove_network: 'Eliminar red', stack_down: 'Bajar stack', stack_delete: 'Eliminar stack', prune_system: 'Limpiar todo el sistema',
+  prune_volumes: 'Eliminar volúmenes sin usar', remove_network: 'Eliminar red', stack_down: 'Bajar stack', stack_delete: 'Eliminar stack', prune_system: 'Limpiar todo el sistema', cleanup: 'Limpiar recursos sin usar',
 }
 
 /**
@@ -229,9 +240,14 @@ export function useGuardedAction(): (request: ActionRequest, describe?: GuardedD
       }
       if (decision.type === 'allow' || !plan.ticket) return { status: 'allowed', plan }
       const d = (describe ?? ((p: ActionPlan) => describePlan(p, request)))(plan)
+      // Conexión remota activa: el diálogo la nombra SIEMPRE (evita borrar en el servidor equivocado creyendo que es el equipo local).
+      const st = storeApi.getState()
+      const active = st.profiles.find((p) => p.id === st.activeProfileId)
+      // B-6: borrar los archivos de un stack propio es LOCAL (no se ejecuta en el equipo remoto): no lleva el aviso.
+      const description = active?.remote && request.type !== 'stack_delete' ? <><RemoteNote name={active.name} target={active.target} />{d.description}</> : d.description
       const ok = await confirm({
         level: decision.type === 'confirm_typed' ? 'confirm_typed' : 'confirm',
-        title: d.title, description: d.description, extra: d.extra, levelNote: d.levelNote, okLabel: d.okLabel, okIcon: d.okIcon,
+        title: d.title, description, extra: d.extra, levelNote: d.levelNote, okLabel: d.okLabel, okIcon: d.okIcon,
         typed: decision.type === 'confirm_typed' ? decision.expected : undefined,
       })
       if (!ok) {

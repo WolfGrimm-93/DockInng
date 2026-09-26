@@ -35,6 +35,7 @@ export const statusPermission: ConnectionStatus = {
 export const requests: ActionRequest[] = [
   { type: 'remove_containers', ids: [ID] }, { type: 'remove_image', reference: 'nginx:1.27-alpine' }, { type: 'prune_images' },
   { type: 'remove_volume', name: 'datos' }, { type: 'prune_volumes' }, { type: 'remove_network', id: 'x' }, { type: 'stack_down', project: 'tienda' }, { type: 'prune_system' },
+  { type: 'cleanup', selection: { containers: [ID], images: [], volumes: [], networks: [] } },
 ]
 export const planConfirm: ActionPlan = {
   decision: { type: 'confirm' }, ticket: '01935f00-0000-7000-8000-000000000001', expires_in_secs: 120,
@@ -161,3 +162,44 @@ export const createPlanBad: CreatePlan = {
   ok: false, field_errors: [{ field: 'volumes[0].source', message: 'usa una ruta absoluta' }], normalized: createSpec, ticket: null, expires_in_secs: 120, decision: { type: 'allow' }, warnings: [],
 }
 export const createResult: CreateResult = { id: 'f'.repeat(64), name: 'dockinng-test-c1', started: false, warnings: [], start_error: { code: 'conflict', message: 'port is already allocated', cause: null } }
+
+// ---------------------------------------------------------------- Ola 2 (forma serde descrita en DISEÑO Ola 2 §G)
+import type {
+  BuildFeed, BuildPlan, BuildSpec, CleanupReport, ConnSpec, ConnTestResult, ConnectionProfile, GroupsImportResult, GroupsSnapshot, HostKeyProbe, PodmanCandidate, RegistrySummary,
+} from '../../types'
+
+export const sshSpec: ConnSpec = { kind: 'ssh', name: 'prod', host: '203.0.113.10', port: 22, user: 'deploy', mode: 'explicit', identity: { type: 'agent' } }
+export const sshSpecFile: ConnSpec = { kind: 'ssh', name: 'lab', host: 'lab', port: 2222, user: '', mode: 'alias', identity: { type: 'file', path: '/home/u/.ssh/id_ed25519' } }
+export const tlsSpec: ConnSpec = { kind: 'tls', name: 'ci', host: '10.0.0.5', port: 2376, ca_path: '/home/u/.docker/ca.pem', cert_path: '/home/u/.docker/cert.pem', key_path: '/home/u/.docker/key.pem' }
+export const probeUnknown: HostKeyProbe = { key_type: 'ssh-ed25519', fingerprint_sha256: 'SHA256:nThbg6kXUpJWGl7E1IGOCspRomTxdCARLviKw6E5SY8', state: 'unknown' }
+export const probeChanged: HostKeyProbe = { key_type: 'ssh-ed25519', fingerprint_sha256: 'SHA256:zzzz', state: 'changed', known_fingerprint_sha256: 'SHA256:nThbg6kXUpJWGl7E1IGOCspRomTxdCARLviKw6E5SY8' }
+export const testOk: ConnTestResult = { ok: true, server: { version: '26.1.4', api_version: '1.45', os: 'linux', arch: 'x86_64' }, error: null, cause: null }
+export const testFail: ConnTestResult = { ok: false, error: { code: 'connection', message: 'Permission denied (publickey).', cause: 'auth_failed' }, cause: 'auth_failed' }
+/** Forma REAL de `connection_list`/`connection_save` (engine-core `ConnectionProfile`: spec aplanado, sin target/icono/versión). */
+export const profileSshRaw = { id: '01935f00-0000-7000-8000-0000000000aa', kind: 'ssh', name: 'prod', host: '203.0.113.10', port: 22, user: 'deploy', mode: 'explicit', identity: { type: 'agent' }, remote: true, host_key_fp: probeUnknown.fingerprint_sha256, simulated: false }
+export const profileTlsRaw = { id: '01935f00-0000-7000-8000-0000000000ab', kind: 'tls', name: 'ci', host: '10.0.0.5', port: 2376, ca_path: '/c/ca.pem', cert_path: '/c/cert.pem', key_path: '/c/key.pem', remote: true, host_key_fp: null, simulated: false }
+export const profileSsh: ConnectionProfile = { id: '01935f00-0000-7000-8000-0000000000aa', name: 'prod', target: 'ssh://deploy@203.0.113.10', kind: 'ssh', icon: 'server', remote: true, version: '', simulated: false, host_key_fp: probeUnknown.fingerprint_sha256 }
+export const importReport: GroupsImportResult = { already_imported: false, imported_groups: 1, imported_assignments: 1, dropped_assignments: 0, snapshot: groupsSnapshotEarly() }
+function groupsSnapshotEarly(): GroupsSnapshot { return { groups: [], assignments: [], stack_hues: {}, legacy_imported: true } }
+export const registry: RegistrySummary = { id: '01935f00-0000-7000-8000-0000000000bb', server: 'ghcr.io', username: 'casaluna' }
+export const groupsSnapshot: GroupsSnapshot = {
+  groups: [{ id: '01935f00-0000-7000-8000-0000000000cc', name: 'Trabajo', hue: 200 }],
+  assignments: [{ connection_id: 'local', container_name: 'tienda-api-1', group_id: '01935f00-0000-7000-8000-0000000000cc' }],
+  stack_hues: { tienda: 140 }, legacy_imported: true,
+}
+export const buildSpec: BuildSpec = { context_dir: '/home/u/app', dockerfile: null, tag: 'app:1', build_args: [['NODE_ENV', 'production']], target: null, no_cache: false, pull: false }
+export const buildPlanAllow: BuildPlan = { warnings: [], decision: { type: 'allow' }, ticket: null }
+export const buildPlanSensitive: BuildPlan = { warnings: [{ type: 'sensitive_context', path: '/home/u' }, { type: 'secret_like_arg', name: 'API_TOKEN' }], decision: { type: 'confirm' }, ticket: '01935f00-0000-7000-8000-0000000000dd' }
+export const buildFeeds: BuildFeed[] = [
+  { type: 'line', text: 'Step 1/3 : FROM alpine', stream: 'stdout' }, { type: 'step', n: 1, total: 3 },
+  { type: 'ended', outcome: 'ok', image_id: 'sha256:' + 'e'.repeat(64), error: null },
+]
+export const cleanupReport: CleanupReport = {
+  categories: [
+    { id: 'stopped_containers', executable: true, reclaimable_bytes: 1000, items: [{ kind: 'container', id: 'c1', name: 'viejo', size_bytes: 1000, estimate: 'exact', reason: 'Detenido', risk: 'low', selected_by_default: true }] },
+    { id: 'unused_volumes', executable: true, reclaimable_bytes: null, items: [{ kind: 'volume', id: 'v1', name: 'datos', size_bytes: null, estimate: 'unknown', reason: 'Sin contenedores', risk: 'high', selected_by_default: false }] },
+    { id: 'build_cache', executable: false, reclaimable_bytes: 5000, items: [] },
+  ],
+  total_reclaimable_bytes: 1000, unknown_count: 1, generated_at: '2026-09-26T10:00:00Z',
+}
+export const podman: PodmanCandidate[] = [{ path: '/run/user/1000/podman/podman.sock', rootless: true, source: 'xdg_runtime_dir' }]

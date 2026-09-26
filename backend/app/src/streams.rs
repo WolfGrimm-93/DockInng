@@ -43,6 +43,8 @@ pub const MAX_EXEC_STREAMS: usize = 4;
 pub const MAX_PULL_STREAMS: usize = 2;
 /// Operaciones de stack simultáneas por ventana.
 pub const MAX_STACK_OPS: usize = 3;
+/// Construcciones de imagen simultáneas por ventana (además, `BuildService` admite una global).
+pub const MAX_BUILD_STREAMS: usize = 1;
 
 /// Destino de los mensajes. `false` = el destino ya no existe: la tarea debe terminar.
 pub trait Sink<T>: Send + Sync + 'static {
@@ -438,6 +440,8 @@ pub enum StreamKind {
     Pull,
     /// Operación de stack (compose).
     StackOp,
+    /// Construcción de imagen (`docker build`).
+    Build,
 }
 
 struct Entry {
@@ -454,6 +458,16 @@ pub struct StreamRegistry {
     inner: Mutex<HashMap<String, Entry>>,
     /// Época de carga de página por ventana (sube en cada carga/recarga del webview).
     epochs: Mutex<HashMap<String, u64>>,
+    /// Activo mientras dura un cambio de conexión: no se admiten streams nuevos.
+    paused: std::sync::atomic::AtomicBool,
+}
+
+/// Error (reintentable) de los comandos que llegan durante un cambio de conexión.
+pub fn switching_error() -> ApiError {
+    ApiError::new(
+        ApiErrorCode::Conflict,
+        "cambio de conexión en curso: reintenta en un momento",
+    )
 }
 
 /// Al terminar la tarea (por cualquier vía) se quita del registro.
@@ -499,6 +513,17 @@ impl StreamRegistry {
         self.lock().len()
     }
 
+    /// Pausa/reanuda el registro de streams nuevos (durante un cambio de conexión, para que
+    /// ninguna suscripción se ate al motor del contexto que se abandona).
+    pub fn set_paused(&self, paused: bool) {
+        self.paused
+            .store(paused, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    pub fn is_paused(&self) -> bool {
+        self.paused.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
     /// Lanza `body` como tarea supervisada. Si termina en pánico llama a `on_panic`.
     /// Debe llamarse dentro de un runtime tokio (los comandos async de Tauri lo están).
     pub fn spawn<F>(
@@ -511,6 +536,9 @@ impl StreamRegistry {
     where
         F: Future<Output = ()> + Send + 'static,
     {
+        if self.is_paused() {
+            return Err(switching_error());
+        }
         let mut map = self.lock();
         match kind {
             // Un solo stream de eventos por ventana: el nuevo reemplaza al viejo.
@@ -527,18 +555,21 @@ impl StreamRegistry {
             | StreamKind::Stats
             | StreamKind::Exec
             | StreamKind::Pull
-            | StreamKind::StackOp => {
+            | StreamKind::StackOp
+            | StreamKind::Build => {
                 let max = match kind {
                     StreamKind::Logs => MAX_LOG_STREAMS,
                     StreamKind::Stats => MAX_STATS_STREAMS,
                     StreamKind::Exec => MAX_EXEC_STREAMS,
                     StreamKind::Pull => MAX_PULL_STREAMS,
+                    StreamKind::Build => MAX_BUILD_STREAMS,
                     _ => MAX_STACK_OPS,
                 };
                 let what = match kind {
                     StreamKind::Exec => "terminales abiertas",
                     StreamKind::Pull => "descargas simultáneas",
                     StreamKind::StackOp => "operaciones de stack simultáneas",
+                    StreamKind::Build => "construcciones simultáneas",
                     _ => "suscripciones abiertas",
                 };
                 let n = map

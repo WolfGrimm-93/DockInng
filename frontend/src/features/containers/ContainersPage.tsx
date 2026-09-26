@@ -1,7 +1,7 @@
 // Vista «Contenedores»: tabla virtualizada (filas de altura fija) con búsqueda, filtro por estado, agrupación por stack,
 // selección múltiple + barra masiva, acciones por fila con estado en curso/error y eliminación por el flujo de política.
 // Datos REALES (Docker vía la capa de datos): lista, iniciar/detener/reiniciar, eventos en vivo, CPU/memoria.
-import { useCallback, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { memo, useCallback, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { devFlagsEnabled, getDevFlags, usePreviewState } from '@/app/devFlags'
 import { useHashRoute } from '@/app/useHashRoute'
 import { describePlan } from '@/components/shared/planDescribe'
@@ -17,8 +17,8 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { apiErrorMessage } from '@/data/errors'
 import { containerName } from '@/data/store/engineStore'
-import { useAllStats, useConnection, useContainers, useEngineApi, useEngineStoreApi, useNetworks, useSystemUsage, useVolumes } from '@/data/store/hooks'
-import type { Container } from '@/data/types'
+import { useAllStats, useConnection, useContainers, useEngineApi, useEngineStoreApi, useNetworks, useStatsConsumer, useSystemUsage, useVolumes } from '@/data/store/hooks'
+import type { Container, Volume } from '@/data/types'
 import { safeText } from '@/lib/safeText'
 import { toast } from '@/lib/toastStore'
 import { isOn, isStoppedState, matchesContainer, type StateFilter } from '../common/containerUtils'
@@ -44,6 +44,21 @@ type Item =
   | { type: 'group'; key: string; kind: 'stack' | 'custom'; label: string; count: number; running: number; nets: string[]; hue: number }
   | { type: 'row'; c: Container; hue?: number }
 
+/** Chips de consumo de una cabecera de grupo. Memoizado: solo se repinta si cambian sus miembros/volúmenes o las muestras/el disco. */
+const GroupUsage = memo(function GroupUsage({ members, volumes }: { members: Container[] | undefined; volumes: Volume[] }) {
+  const stats = useAllStats()
+  const system = useSystemUsage()
+  const u = useMemo(() => (members ? { sum: sumConsumption(members, stats), disk: groupDiskBytes(members, volumes, system?.container_disk ?? [], !!system?.disk_known) } : null), [members, stats, volumes, system])
+  if (!u) return null
+  return (
+    <span className="group-usage">
+      {u.sum.sampled > 0 ? <span className="usage-chip mono" title="CPU de los contenedores en marcha de este stack (100 % = 1 núcleo)">CPU {u.sum.cpu.toFixed(1)} %</span> : null}
+      {u.sum.sampled > 0 ? <span className="usage-chip usage-ram mono" title="Memoria de los contenedores en marcha de este grupo">RAM {formatBytesPrecise(u.sum.memBytes)}</span> : null}
+      {u.disk != null ? <span className="usage-chip usage-disk mono" title="Disco aproximado: capas de escritura + volúmenes de sus contenedores (no incluye las imágenes)">Disco ≈ {formatBytesSI(u.disk)}</span> : null}
+    </span>
+  )
+})
+
 export default function ContainersPage() {
   const { list, status, counts, error } = useContainers()
   const api = useEngineApi()
@@ -53,12 +68,11 @@ export default function ContainersPage() {
   const gate = useViewGate(COLS, 8)
   const { list: volumes } = useVolumes()
   const { list: networks } = useNetworks()
-  const allStats = useAllStats()
+  useStatsConsumer()
   const profileId = useConnection().profile.id
   const customGroups = useGroupsStore((s) => s.groups)
   const assigned = useGroupsStore((s) => s.assign)
   const stackHueOverride = useGroupsStore((s) => s.stackHue)
-  const system = useSystemUsage()
   // Tamaño de los volúmenes montados en el diálogo de eliminar: solo si el motor lo conoce (nunca se inventa).
   const volumeSize = useCallback((n: string) => { const v = volumes.find((x) => x.name === n); return v?.size_bytes != null ? formatBytes(v.size_bytes) : undefined }, [volumes])
   const preview = usePreviewState()
@@ -105,12 +119,13 @@ export default function ContainersPage() {
     const project = key.slice(2)
     return { kind: 'stack', label: project, hue: stackHueOverride[project] ?? stackAuto.get(project) ?? 175 }
   }, [customGroups, stackHueOverride, stackAuto])
-  // Consumo de cada grupo (sobre TODOS sus contenedores, no solo los filtrados): CPU/RAM de los en marcha y disco aproximado.
-  const groupUse = useMemo(() => {
+  // Miembros de cada grupo (sobre TODOS sus contenedores, no solo los filtrados). El consumo (CPU/RAM/disco) lo calcula <GroupUsage/> con sus
+  // propias suscripciones: así las muestras nuevas no repintan la página ni la tabla virtualizada.
+  const groupMembers = useMemo(() => {
     const by = new Map<string, Container[]>()
     for (const c of list) { const k = groupKeyOf(c); if (k) by.set(k, [...(by.get(k) ?? []), c]) }
-    return new Map([...by].map(([k, cs]) => [k, { sum: sumConsumption(cs, allStats), disk: groupDiskBytes(cs, volumes, system?.container_disk ?? [], !!system?.disk_known) }]))
-  }, [list, groupKeyOf, allStats, volumes, system])
+    return by
+  }, [list, groupKeyOf])
   // Los que están en marcha primero (orden estable: dentro de cada mitad se conserva el orden del motor).
   const ordered = useMemo(() => [...filtered].sort((a, b) => Number(!isOn(a.state)) - Number(!isOn(b.state))), [filtered])
   const items = useMemo<Item[]>(() => {
@@ -386,17 +401,7 @@ export default function ContainersPage() {
                                 </button>
                               ) : null}
                               <a className="group-edit" href={route.href('settings', { tab: 'groups' })} aria-label={`Editar el color o el nombre de ${it.kind === 'custom' ? 'el grupo' : 'el stack'} ${safeText(it.label)}`} title="Editar en Configuración > Grupos"><Icon name="palette" size="sm" /></a>
-                              {(() => {
-                                const u = groupUse.get(it.key)
-                                if (!u) return null
-                                return (
-                                  <span className="group-usage">
-                                    {u.sum.sampled > 0 ? <span className="usage-chip mono" title="CPU de los contenedores en marcha de este stack (100 % = 1 núcleo)">CPU {u.sum.cpu.toFixed(1)} %</span> : null}
-                                    {u.sum.sampled > 0 ? <span className="usage-chip usage-ram mono" title="Memoria de los contenedores en marcha de este grupo">RAM {formatBytesPrecise(u.sum.memBytes)}</span> : null}
-                                    {u.disk != null ? <span className="usage-chip usage-disk mono" title="Disco aproximado: capas de escritura + volúmenes de sus contenedores (no incluye las imágenes)">Disco ≈ {formatBytesSI(u.disk)}</span> : null}
-                                  </span>
-                                )
-                              })()}
+                              <GroupUsage members={groupMembers.get(it.key)} volumes={volumes} />
                             </div>
                           </td>
                         </tr>

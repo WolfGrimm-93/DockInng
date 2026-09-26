@@ -2,11 +2,12 @@
 // - Modo navegador (`pnpm dev` sin Tauri) y tests: mundo coherente y mutable (crear/eliminar/iniciar…).
 // - Dentro de Tauri solo se reutiliza `connections` (perfiles remotos, Ola 2); con `mutateWorld:false` NO se insertan datos falsos.
 // - Áreas de la Ola 1 en módulos propios: stacks.ts · exec.ts · pull.ts · create.ts · resources.ts (este archivo solo los cablea).
+// Ola 2: store.ts (grupos/prefs/registries/conexiones) · build.ts · cleanup.ts.
 // Contrato adicional `sim`: controles para devFlags y tests (emitir eventos, forzar fallos de conexión).
 import { uuidv7 } from '@/lib/uuid7'
 import type { Capability, EngineApi, Feature } from '../../api'
 import type {
-  ActionOutcome, ActionPlan, ActionRequest, AffectedItem, ApiError, ConnSpec, ConnectionProfile, ConnectionStatus,
+  ActionOutcome, ActionPlan, ActionRequest, AffectedItem, ApiError, BuildSpec, CleanupSelection, ConnectionProfile, ConnectionStatus,
   Container, ContainerDetail, ContainerState, ContainerStats, EngineFeed, LogFeed, LogLine, PlanDecision,
   PlanWarning,
 } from '../../types'
@@ -28,6 +29,8 @@ export interface SimOptions {
   mutateWorld?: boolean
   /** ms entre ticks de pull/up (por defecto 450). */
   tick?: number
+  /** Persiste los grupos simulados en localStorage (solo el navegador con Vite). */
+  persist?: boolean
 }
 export interface SimControls {
   world: World
@@ -60,7 +63,7 @@ export function createSimApi(opts: SimOptions = {}): SimEngineApi {
   const subs = new Set<(f: EngineFeed) => void>()
   let active = 'local'
   let fault: SimFault = null
-  const tickets = new Map<string, { request: ActionRequest; decision: PlanDecision; ids: string[]; expires: number; attempts: number }>()
+  const tickets = new Map<string, { request: ActionRequest; decision: PlanDecision; ids: string[]; expires: number; attempts: number; cleanup?: CleanupSelection }>()
   const stopHooks: ((id: string) => void)[] = []
 
   const emit = (feed: EngineFeed) => {
@@ -79,9 +82,27 @@ export function createSimApi(opts: SimOptions = {}): SimEngineApi {
   const find = ctxFind
   const ctx: SimCtx = {
     world, latency, tick, mutate, emit, emitContainer, emitKind, find,
+    isRemote: () => (world.profiles.find((p) => p.id === active) ?? world.profiles[0]).remote,
     onContainerStopped: (cb) => { stopHooks.push(cb) },
     notifyStopped: (id) => { for (const h of stopHooks) h(id) },
   }
+  // Ola 2: los módulos pesados del simulado (almacén, build, limpieza) se cargan a la PRIMERA llamada (code-splitting: el bundle principal no los paga).
+  type StoreApi = ReturnType<typeof import('./store').createSimStore>['api']
+  let storeP: Promise<StoreApi> | null = null
+  const loadStore = () => (storeP ??= import('./store').then((m) => m.createSimStore(ctx, () => active, { persist: opts.persist }).api))
+  /** Espacio de nombres cuyas funciones esperan a que se cargue el módulo (objeto real: se puede propagar con `...`). */
+  const lazyNs = <K extends keyof StoreApi, M extends keyof StoreApi[K] & string>(ns: K, methods: readonly M[]): Pick<StoreApi[K], M> =>
+    Object.fromEntries(methods.map((m) => [m, (...args: unknown[]) => loadStore().then((st) => (st[ns][m] as unknown as (...a: unknown[]) => unknown)(...args))])) as Pick<StoreApi[K], M>
+  const storeMod = {
+    connections: lazyNs('connections', ['list', 'probeHostKey', 'trustHostKey', 'test', 'save', 'remove'] as const),
+    registries: lazyNs('registries', ['list', 'save', 'remove', 'test'] as const),
+    groups: lazyNs('groups', ['load', 'mutate', 'importLegacy'] as const),
+    prefs: lazyNs('prefs', ['get', 'set'] as const),
+  }
+  // `build` es síncrono (devuelve la baja): se carga el módulo y se arranca; cancelar antes de que cargue lo evita.
+  let buildImpl: Promise<ReturnType<typeof import('./build').createSimBuild>> | null = null
+  const loadBuild = () => (buildImpl ??= import('./build').then((m) => m.createSimBuild(ctx)))
+  const buildMod = { planBuild: (spec: BuildSpec) => loadBuild().then((b) => b.planBuild(spec)) }
   const stacksMod = createSimStacks(ctx)
   const execMod = createSimExec(ctx)
   const pullMod = createSimPull(ctx)
@@ -160,15 +181,16 @@ export function createSimApi(opts: SimOptions = {}): SimEngineApi {
 
   // ------------------------------------------------------------- política
   const inUseImg = (ref: string) => world.images.find((i) => i.reference === ref)
-  function plan(req: ActionRequest): ActionPlan {
-    const mk = (decision: PlanDecision, affected: AffectedItem[], warnings: PlanWarning[] = [], total: number | null = null, ids: string[] = []): ActionPlan => {
-      const ticket = decision.type === 'confirm' || decision.type === 'confirm_typed' ? uuidv7() : null
-      if (ticket) {
-        if (tickets.size >= 32) tickets.delete(tickets.keys().next().value as string)
-        tickets.set(ticket, { request: req, decision, ids, expires: Date.now() + 120_000, attempts: 0 })
-      }
-      return { decision, ticket, expires_in_secs: 120, affected, warnings, total_size_bytes: total }
+  const mkPlan = (req: ActionRequest, decision: PlanDecision, affected: AffectedItem[], warnings: PlanWarning[] = [], total: number | null = null, ids: string[] = [], cleanup?: CleanupSelection): ActionPlan => {
+    const ticket = decision.type === 'confirm' || decision.type === 'confirm_typed' ? uuidv7() : null
+    if (ticket) {
+      if (tickets.size >= 32) tickets.delete(tickets.keys().next().value as string)
+      tickets.set(ticket, { request: req, decision, ids, expires: Date.now() + 120_000, attempts: 0, cleanup })
     }
+    return { decision, ticket, expires_in_secs: 120, affected, warnings, total_size_bytes: total }
+  }
+  function plan(req: ActionRequest): ActionPlan {
+    const mk = (decision: PlanDecision, affected: AffectedItem[], warnings: PlanWarning[] = [], total: number | null = null, ids: string[] = []): ActionPlan => mkPlan(req, decision, affected, warnings, total, ids)
     switch (req.type) {
       case 'remove_containers': {
         const cs = req.ids.map(find)
@@ -220,6 +242,8 @@ export function createSimApi(opts: SimOptions = {}): SimEngineApi {
         if (world.containers.some((c) => c.compose_project === req.name)) throw apiError('conflict', `El stack «${req.name}» todavía tiene contenedores: bájalo antes de eliminarlo.`)
         return mk({ type: 'confirm_typed', expected: req.name }, [{ kind: 'stack', id: req.name, name: req.name, detail: o.path }], [], null, [req.name])
       }
+      case 'cleanup':
+        throw apiError('internal', 'cleanup se planifica en actions.plan (módulo cargado bajo demanda).')
       case 'prune_system':
         return mk({ type: 'deny', reason: 'forbidden' }, [])
     }
@@ -241,7 +265,9 @@ export function createSimApi(opts: SimOptions = {}): SimEngineApi {
     const out: ActionOutcome = { succeeded: [], failed: [], freed_bytes: null }
     let freed = 0
     const req = t.request
-    if (req.type === 'remove_containers' || req.type === 'stack_down') {
+    if (req.type === 'cleanup' && t.cleanup) {
+      return (await import('./cleanup')).applyCleanup(ctx, t.cleanup)
+    } else if (req.type === 'remove_containers' || req.type === 'stack_down') {
       for (const id of t.ids) {
         const c = world.containers.find((x) => x.id === id)
         if (!c) { out.failed.push({ item: { kind: 'container', id, name: id.slice(0, 12) }, error: apiError('not_found', 'Ya no existe.') }); continue }
@@ -292,7 +318,7 @@ export function createSimApi(opts: SimOptions = {}): SimEngineApi {
 
   const capabilities: Record<Feature, Capability> = {
     connection: 'live', containers: 'live', images: 'live', volumes: 'live', networks: 'live', actions: 'live', events: 'live', logs: 'live', stats: 'live', inspect: 'live', system: 'live',
-    exec: 'live', pull: 'live', create: 'live', stacks: 'live', connections: 'simulated',
+    exec: 'live', pull: 'live', create: 'live', stacks: 'live', connections: 'simulated', store: 'simulated', registries: 'simulated', build: 'simulated', cleanup: 'simulated',
   }
 
   const api: SimEngineApi = {
@@ -318,16 +344,7 @@ export function createSimApi(opts: SimOptions = {}): SimEngineApi {
         if (fault && !profile().failsToConnect) return statusOf() // «Sigue sin conectar»: el diagnóstico no cambia
         return statusOf()
       },
-      async profiles() {
-        return world.profiles.map((p) => ({ ...p }))
-      },
       activeId: () => active,
-      async select(id) {
-        if (!world.profiles.some((p) => p.id === id)) throw apiError('not_found', `No existe la conexión ${id}`)
-        active = id
-        if (id !== 'staging') fault = fault && id === 'local' ? fault : null
-        return statusOf()
-      },
     },
     containers: {
       async list(all = true) {
@@ -399,15 +416,35 @@ export function createSimApi(opts: SimOptions = {}): SimEngineApi {
           disk_known: true,
         }
       },
+      async cleanupReport(o) {
+        await sleep(Math.min(latency, 300))
+        return (await import('./cleanup')).buildCleanupReport(ctx, o.minAgeDays)
+      },
+      podmanDetect: async () => (await import('./cleanup')).simPodman(),
       async gpu() {
         return [{ index: 0, name: 'NVIDIA GeForce RTX 3060 (ejemplo)', utilization_percent: 8 + Math.round(Math.random() * 10), mem_used_bytes: 1.2 * 1024 ** 3, mem_total_bytes: 12 * 1024 ** 3, temperature_c: 52 }]
       },
     },
-    images: { list: async () => world.images.map((i) => ({ ...i })), pull: pullMod },
+    images: {
+      list: async () => world.images.map((i) => ({ ...i })),
+      pull: pullMod,
+      planBuild: buildMod.planBuild,
+      build(spec, ticket, on) {
+        let cancelled = false
+        let off: (() => void) | null = null
+        void loadBuild().then((b) => { if (!cancelled) off = b.build(spec, ticket, on) })
+        return () => { cancelled = true; off?.() }
+      },
+    },
     volumes: { list: async () => world.volumes.map((v) => ({ ...v })), create: resMod.createVolume },
     networks: { list: async () => world.networks.map((n) => ({ ...n })), create: resMod.createNetwork },
     actions: {
       async plan(req) {
+        if (req.type === 'cleanup') {
+          const { planCleanupItems } = await import('./cleanup')
+          const { affected, hasVolumes, total } = planCleanupItems(ctx, req.selection)
+          return mkPlan(req, hasVolumes ? { type: 'confirm_typed', expected: 'ELIMINAR' } : { type: 'confirm' }, affected, [], total, [], req.selection)
+        }
         return plan(req)
       },
       execute,
@@ -424,16 +461,17 @@ export function createSimApi(opts: SimOptions = {}): SimEngineApi {
     exec: { open: execMod.open },
     stacks: stacksMod.api,
     connections: {
-      async test(spec: ConnSpec) {
-        await sleep(Math.min(latency + 500, 1400))
-        return /fail/i.test(spec.host) ? 'fail' : 'ok'
-      },
-      async save(spec) {
-        const p: ConnectionProfile = { id: uuidv7(), name: spec.name || spec.host, target: `${spec.kind === 'ssh' ? 'ssh' : 'tcp'}://${spec.user ? spec.user + '@' : ''}${spec.host}`, kind: spec.kind, icon: 'server', remote: true, version: 'Docker 26.1.4 · API 1.45', simulated: true }
-        if (mutate) world.profiles.push(p)
-        return p
+      ...storeMod.connections,
+      async select(id) {
+        if (!world.profiles.some((p) => p.id === id)) throw apiError('not_found', `No existe la conexión ${id}`)
+        active = id
+        if (id !== 'staging') fault = fault && id === 'local' ? fault : null
+        return statusOf()
       },
     },
+    registries: storeMod.registries,
+    groups: storeMod.groups,
+    prefs: storeMod.prefs,
   }
   return api
 }

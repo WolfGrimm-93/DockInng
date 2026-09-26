@@ -135,9 +135,16 @@ pub enum StackRisk {
     Privileged,
     HostNetwork,
     DockerSock,
-    SensitiveBind { path: String },
+    SensitiveBind {
+        path: String,
+    },
     PidHost,
     CapAddSysAdmin,
+    /// El daemon es remoto: este bind mount se resolverá en el sistema de archivos REMOTO
+    /// (las rutas relativas del compose ya se expandieron a rutas locales que allí no existen).
+    RemoteBind {
+        path: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

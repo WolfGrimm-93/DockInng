@@ -1,9 +1,8 @@
 // Vista «Configuración» (siempre disponible, aun sin conexión al motor), dividida en pestañas (#settings?tab=…):
-//   Conexiones (local REAL; el resto SIMULADAS y marcadas «No conectado aún») · Apariencia (<AppearanceSection/>) · Grupos (grupos propios y color
+//   Conexiones (Local + SSH/TLS guardadas, reales) · Registros (credenciales de registries) · Apariencia (<AppearanceSection/>) · Grupos (grupos propios y color
 //   de los stacks) · Seguridad (niveles de política y acción prohibida) · Datos (sondeo de respaldo, apagado por defecto: real; vista previa de
 //   estados solo simulado/DEV). La pestaña activa se guarda en la URL sin añadir entradas al historial.
 import { useState } from 'react'
-import { safeText } from '@/lib/safeText'
 import { devFlagsEnabled, setComposeMissing, setPreviewState } from '@/app/devFlags'
 import { buildHref } from '@/app/routes'
 import { useHashRoute } from '@/app/useHashRoute'
@@ -21,9 +20,12 @@ import { policyDenied, toast } from '@/lib/toastStore'
 import { LinkButton } from '../common/LinkButton'
 import { GroupsManager } from '../groups/GroupsManager'
 import { AppearanceSection } from './AppearanceSection'
+import { ConnectionsSection } from './ConnectionsSection'
+import { RegistriesSection } from './RegistriesSection'
 
 const TABS = [
   { id: 'connections', label: 'Conexiones', icon: 'server' },
+  { id: 'registries', label: 'Registros', icon: 'globe' },
   { id: 'appearance', label: 'Apariencia', icon: 'palette' },
   { id: 'groups', label: 'Grupos', icon: 'folder' },
   { id: 'security', label: 'Seguridad', icon: 'lock' },
@@ -103,27 +105,12 @@ export default function SettingsPage() {
 
         <TabsPanel value="connections" className="view-body tabpanel">
           {banner}
-          <section aria-labelledby="sConn">
-            <h2 className="section-title" id="sConn">Conexiones</h2>
-            <div className="card">
-              {conn.profiles.map((p) => {
-                const active = p.id === conn.profile.id
-                return (
-                  <div className={`conn${active ? ' is-active' : ''}`} key={p.id}>
-                    <span className="conn-ico"><Icon name={p.icon} /></span>
-                    <div className="grow">
-                      <b>{safeText(p.name, { singleLine: true })}</b>{' '}
-                      {active ? <span className="tag tag-brand">Activa</span> : p.failsToConnect ? <span className="tag" style={{ color: 'var(--status-dead)' }}><Icon name="alert" size="sm" />Sin respuesta</span> : null}
-                      {p.simulated ? <> <span className="tag" title="Conexión de ejemplo: todavía no está conectada al motor."><Icon name="flask" size="sm" />No conectado aún</span></> : null}
-                      <small>{safeText(p.target, { singleLine: true })}</small>
-                    </div>
-                    {active ? null : <Button variant="secondary" size="sm" onClick={() => conn.select(p.id)}>Conectar</Button>}
-                    <Button variant="ghost" size="icon-sm" aria-label={`Más opciones de ${safeText(p.name, { singleLine: true })}`} onClick={() => toast.warn('Simulado — no conectado aún', { sub: 'Las opciones por conexión todavía no están disponibles.' })}><Icon name="dots" /></Button>
-                  </div>
-                )
-              })}
-            </div>
-          </section>
+          <ConnectionsSection />
+        </TabsPanel>
+
+        <TabsPanel value="registries" className="view-body tabpanel">
+          {banner}
+          <RegistriesSection presetServer={route.params.get('registry')} />
         </TabsPanel>
 
         <TabsPanel value="appearance" className="view-body tabpanel">

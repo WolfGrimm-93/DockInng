@@ -4,16 +4,19 @@
 //   Estado:  connection · profiles · activeProfileId · containers/images/volumes/networks/stacks (Entity) · compose · stackOps · pulls · stats · rowOps · polling
 //   Ola 1: `stacks` es la FUENTE ÚNICA (página, cabecera y contador del menú); `stackOps[proyecto]` y `pulls[referencia]` sobreviven a la navegación;
 //          runStackOp/cancelStackOp/dismissStackOp/noteStackDown · startPull/cancelPull/dismissPull · checkCompose. La política (confirmación de bajar/borrar) NO vive aquí.
+//   Ola 2: `retainStats()` (los consumidores de CPU/RAM/GPU/disco la llaman al montar; sin consumidores NO se muestrea) · `refreshProfiles()`.
+//          Ritmo de stats: solo con consumidor, en pausa con la ventana oculta, ≥ slowStatsMs tras BLUR_GRACE_MS sin foco y refresco inmediato al volver.
 //   Acciones (getState().x): bootstrap() · dispose() · retry() · selectProfile(id) · refresh(kind?) · runContainerOp(id, op) · runContainerOps(ids, op, {concurrency})
 //                            setRowBusy(id, busy?) · clearRowError(id) · markLost() · setPolling(on)
 // Flujo (PLAN_frontend §2.5): bootstrap -> connection_status; si conectado -> 4 list() en paralelo + events.subscribe + stats.
 // Evento de contenedor => invalidate + refetch en lote (debounce 150 ms); destroy elimina al instante. Eventos de
 // imagen/volumen/red => refetch de esa colección (300 ms). Conexión perdida => se CONSERVAN los datos y las acciones se bloquean.
 import { createStore, type StoreApi } from 'zustand/vanilla'
-import { buildDiagnostic } from '../diagnostics'
+import { buildDiagnostic, connectionFailText } from '../diagnostics'
 import type { EngineApi } from '../api'
 import { toApiError } from '../errors'
 import { safeStorage } from '@/lib/safeStorage'
+import { installWindowActivity, isIdle, onWake } from '@/lib/windowActivity'
 import { toast } from '@/lib/toastStore'
 import type {
   ApiError, ComposeInfo, ConnectionIssue, ConnectionProfile, ConnectionState, ConnectionStatus, Container, ContainerBusy, ContainerStats, EngineFeed, EngineInfo,
@@ -36,6 +39,8 @@ export interface EngineStoreState {
   connection: ConnectionState
   profiles: ConnectionProfile[]
   activeProfileId: string
+  /** Id de la conexión a la que se está cambiando (spinner del selector; null = ninguno). */
+  switchingProfileId: string | null
   containers: Entity<Container>
   images: Entity<Image>
   volumes: Entity<Volume>
@@ -55,11 +60,17 @@ export interface EngineStoreState {
   gpu: GpuInfo[]
   rowOps: Record<string, RowOp>
   polling: boolean
+  /** Las muestras de `stats`/GPU son antiguas (se acaba de volver a consumirlas): la UI las atenúa hasta que llegue la nueva. */
+  statsStale: boolean
 
   bootstrap(): Promise<void>
   dispose(): void
   retry(): Promise<void>
   selectProfile(id: string): Promise<void>
+  /** Relee `connection_list` (tras guardar/borrar una conexión). */
+  refreshProfiles(): Promise<void>
+  /** Un consumidor de stats/GPU/disco (Contenedores, franja de consumo) declara que las necesita. Devuelve la baja; idempotente. */
+  retainStats(): () => void
   refresh(kind?: EntityKind | 'all'): Promise<void>
   runContainerOp(id: string, op: 'start' | 'stop' | 'restart'): Promise<boolean>
   /** Operación masiva: concurrencia limitada (6), UN refresco de contenedores al final y UN toast resumen. */
@@ -93,9 +104,40 @@ export interface EngineStoreOptions {
   /** ms de debounce de eventos (por defecto 150 contenedores / 300 resto). */
   debounce?: { containers?: number; others?: number }
   storage?: Pick<Storage, 'getItem' | 'setItem'> | null
+  /** ms mínimos entre muestreos con la ventana sin foco (por defecto 8000). */
+  slowStatsMs?: number
+  /** false = muestrea siempre (sin exigir consumidores; tests/CLI). Por defecto true. */
+  requireStatsConsumer?: boolean
 }
 
+/** B-10: «Local» siempre existe en la lista (si `connection_list` falla o no lo trae, se sintetiza) para poder volver desde un remoto. */
+const LOCAL_PROFILE: ConnectionProfile = { id: 'local', name: 'Local', target: 'unix:///var/run/docker.sock', kind: 'local', icon: 'monitor', remote: false, version: '', simulated: false }
+export const withLocal = (list: ConnectionProfile[]): ConnectionProfile[] => (list.some((p) => p.id === 'local') ? list : [LOCAL_PROFILE, ...list])
+
 const emptyEntity = <T,>(): Entity<T> => ({ byId: {}, ids: [], status: 'idle' })
+
+/** Igualdad de dos muestras ignorando `read_at` (la hora cambia siempre; lo que se pinta son los valores). */
+export function sameStatsValues(a: ContainerStats, b: ContainerStats): boolean {
+  return a.cpu_percent === b.cpu_percent && a.mem_used_bytes === b.mem_used_bytes && a.mem_limit_bytes === b.mem_limit_bytes && a.mem_percent === b.mem_percent
+    && a.net_rx_bytes === b.net_rx_bytes && a.net_tx_bytes === b.net_tx_bytes && a.net_rx_bytes_per_sec === b.net_rx_bytes_per_sec
+    && a.net_tx_bytes_per_sec === b.net_tx_bytes_per_sec && a.block_read_bytes === b.block_read_bytes && a.block_write_bytes === b.block_write_bytes && a.pids === b.pids
+}
+
+/**
+ * Mezcla las muestras nuevas conservando la IDENTIDAD de los objetos cuyos valores no cambiaron (las filas memoizadas no se repintan).
+ * Devuelve `null` si no cambió nada (mismos ids y mismos valores): el store no debe notificar.
+ */
+export function mergeStats(prev: Record<string, ContainerStats>, next: Record<string, ContainerStats>): Record<string, ContainerStats> | null {
+  const nextIds = Object.keys(next)
+  let changed = nextIds.length !== Object.keys(prev).length
+  const out: Record<string, ContainerStats> = {}
+  for (const id of nextIds) {
+    const p = prev[id]
+    if (p && sameStatsValues(p, next[id])) out[id] = p
+    else { out[id] = next[id]; changed = true }
+  }
+  return changed ? out : null
+}
 const POLL_KEY = 'dockinng.poll'
 
 function toEntity<T>(rows: T[], key: (r: T) => string, prev?: Entity<T>): Entity<T> {
@@ -126,10 +168,23 @@ export function createEngineStore(api: EngineApi, opts: EngineStoreOptions = {})
 
   let unsubEvents: Unsubscribe | null = null
   let statsTimer: ReturnType<typeof setInterval> | null = null
-  let statsTick: (() => Promise<void>) | null = null
+  let statsTick: ((force?: boolean) => Promise<void>) | null = null
   let sysTimer: ReturnType<typeof setInterval> | null = null
-  let sysTick: (() => Promise<void>) | null = null
-  let gpuTick: (() => Promise<void>) | null = null
+  let sysTick: ((force?: boolean) => Promise<void>) | null = null
+  let gpuTick: ((force?: boolean) => Promise<void>) | null = null
+  let unsubWake: (() => void) | null = null
+  let consumers = 0 // consumidores de stats (retainStats)
+  let lastStatsAt = 0
+  let lastGpuAt = 0
+  let lastSysAt = 0
+  const slowMs = opts.slowStatsMs ?? 8000
+  const needStats = () => opts.requireStatsConsumer === false || consumers > 0
+  /** Con la ventana inactiva se muestrea como mucho cada `slowMs`; con foco, en cada tick. */
+  /** B-8: si la última muestra es vieja (más de 3 ciclos) se marca obsoleta hasta que llegue la nueva. */
+  const markStaleIfOld = () => {
+    if (lastStatsAt > 0 && statsMs > 0 && Date.now() - lastStatsAt > 3 * statsMs && Object.keys(store.getState().stats).length) store.setState({ statsStale: true })
+  }
+  const due = (last: number) => !isIdle() || Date.now() - last >= slowMs
   let pollTimer: ReturnType<typeof setInterval> | null = null
   const timers: Partial<Record<EntityKind, ReturnType<typeof setTimeout>>> = {}
   const opHandles = new Map<string, { cancel(): void; dispose(): void }>()
@@ -211,6 +266,8 @@ export function createEngineStore(api: EngineApi, opts: EngineStoreOptions = {})
       sysTimer = null
       sysTick = null
       gpuTick = null
+      unsubWake?.()
+      unsubWake = null
       for (const k of Object.keys(timers) as EntityKind[]) {
         if (timers[k]) clearTimeout(timers[k])
         timers[k] = undefined
@@ -219,54 +276,74 @@ export function createEngineStore(api: EngineApi, opts: EngineStoreOptions = {})
     const startLive = () => {
       stopLive()
       unsubEvents = api.events.subscribe(applyFeed)
+      installWindowActivity()
       if (statsMs > 0) {
         let inFlight = false // un único vuelo: si el muestreo anterior sigue en curso no se lanza otro
-        const tick = async () => {
+        const tick = async (force = false) => {
           if (inFlight || get().connection.status !== 'connected') return
           if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+          // Solo se muestrea si alguna vista lo consume y, con la ventana inactiva, a ritmo lento (salvo refresco forzado al volver).
+          if (!needStats() || (!force && !due(lastStatsAt))) return
           const ids = get().containers.ids.filter((id) => get().containers.byId[id]?.state === 'running').slice(0, 64)
           if (!ids.length) return
           const gen = generation
           inFlight = true
+          lastStatsAt = Date.now()
           try {
             const rows = await api.containers.statsSnapshot(ids)
             if (gen !== generation) return
             const stats: Record<string, ContainerStats> = {}
             for (const r of rows) if (r.stats) stats[r.id] = r.stats
-            set({ stats })
+            // Conserva la identidad de lo que no cambió y no notifica si nada cambió.
+            const merged = mergeStats(get().stats, stats)
+            if (merged) set({ stats: merged, statsStale: false })
+            else if (get().statsStale) set({ statsStale: false })
           } catch { /* el muestreo es opcional: la tabla muestra «—» */ } finally { inFlight = false }
         }
         // El primer muestreo lo lanza connect() DESPUÉS de fetchAll (la lista de contenedores ya existe).
         statsTick = tick
 
-        // GPU del equipo: mismo ritmo que las stats, un único vuelo y sin error visible (sin GPU => []).
+        // GPU del equipo: misma política que las stats, un único vuelo y sin error visible (sin GPU => []).
         let gpuBusy = false
-        gpuTick = async () => {
+        gpuTick = async (force = false) => {
           if (gpuBusy || get().connection.status !== 'connected') return
           if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+          if (!needStats() || (!force && !due(lastGpuAt))) return
           const gen = generation
           gpuBusy = true
+          lastGpuAt = Date.now()
           try {
             const gpu = await api.system.gpu()
-            if (gen === generation) set({ gpu: Array.isArray(gpu) ? gpu : [] })
+            const next = Array.isArray(gpu) ? gpu : []
+            if (gen === generation && JSON.stringify(next) !== JSON.stringify(get().gpu)) set({ gpu: next })
           } catch { /* opcional */ } finally { gpuBusy = false }
         }
         statsTimer = setInterval(() => { void tick(); void gpuTick?.() }, statsMs)
       }
 
-      // Recursos del equipo y disco de Docker: `df` es pesado, se pide cada 60 s (y tras cada conexión).
+      // Recursos del equipo y disco de Docker: `df` es pesado, se pide cada 60 s (y tras cada conexión) y solo si alguien lo consume.
       let sysBusy = false
-      const stick = async () => {
+      const stick = async (force = false) => {
         if (sysBusy || get().connection.status !== 'connected') return
+        if (!needStats() && !force) return
         const gen = generation
         sysBusy = true
+        lastSysAt = Date.now()
         try {
           const system = await api.system.usage()
           if (gen === generation && system && typeof system === 'object') set({ system })
         } catch { /* opcional: la franja muestra «—» */ } finally { sysBusy = false }
       }
       sysTick = stick
-      sysTimer = setInterval(() => { if (typeof document === 'undefined' || document.visibilityState !== 'hidden') void stick() }, 60_000)
+      sysTimer = setInterval(() => { if (typeof document === 'undefined' || (document.visibilityState !== 'hidden' && !isIdle())) void stick() }, 60_000)
+      // Al recuperar foco/visibilidad tras un periodo inactivo: refresco inmediato (si alguna vista lo consume).
+      unsubWake = onWake(() => {
+        if (!needStats()) return
+        markStaleIfOld()
+        void statsTick?.(true)
+        void gpuTick?.(true)
+        void sysTick?.(true)
+      })
     }
     // Aborta (duro) los Channels abiertos de operaciones de stack y descargas.
     const abortAll = () => {
@@ -303,10 +380,46 @@ export function createEngineStore(api: EngineApi, opts: EngineStoreOptions = {})
       } else stopLive()
     }
 
+    /** Cambio de conexión (el estado `switchingProfileId` lo gestiona la acción). */
+    const switchTo = async (id: string, target: ConnectionProfile): Promise<void> => {
+      // En Tauri, al fallar el cambio el backend deja el motor en el destino previo (pero ya abortó los streams): no se cambia de
+      // conexión en la UI y se reanuda la conexión previa. En el simulado (navegador) se activa el perfil para enseñar su diagnóstico.
+      // M-1: `quiesced:true` (solo aparece con ese valor) = el backend YA abortó suscripciones/terminales/tickets antes de fallar: se abortan
+      // también las operaciones locales y se reabren los streams. Sin el campo, el backend no tocó nada: NO se aborta nada (stackOps/pulls siguen vivos).
+      const resumePrevious = async (quiesced: boolean | undefined) => {
+        if (quiesced !== true) return
+        generation++
+        abortAll()
+        await connect(await api.connection.status())
+      }
+      try {
+        const status = await api.connections.select(id)
+        if (status.state === 'failed' && api.mode === 'tauri' && id !== 'local') {
+          toast.err(`No se pudo conectar con ${target.name}`, { sub: connectionFailText(status.cause, status.message) })
+          await resumePrevious(status.quiesced)
+          return
+        }
+        generation++
+        abortAll()
+        set({ activeProfileId: id, containers: emptyEntity(), images: emptyEntity(), volumes: emptyEntity(), networks: emptyEntity(), stacks: emptyEntity(), compose: null, stackOps: {}, pulls: {}, stats: {}, system: null, gpu: [], rowOps: {} })
+        lastStatsAt = 0; lastGpuAt = 0; lastSysAt = 0
+        await connect(status)
+        if (get().connection.status === 'connected') {
+          toast.ok(`Conectado a ${target.name}`, { sub: target.version || undefined })
+          void api.prefs.set('last_connection_id', id).catch(() => undefined)
+        } else toast.err(`No se pudo conectar con ${target.name}`, { sub: 'Revisa el diagnóstico en pantalla.' })
+      } catch (e) {
+        const a = toApiError(e)
+        toast.err(`No se pudo conectar con ${target.name}`, { sub: connectionFailText(a.cause ?? null, a.message) })
+        if (api.mode === 'tauri') await resumePrevious(a.quiesced).catch(() => undefined)
+      }
+    }
+
     return {
       connection: { status: 'connecting' },
       profiles: [],
       activeProfileId: api.connection.activeId(),
+      switchingProfileId: null,
       containers: emptyEntity(),
       images: emptyEntity(),
       volumes: emptyEntity(),
@@ -320,13 +433,21 @@ export function createEngineStore(api: EngineApi, opts: EngineStoreOptions = {})
       gpu: [],
       rowOps: {},
       polling: readPoll,
+      statsStale: false,
 
       async bootstrap() {
         const gen = ++generation
         set({ connection: { status: 'connecting' } })
-        const profiles = await api.connection.profiles()
+        const profiles = withLocal(await api.connections.list().catch(() => [] as ConnectionProfile[]))
         if (gen !== generation) return
         set({ profiles, activeProfileId: api.connection.activeId() })
+        // Preferencia guardada en el almacén del backend (fuente de verdad); si nunca se guardó, se migra la de localStorage.
+        try {
+          const p = await api.prefs.get('polling')
+          if (gen !== generation) return
+          if (typeof p === 'boolean') set({ polling: p })
+          else if (get().polling) void api.prefs.set('polling', true).catch(() => undefined)
+        } catch { /* sin almacén: vale localStorage */ }
         const status = await api.connection.status()
         if (gen !== generation) return
         await connect(status)
@@ -353,22 +474,30 @@ export function createEngineStore(api: EngineApi, opts: EngineStoreOptions = {})
           toast.err('Sigue sin conectar', { sub: 'El diagnóstico no ha cambiado.' })
         }
       },
+      async refreshProfiles() {
+        try { set({ profiles: withLocal(await api.connections.list()), activeProfileId: api.connection.activeId() }) } catch { set({ profiles: withLocal(get().profiles) }) }
+      },
+      retainStats() {
+        consumers++
+        if (consumers === 1) {
+          markStaleIfOld()
+          // Primer consumidor: muestreo inmediato (la lista y la conexión pueden no estar listas: entonces lo lanza connect()).
+          void statsTick?.(true)
+          void gpuTick?.(true)
+          if (!get().system || Date.now() - lastSysAt > 30_000) void sysTick?.(true)
+        }
+        let released = false
+        return () => {
+          if (released) return
+          released = true
+          consumers = Math.max(0, consumers - 1)
+        }
+      },
       async selectProfile(id) {
         const target = get().profiles.find((p) => p.id === id)
-        if (!target) return
-        try {
-          const status = await api.connection.select(id)
-          generation++
-          abortAll()
-          set({ activeProfileId: id, containers: emptyEntity(), images: emptyEntity(), volumes: emptyEntity(), networks: emptyEntity(), stacks: emptyEntity(), compose: null, stackOps: {}, pulls: {}, stats: {}, system: null, gpu: [], rowOps: {} })
-          await connect(status)
-          if (get().connection.status === 'connected') toast.ok(`Conectado a ${target.name}`, { sub: target.version || undefined })
-          else toast.err(`No se pudo conectar con ${target.name}`, { sub: 'Revisa el diagnóstico en pantalla.' })
-        } catch (e) {
-          const a = toApiError(e)
-          if (a.code === 'not_implemented') toast.warn('Simulado — no conectado aún', { sub: `«${target.name}» es una conexión de ejemplo: la conexión activa no cambia.` })
-          else toast.err(`No se pudo conectar con ${target.name}`, { sub: a.message })
-        }
+        if (!target || get().switchingProfileId) return
+        set({ switchingProfileId: id })
+        try { await switchTo(id, target) } finally { set({ switchingProfileId: null }) }
       },
       async refresh(kind = 'all') {
         if (kind === 'all') await fetchAll()
@@ -579,6 +708,7 @@ export function createEngineStore(api: EngineApi, opts: EngineStoreOptions = {})
       setPolling(on) {
         set({ polling: on })
         try { storage?.setItem(POLL_KEY, on ? '1' : '0') } catch { /* sin storage */ }
+        void api.prefs.set('polling', on).catch(() => undefined)
         applyPolling(on)
       },
     }

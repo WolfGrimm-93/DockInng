@@ -5,6 +5,9 @@ members = [
     "crates/engine-docker",
     "crates/compose",
     "crates/dockinng-cli",
+    "crates/store",
+    "crates/transport",
+    "crates/builder",
     "app",
 ]
 
@@ -26,3 +29,18 @@ async-trait = "0.1"
 libc = "0.2"
 base64 = "0.22"
 shlex = "2"
+rusqlite = { version = "0.37", features = ["bundled"] }
+# Llavero: features de plataforma EXPLÍCITAS (sin ellas keyring usa un almacén mock en silencio).
+keyring = { version = "3", default-features = false, features = ["async-secret-service", "tokio", "crypto-rust"] }
+clap = { version = "4", features = ["derive"] }
+clap_complete = "4"
+zeroize = "1"
+rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring", "pem"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+bollard = { version = "0.21", features = ["ssl"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
+# Sin panic="abort": streams.rs usa catch_unwind.

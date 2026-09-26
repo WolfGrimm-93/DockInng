@@ -37,6 +37,7 @@ export function createSimCreate(ctx: SimCtx): { planCreate: EngineApi['container
       const w = sensitiveBind(v.source, v.read_only)
       if (w) warnings.push(/docker\.sock$/.test(v.source) ? { type: 'docker_socket' } : { type: 'sensitive_bind', source: v.source, reason: w.text })
     })
+    if (ctx.isRemote()) for (const v of spec.volumes) if (v.source.startsWith('/')) warnings.push({ type: 'remote_bind', source: v.source })
     const seen = new Set<string>()
     spec.env.forEach((e, i) => {
       if (!ENV_RE.test(e.key)) errs.push({ field: `env[${i}].key`, message: 'Nombre de variable no válido.' })

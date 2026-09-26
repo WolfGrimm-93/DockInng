@@ -4,8 +4,11 @@
 pub mod actions;
 pub mod api;
 pub mod broker;
+pub mod build;
+pub mod cleanup;
 pub mod client;
 pub mod connection;
+pub mod connections;
 pub mod create;
 pub mod error;
 pub mod events;
@@ -14,6 +17,7 @@ pub mod logs;
 pub mod model;
 pub mod policy;
 pub mod pull;
+pub mod registry;
 pub mod resources;
 pub mod stacks;
 pub mod stats;
@@ -36,8 +40,21 @@ pub use actions::{
     ItemKind, ItemRef, PlanDecision, PlanDenyReason, PlanWarning,
 };
 pub use api::{ApiError, ApiErrorCode};
+pub use build::{
+    BuildFeed, BuildLine, BuildOutcome, BuildPlan, BuildProgress, BuildSpec, BuildStream,
+    BuildWarning,
+};
+pub use cleanup::{
+    CleanupCategory, CleanupCategoryId, CleanupItem, CleanupReport, CleanupRisk, CleanupSelection,
+    SizeEstimate, cleanup_report,
+};
 pub use client::{EngineClient, EngineStream};
 pub use connection::{ConnectionCause, ConnectionStatus, DiagStep, DiagStepId, StepStatus};
+pub use connections::{
+    ConnSpec, ConnTestResult, ConnectionProfile, Group, GroupAssignment, GroupOp, GroupsSnapshot,
+    HostKeyProbe, HostKeyState, LOCAL_CONNECTION_ID, LegacyGroup, LegacyGroups, LegacyImportReport,
+    SshIdentity, SshMode,
+};
 pub use create::{
     CreateContainerSpec, CreateEngine, CreateNetworkSpec, CreatePlan, CreateResult, CreateService,
     CreateVolumeSpec, CreateWarning, FieldError,
@@ -55,6 +72,7 @@ pub use policy::{
     decide_batch,
 };
 pub use pull::{LayerPhase, LayerProgress, PullEngine, PullEvent, PullSnapshot, PullTracker};
+pub use registry::{DOCKER_HUB_SERVER, RegistryAuth, RegistrySummary, Secret};
 pub use resources::{Image, Network, Volume};
 pub use stacks::{
     CancelSignal, ComposeContainer, ComposeFlavor, ComposeInfo, IssueKind, ProgressItem,

@@ -114,7 +114,12 @@ pub fn start_pull(
 ) -> ApiResult<String> {
     engine_core::pull::validate_reference(&reference)?;
     let permit = state.pulls.acquire(window, &reference)?;
-    let stream = state.pull.pull_image(&reference);
+    let stream = pull_with_saved_auth(
+        state.pull.clone(),
+        state.store.clone(),
+        state.secrets.clone(),
+        reference.clone(),
+    );
     let panic_sink = sink.clone();
     state.streams.spawn(
         window,
@@ -134,11 +139,46 @@ pub fn start_pull(
     )
 }
 
+/// Descarga usando, si existe, el registro guardado del servidor de la referencia. La
+/// búsqueda (SQLite + llavero) ocurre dentro del stream, en un hilo bloqueante. Si el llavero
+/// falla o está bloqueado se sigue SIN credenciales: las imágenes públicas no deben depender
+/// de él (una privada fallará con `auth_required`).
+pub(crate) fn pull_with_saved_auth(
+    pull: Arc<dyn engine_core::PullEngine>,
+    store: Option<Arc<store::Store>>,
+    secrets: Arc<dyn store::SecretStore>,
+    reference: String,
+) -> engine_core::EngineStream<engine_core::PullEvent> {
+    use futures_util::StreamExt;
+    Box::pin(
+        futures_util::stream::once(async move {
+            let auth = match store {
+                Some(store) => {
+                    let server = engine_core::registry::registry_server_for_reference(&reference);
+                    tokio::task::spawn_blocking(move || {
+                        store
+                            .registry_auth_for(secrets.as_ref(), &server)
+                            .ok()
+                            .flatten()
+                    })
+                    .await
+                    .ok()
+                    .flatten()
+                }
+                None => None,
+            };
+            pull.pull_image_with_auth(&reference, auth)
+        })
+        .flatten(),
+    )
+}
+
 #[tauri::command]
 pub async fn plan_create_container(
     state: State<'_, AppState>,
     spec: CreateContainerSpec,
 ) -> ApiResult<CreatePlan> {
+    state.ensure_not_switching()?;
     state.create.plan(spec).await
 }
 
@@ -149,6 +189,7 @@ pub async fn create_container(
     start: bool,
     ticket: Option<String>,
 ) -> ApiResult<CreateResult> {
+    let _guard = state.action_guard().await?;
     state.create.create(spec, start, ticket.as_deref()).await
 }
 
@@ -157,6 +198,7 @@ pub async fn create_volume(
     state: State<'_, AppState>,
     spec: CreateVolumeSpec,
 ) -> ApiResult<Volume> {
+    let _guard = state.action_guard().await?;
     state.create.create_volume(spec).await
 }
 
@@ -165,5 +207,6 @@ pub async fn create_network(
     state: State<'_, AppState>,
     spec: CreateNetworkSpec,
 ) -> ApiResult<Network> {
+    let _guard = state.action_guard().await?;
     state.create.create_network(spec).await
 }

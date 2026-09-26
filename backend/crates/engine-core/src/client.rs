@@ -18,6 +18,12 @@ pub trait EngineClient: Send + Sync {
     // --- conexión ---
     /// Comprueba que el daemon responde.
     async fn ping(&self) -> Result<(), EngineError>;
+
+    /// ¿El daemon está en otra máquina (túnel SSH / TLS)? Los datos que dependen del equipo
+    /// local (GPU, `/proc`, rutas del host) no aplican cuando es `true`.
+    fn is_remote(&self) -> bool {
+        false
+    }
     async fn info(&self) -> Result<EngineInfo, EngineError>;
     /// Describe el estado de la conexión; nunca falla.
     async fn diagnose(&self) -> ConnectionStatus;

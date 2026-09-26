@@ -19,6 +19,7 @@ futures-util.workspace = true
 uuid.workspace = true
 shlex.workspace = true
 tokio = { workspace = true, optional = true }
+zeroize.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true }

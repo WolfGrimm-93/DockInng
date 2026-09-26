@@ -19,7 +19,7 @@ use crate::files::{
     MAX_ENV_BYTES, MAX_YAML_BYTES, ResolvedStack, StackStore, StoredStack, read_external_readonly,
     validate_external_file,
 };
-use crate::risks::analyze;
+use crate::risks::analyze_with;
 use crate::runner::{ComposeRunner, PreparedOp, env_secret_values, lock, project_of};
 use crate::summary::{DeclaredServices, summarize};
 use crate::types::{OpKind, split_op};
@@ -461,7 +461,7 @@ impl StackControl for ComposeRunner {
                     ok: true,
                     issues: vec![],
                     services: cfg.services.iter().map(|s| s.name.clone()).collect(),
-                    risks: analyze(&cfg.raw, home.as_deref()),
+                    risks: analyze_with(&cfg.raw, home.as_deref(), self.core.is_remote()),
                 })
             }
             Err(ComposeError::Invalid(mut issues)) => {

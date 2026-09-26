@@ -10,6 +10,18 @@ pub enum ConnectionCause {
     PermissionDenied,
     DaemonDown,
     Other,
+    /// SSH: el servidor no está en el `known_hosts` propio (primer contacto sin confiar).
+    HostKeyUnknown,
+    /// SSH: la clave del servidor cambió respecto a la de confianza.
+    HostKeyChanged,
+    /// SSH: el servidor rechazó la autenticación (llave, agente o usuario).
+    AuthFailed,
+    /// El host no responde (rechazo, tiempo agotado, DNS).
+    Unreachable,
+    /// SSH: el servidor no tiene `docker` en el PATH no interactivo.
+    RemoteDockerMissing,
+    /// TLS: certificados inválidos, CA equivocada o sin certificado de cliente.
+    TlsInvalid,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -196,22 +196,29 @@ pub async fn system_usage(state: State<'_, AppState>) -> ApiResult<SystemUsage> 
 
 /// GPU del equipo (solo NVIDIA vía `nvidia-smi` y solo con motor local). Sin GPU o sin `nvidia-smi` devuelve `[]`.
 #[tauri::command]
-pub async fn gpu_status() -> ApiResult<Vec<GpuInfo>> {
+pub async fn gpu_status(state: State<'_, AppState>) -> ApiResult<Vec<GpuInfo>> {
+    // Con un daemon remoto la GPU del equipo local no dice nada del servidor.
+    if state.engine.is_remote() {
+        return Ok(Vec::new());
+    }
     Ok(crate::gpu::probe().await)
 }
 
 #[tauri::command]
 pub async fn start_container(state: State<'_, AppState>, id: String) -> ApiResult<()> {
+    let _guard = state.action_guard().await?;
     start_inner(state.engine.as_ref(), &id).await
 }
 
 #[tauri::command]
 pub async fn stop_container(state: State<'_, AppState>, id: String) -> ApiResult<()> {
+    let _guard = state.action_guard().await?;
     stop_inner(state.engine.as_ref(), &id).await
 }
 
 #[tauri::command]
 pub async fn restart_container(state: State<'_, AppState>, id: String) -> ApiResult<()> {
+    let _guard = state.action_guard().await?;
     restart_inner(state.engine.as_ref(), &id).await
 }
 
@@ -220,6 +227,7 @@ pub async fn plan_action(
     state: State<'_, AppState>,
     request: ActionRequest,
 ) -> ApiResult<ActionPlan> {
+    state.ensure_not_switching()?;
     state.actions.plan(request).await.map_err(ApiError::from)
 }
 
@@ -229,6 +237,7 @@ pub async fn execute_action(
     ticket: String,
     typed: Option<String>,
 ) -> ApiResult<ActionOutcome> {
+    let _guard = state.action_guard().await?;
     state
         .actions
         .execute(&ticket, typed.as_deref())

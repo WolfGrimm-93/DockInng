@@ -35,6 +35,7 @@ function warningLine(w: CreateWarning): string | null {
     case 'sensitive_bind': return `Ruta sensible ${safeText(w.source, { singleLine: true })}: ${safeText(w.reason, { singleLine: true })}`
     case 'docker_socket': return '/var/run/docker.sock da control total de Docker al contenedor.'
     case 'host_network': return 'Usa la red del equipo (network=host): el contenedor no está aislado de la red.'
+    case 'remote_bind': return `El montaje ${safeText(w.source, { singleLine: true })} se resuelve en el servidor remoto, no en tu equipo.`
     default: return null
   }
 }
@@ -55,6 +56,7 @@ export default function CreateContainerPage() {
   const moveContainers = useGroupsStore((s) => s.moveContainers)
   const formRef = useRef<HTMLFormElement>(null)
   const mounted = useRef(true)
+  const [remoteBind, setRemoteBind] = useState(false)
   useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
 
   const [image, setImage] = useState(() => route.params.get('image') ?? '')
@@ -169,6 +171,10 @@ export default function CreateContainerPage() {
   /** Plan del backend: errores por campo, avisos y confirmación (con ticket) si el motor la exige. null = detenido (errores, cancelado). */
   const planAndConfirm = async (spec: ReturnType<typeof toCreateSpec>, start: boolean): Promise<{ normalized: typeof spec; ticket: string | null } | null> => {
     const plan: CreatePlan = await api.containers.planCreate(spec)
+    const rb = plan.warnings.some((w) => w.type === 'remote_bind')
+    if (mounted.current) setRemoteBind(rb)
+    // La página navega al crear: el aviso también sale como toast para que no se pierda.
+    if (rb && plan.ok) toast.warn('Montajes en el servidor remoto', { sub: `Con «${safeText(conn.profile.name, { singleLine: true })}» activa, las rutas de origen (bind) apuntan al disco del servidor, no al de tu equipo.` })
     if (!plan.ok) {
       const be: Record<string, string> = {}
       for (const fe of plan.field_errors) be[backendFieldToKey(form, fe.field)] = fe.message
@@ -275,6 +281,7 @@ export default function CreateContainerPage() {
           <section className="card form-section">
             <h2>Volúmenes</h2>
             <div className="form-body">
+              {remoteBind && !relRemote.length ? <AlertBox kind="warn" icon="server" title="Los montajes se resuelven en el servidor remoto" text={`Con «${safeText(conn.profile.name, { singleLine: true })}» activa, las rutas de origen (bind) apuntan al disco del servidor, no al de tu equipo. Comprueba que existan allí o usa un volumen con nombre.`} /> : null}
               {relRemote.length ? <AlertBox kind="warn" icon="warn" title="Ruta relativa en una conexión remota" text={`Con «${safeText(conn.profile.name, { singleLine: true })}» activa, «${safeText(relRemote[0].source, { singleLine: true })}» se resuelve en el servidor, no en tu equipo. Usa una ruta absoluta del servidor o un volumen con nombre.`} /> : null}
               {binds.length ? (
                 <AlertBox kind="warn" icon="warn" title="Montaje sensible" text={<>{binds.map(({ v, w }) => <span key={v.id} style={{ display: 'block' }}>{safeText(w!.text, { singleLine: true })}</span>)}</>} />

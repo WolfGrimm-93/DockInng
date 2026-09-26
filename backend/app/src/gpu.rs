@@ -2,10 +2,54 @@
 //! por eso solo se consulta cuando el motor es el local (mismo equipo). Docker no informa la GPU por contenedor.
 //! Cualquier fallo (no hay `nvidia-smi`, timeout, salida rara) devuelve "sin GPU", nunca un error.
 
-use std::time::Duration;
+use std::future::Future;
+use std::time::{Duration, Instant};
 
 use engine_core::GpuInfo;
 use tokio::process::Command;
+use tokio::sync::Mutex;
+
+/// El frontend pregunta cada ~4 s; `nvidia-smi` es caro (lanza un proceso y toca el driver),
+/// así que se reutiliza el último resultado durante este tiempo.
+pub const CACHE_TTL: Duration = Duration::from_secs(15);
+
+/// Caché del último resultado (también el vacío: sin GPU no se relanza el proceso cada 4 s).
+/// El candado se mantiene durante la consulta: llamadas simultáneas comparten una sola.
+pub struct GpuCache {
+    slot: Mutex<Option<(Instant, Vec<GpuInfo>)>>,
+}
+
+impl GpuCache {
+    pub const fn new() -> Self {
+        Self {
+            slot: Mutex::const_new(None),
+        }
+    }
+
+    pub async fn get<F: Future<Output = Vec<GpuInfo>>>(
+        &self,
+        ttl: Duration,
+        fetch: impl FnOnce() -> F,
+    ) -> Vec<GpuInfo> {
+        let mut g = self.slot.lock().await;
+        if let Some((at, v)) = g.as_ref()
+            && at.elapsed() < ttl
+        {
+            return v.clone();
+        }
+        let v = fetch().await;
+        *g = Some((Instant::now(), v.clone()));
+        v
+    }
+}
+
+impl Default for GpuCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+static CACHE: GpuCache = GpuCache::new();
 
 const TIMEOUT: Duration = Duration::from_secs(3);
 const MIB: u64 = 1024 * 1024;
@@ -24,10 +68,15 @@ pub fn engine_is_local() -> bool {
     }
 }
 
+/// GPU del equipo, con caché de `CACHE_TTL`.
 pub async fn probe() -> Vec<GpuInfo> {
     if !engine_is_local() {
         return Vec::new();
     }
+    CACHE.get(CACHE_TTL, query_smi).await
+}
+
+async fn query_smi() -> Vec<GpuInfo> {
     let run = Command::new("nvidia-smi")
         .args(ARGS)
         .kill_on_drop(true)
@@ -64,6 +113,50 @@ fn parse_line(line: &str) -> Option<GpuInfo> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn la_cache_evita_relanzar_nvidia_smi() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        let cache = GpuCache::new();
+        let calls = AtomicU32::new(0);
+        let fetch = || async {
+            calls.fetch_add(1, Ordering::SeqCst);
+            Vec::new()
+        };
+        for _ in 0..5 {
+            cache.get(Duration::from_millis(80), fetch).await;
+        }
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            1,
+            "un resultado vacío también se cachea"
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        cache.get(Duration::from_millis(80), fetch).await;
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            2,
+            "pasado el TTL se vuelve a consultar"
+        );
+    }
+
+    #[tokio::test]
+    async fn consultas_simultaneas_comparten_una_sola() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        let cache = GpuCache::new();
+        let calls = AtomicU32::new(0);
+        let fetch = || async {
+            calls.fetch_add(1, Ordering::SeqCst);
+            tokio::time::sleep(Duration::from_millis(30)).await;
+            Vec::new()
+        };
+        tokio::join!(
+            cache.get(Duration::from_secs(5), fetch),
+            cache.get(Duration::from_secs(5), fetch),
+            cache.get(Duration::from_secs(5), fetch)
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
 
     #[test]
     fn parsea_una_gpu_normal() {

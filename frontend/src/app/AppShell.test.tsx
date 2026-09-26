@@ -24,11 +24,11 @@ afterEach(() => {
 })
 
 describe('AppShell', () => {
-  it('sidebar: 6 enlaces con aria-current en la vista activa, contadores y estado del motor con aria-label', async () => {
+  it('sidebar: 7 enlaces con aria-current en la vista activa, contadores y estado del motor con aria-label', async () => {
     mount()
     const nav = screen.getByRole('navigation', { name: 'Secciones' })
     const links = within(nav).getAllByRole('link')
-    expect(links.map((l) => l.getAttribute('aria-label'))).toEqual(['Contenedores', 'Imágenes', 'Volúmenes', 'Redes', 'Stacks (Compose)', 'Configuración'])
+    expect(links.map((l) => l.getAttribute('aria-label'))).toEqual(['Contenedores', 'Imágenes', 'Volúmenes', 'Redes', 'Stacks (Compose)', 'Limpieza', 'Configuración'])
     expect(within(nav).getByRole('link', { name: 'Contenedores' })).toHaveAttribute('aria-current', 'page')
     await waitFor(() => expect(within(nav).getByText('7/13')).toBeInTheDocument())
     const engine = await screen.findByRole('status', { name: /Motor conectado\. Docker 27\.3\.1 · API 1\.47\. Conexión Local/ })

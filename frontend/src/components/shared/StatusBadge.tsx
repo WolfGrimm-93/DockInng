@@ -42,7 +42,7 @@ export function StatusBadge({ state, busy, live }: { state: ContainerState; busy
   const ui = toUiStatus(state)
   const d = STATUS_UI[ui]
   return (
-    <span className={`status status-${ui}${live && ui === 'running' ? ' is-live' : ''}`}>
+    <span className={`status status-${ui}${live && (ui === 'running' || ui === 'restarting') ? ' is-live' : ''}`}>
       <Icon name={d.icon} fill={d.fill} />
       {state === 'unknown' ? 'Desconocido' : d.label}
     </span>

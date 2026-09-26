@@ -118,11 +118,23 @@ pub struct FieldError {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum CreateWarning {
-    SensitiveBind { source: String, reason: String },
+    SensitiveBind {
+        source: String,
+        reason: String,
+    },
     DockerSocket,
     HostNetwork,
-    PortInUse { port: u16, by: String },
-    PublishedAllInterfaces { port: u16 },
+    PortInUse {
+        port: u16,
+        by: String,
+    },
+    PublishedAllInterfaces {
+        port: u16,
+    },
+    /// El daemon es remoto: este bind mount se resolverá en el sistema de archivos REMOTO.
+    RemoteBind {
+        source: String,
+    },
 }
 
 impl CreateWarning {
@@ -765,7 +777,10 @@ impl CreateService {
     }
 
     async fn evaluate(&self, spec: &CreateContainerSpec) -> Result<Evaluation, ApiError> {
-        let (mut normalized, mut field_errors) = match validate_create(spec, self.home.as_deref()) {
+        // Con un daemon remoto el `$HOME` local no aplica (ni `~`, ni symlinks locales).
+        let remote = self.engine.is_remote();
+        let home = if remote { None } else { self.home.as_deref() };
+        let (mut normalized, mut field_errors) = match validate_create(spec, home) {
             Ok(n) => (n, Vec::new()),
             Err(e) => (spec.clone(), e),
         };
@@ -825,6 +840,28 @@ impl CreateService {
             if !v.source.starts_with('/') {
                 continue;
             }
+            if remote {
+                // La ruta pertenece al servidor: no se canonicaliza en local ni se evalúa contra
+                // el `$HOME` local, pero `/`, los árboles de sistema y el socket del motor
+                // siguen exigiendo confirmación. `RemoteBind` es un aviso ADICIONAL.
+                let p = Path::new(&v.source);
+                if is_engine_socket(p) {
+                    if !warnings.contains(&CreateWarning::DockerSocket) {
+                        warnings.push(CreateWarning::DockerSocket);
+                    }
+                } else {
+                    if let Some(reason) = sensitive_reason(p, None) {
+                        warnings.push(CreateWarning::SensitiveBind {
+                            source: v.source.clone(),
+                            reason,
+                        });
+                    }
+                    warnings.push(CreateWarning::RemoteBind {
+                        source: v.source.clone(),
+                    });
+                }
+                continue;
+            }
             let resolved = std::fs::canonicalize(&v.source)
                 .ok()
                 .and_then(|p| p.to_str().map(String::from));
@@ -836,7 +873,7 @@ impl CreateService {
                 if !warnings.contains(&CreateWarning::DockerSocket) {
                     warnings.push(CreateWarning::DockerSocket);
                 }
-            } else if let Some(reason) = sensitive_reason(p, self.home.as_deref()) {
+            } else if let Some(reason) = sensitive_reason(p, home) {
                 warnings.push(CreateWarning::SensitiveBind {
                     source: v.source.clone(),
                     reason,
@@ -1387,10 +1424,156 @@ mod tests {
         )
     }
 
+    /// Motor de mentira que se declara REMOTO y delega todo lo demás en `MockEngine`.
+    struct RemoteEngine(Arc<MockEngine>);
+
+    #[async_trait::async_trait]
+    impl crate::EngineClient for RemoteEngine {
+        fn is_remote(&self) -> bool {
+            true
+        }
+        async fn ping(&self) -> Result<(), crate::EngineError> {
+            self.0.ping().await
+        }
+        async fn info(&self) -> Result<crate::EngineInfo, crate::EngineError> {
+            self.0.info().await
+        }
+        async fn diagnose(&self) -> crate::ConnectionStatus {
+            self.0.diagnose().await
+        }
+        async fn reconnect(&self) -> crate::ConnectionStatus {
+            self.0.reconnect().await
+        }
+        async fn list_containers(
+            &self,
+            all: bool,
+        ) -> Result<Vec<crate::Container>, crate::EngineError> {
+            self.0.list_containers(all).await
+        }
+        async fn inspect_container(
+            &self,
+            id: &str,
+        ) -> Result<crate::ContainerDetail, crate::EngineError> {
+            self.0.inspect_container(id).await
+        }
+        async fn start_container(&self, id: &str) -> Result<(), crate::EngineError> {
+            self.0.start_container(id).await
+        }
+        async fn stop_container(&self, id: &str) -> Result<(), crate::EngineError> {
+            self.0.stop_container(id).await
+        }
+        async fn restart_container(&self, id: &str) -> Result<(), crate::EngineError> {
+            self.0.restart_container(id).await
+        }
+        async fn remove_container(&self, id: &str, force: bool) -> Result<(), crate::EngineError> {
+            self.0.remove_container(id, force).await
+        }
+        async fn stats_snapshot(
+            &self,
+            id: &str,
+        ) -> Result<crate::ContainerStats, crate::EngineError> {
+            self.0.stats_snapshot(id).await
+        }
+        async fn list_images(&self) -> Result<Vec<crate::Image>, crate::EngineError> {
+            self.0.list_images().await
+        }
+        async fn remove_image(&self, reference: &str) -> Result<(), crate::EngineError> {
+            self.0.remove_image(reference).await
+        }
+        async fn list_volumes(&self) -> Result<Vec<crate::Volume>, crate::EngineError> {
+            self.0.list_volumes().await
+        }
+        async fn inspect_volume(&self, name: &str) -> Result<crate::Volume, crate::EngineError> {
+            self.0.inspect_volume(name).await
+        }
+        async fn remove_volume(&self, name: &str) -> Result<(), crate::EngineError> {
+            self.0.remove_volume(name).await
+        }
+        async fn list_networks(&self) -> Result<Vec<crate::Network>, crate::EngineError> {
+            self.0.list_networks().await
+        }
+        async fn remove_network(&self, id: &str) -> Result<(), crate::EngineError> {
+            self.0.remove_network(id).await
+        }
+        async fn system_usage(&self) -> Result<crate::SystemUsage, crate::EngineError> {
+            self.0.system_usage().await
+        }
+        fn events(&self) -> crate::EngineStream<crate::EngineEvent> {
+            self.0.events()
+        }
+        fn logs(&self, id: &str, req: crate::LogsRequest) -> crate::EngineStream<crate::LogLine> {
+            self.0.logs(id, req)
+        }
+        fn stats(&self, id: &str) -> crate::EngineStream<crate::ContainerStats> {
+            self.0.stats(id)
+        }
+    }
+
     fn bind_spec(src: &str) -> CreateContainerSpec {
         let mut s = spec("alpine");
         s.volumes = vec![vol(src, "/mnt/x")];
         s
+    }
+
+    /// Con un daemon remoto `/`, los árboles de sistema y el socket del motor SIGUEN exigiendo
+    /// confirmación (sin evaluar `$HOME` local); una ruta ordinaria solo avisa `RemoteBind`.
+    #[tokio::test]
+    async fn binds_en_remoto_mantienen_confirmacion_de_rutas_sensibles() {
+        let e = Arc::new(MockEngine::new());
+        let c = Arc::new(MockCreate::default());
+        let remote: Arc<dyn crate::EngineClient> = Arc::new(RemoteEngine(e.clone()));
+        assert!(remote.is_remote());
+        let s = CreateService::with_clock(
+            remote,
+            c.clone(),
+            Arc::new(FakeClock::default()),
+            Some(PathBuf::from(HOME)),
+        );
+        for src in [
+            "/",
+            "/etc",
+            "/root",
+            "/var/lib/docker",
+            "/var/run/docker.sock",
+        ] {
+            let p = s.plan(bind_spec(src)).await.expect("plan");
+            assert!(p.ok, "{src}: {:?}", p.field_errors);
+            assert_eq!(p.decision, PlanDecision::Confirm, "{src}");
+            assert!(p.ticket.is_some(), "{src}");
+        }
+        let p = s.plan(bind_spec("/etc")).await.expect("plan");
+        assert!(
+            p.warnings
+                .iter()
+                .any(|w| matches!(w, CreateWarning::SensitiveBind { .. }))
+        );
+        assert!(
+            p.warnings
+                .iter()
+                .any(|w| matches!(w, CreateWarning::RemoteBind { .. }))
+        );
+        let p = s
+            .plan(bind_spec("/var/run/docker.sock"))
+            .await
+            .expect("plan");
+        assert!(p.warnings.contains(&CreateWarning::DockerSocket));
+        // Ruta ordinaria: solo el aviso remoto, sin confirmación.
+        let p = s.plan(bind_spec("/srv/datos")).await.expect("plan");
+        assert_eq!(p.decision, PlanDecision::Allow);
+        assert_eq!(
+            p.warnings,
+            vec![CreateWarning::RemoteBind {
+                source: "/srv/datos".into()
+            }]
+        );
+        // En local nunca aparece `RemoteBind`.
+        let local = svc(&e, &c);
+        let p = local.plan(bind_spec("/srv/datos")).await.expect("plan");
+        assert!(
+            !p.warnings
+                .iter()
+                .any(|w| matches!(w, CreateWarning::RemoteBind { .. }))
+        );
     }
 
     #[tokio::test]

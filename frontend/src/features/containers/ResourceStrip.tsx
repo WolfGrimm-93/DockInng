@@ -1,8 +1,8 @@
 // Franja de consumo total sobre la tabla de contenedores: CPU y RAM (suma de los contenedores en marcha), disco de Docker y GPU del equipo.
 // Sin navbar: es contenido de la vista. CPU en «% de un núcleo» (100 % = 1 núcleo, como cada fila y como `docker stats`).
 // La GPU es del equipo (solo NVIDIA con nvidia-smi y solo con motor local): Docker no la informa por contenedor, por eso no hay GPU por stack.
-import { useMemo } from 'react'
-import { useAllStats, useContainers, useGpu, useSystemUsage } from '@/data/store/hooks'
+import { memo, useMemo } from 'react'
+import { useAllStats, useContainers, useGpu, useStatsConsumer, useStatsStale, useSystemUsage } from '@/data/store/hooks'
 import type { DiskUsage } from '@/data/types'
 import { formatBytesPrecise, formatBytesSI } from '@/lib/format'
 import { safeText } from '@/lib/safeText'
@@ -35,7 +35,9 @@ function Meter({ label, value, sub, pct, title, segments }: MeterProps) {
 
 const cat = (d: DiskUsage, k: keyof DiskUsage) => d[k].total_bytes ?? 0
 
-export function ResourceStrip() {
+function ResourceStripImpl() {
+  useStatsConsumer()
+  const stale = useStatsStale()
   const { list } = useContainers()
   const stats = useAllStats()
   const system = useSystemUsage()
@@ -78,7 +80,7 @@ export function ResourceStrip() {
     : 'GPU del equipo (solo NVIDIA con nvidia-smi y solo con motor local). Docker no informa la GPU por contenedor.'
 
   return (
-    <section className="resource-strip" aria-label="Consumo total">
+    <section className={`resource-strip${stale ? ' is-stale' : ''}`} aria-label="Consumo total" aria-busy={stale || undefined}>
       <Meter label="CPU" value={`${sum.cpu.toFixed(1)} %`} sub={cpuSub} pct={cpuPct} title="Suma de los contenedores en marcha (100 % = 1 núcleo, como docker stats)" />
       <Meter label="RAM" value={formatBytesPrecise(sum.memBytes)} sub={memSub} pct={memPct} title="Memoria usada por los contenedores en marcha frente a la del equipo" />
       <Meter label="Disco" value={diskValue} sub={diskSub} pct={0} segments={diskSegs} title={diskTitle} />
@@ -86,3 +88,6 @@ export function ResourceStrip() {
     </section>
   )
 }
+
+/** Memoizada: no tiene props, así solo se repinta por sus propias suscripciones (stats, sistema, GPU, lista), nunca por el padre. */
+export const ResourceStrip = memo(ResourceStripImpl)

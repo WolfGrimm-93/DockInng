@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::api::ApiErrorCode;
 use crate::client::EngineStream;
 use crate::error::EngineError;
+use crate::registry::RegistryAuth;
 
 /// Tope de capas que se siguen (una imagen real rara vez pasa de ~120).
 pub const MAX_LAYERS: usize = 256;
@@ -28,6 +29,24 @@ pub struct PullEvent {
 pub trait PullEngine: Send + Sync {
     /// Valida en la primera lectura; soltar el stream aborta la descarga en el daemon.
     fn pull_image(&self, reference: &str) -> EngineStream<PullEvent>;
+
+    /// Igual que `pull_image` pero con credenciales del registro. Por defecto las ignora y
+    /// delega (no rompe motores simulados que no las soportan).
+    fn pull_image_with_auth(
+        &self,
+        reference: &str,
+        auth: Option<RegistryAuth>,
+    ) -> EngineStream<PullEvent> {
+        let _ = auth;
+        self.pull_image(reference)
+    }
+
+    /// Comprueba las credenciales contra el registro (`POST /auth` del daemon). Por defecto
+    /// no está soportado.
+    async fn check_registry_auth(&self, auth: &RegistryAuth) -> Result<(), EngineError> {
+        let _ = auth;
+        Err(EngineError::not_implemented("probar registros"))
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

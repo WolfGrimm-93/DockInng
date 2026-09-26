@@ -62,7 +62,7 @@ export default function ImagesPage() {
     <PageHeader
       title="Imágenes"
       count={gate.isError ? null : `${list.length} · ${(totalBytes / GIB).toFixed(1)} GB`}
-      secondary={<Button variant="outline-destructive" locked={gate.locked} onClick={() => void pruneUnused()}><Icon name="trash" />Eliminar sin usar…</Button>}
+      secondary={<><LinkButton variant="secondary" locked={gate.locked} href={route.href('build')}><Icon name="layers" />Construir imagen</LinkButton><Button variant="outline-destructive" locked={gate.locked} onClick={() => void pruneUnused()}><Icon name="trash" />Eliminar sin usar…</Button></>}
       primary={<LinkButton variant="primary" locked={gate.locked} href={route.href('pull')}><Icon name="download" />Descargar imagen</LinkButton>}
     />
   )

@@ -215,7 +215,8 @@ kbd { font-size: var(--text-xs); padding: 1px 5px; border-radius: var(--radius-s
 .status-running { --s-bg: var(--status-running-bg); --s-fg: var(--status-running); }
 .status-paused { --s-bg: var(--status-paused-bg); --s-fg: var(--status-paused); }
 .status-restarting { --s-bg: var(--status-restarting-bg); --s-fg: var(--status-restarting); }
-.status-restarting .i { animation: spin 1.4s linear infinite; }
+/* «Reiniciando» solo gira en el detalle (.is-live); en filas queda el icono estático + el texto (sin repintado continuo). El giro de «Iniciando…/Deteniendo…» es la clase .spin (transitorio). */
+.status-restarting.is-live .i { animation: spin 1.4s linear infinite; }
 .status-exited { --s-bg: var(--status-exited-bg); --s-fg: var(--status-exited); }
 .status-dead { --s-bg: var(--status-dead-bg); --s-fg: var(--status-dead); }
 .status-created { --s-bg: var(--status-created-bg); --s-fg: var(--status-created); }
@@ -572,10 +573,9 @@ tr.group-row .group-edit:hover, tr.group-row .group-edit:focus-visible { opacity
 .group-row-cfg { align-items: flex-start; }
 
 /* ---- Indicadores de «en ejecución» animados ---- */
-/* Punto verde con onda en la cabecera de un grupo que tiene contenedores en marcha (además del número). */
-.live-dot { position: relative; display: inline-block; width: 8px; height: 8px; margin: 0 6px 0 8px; border-radius: 999px; background: var(--status-running); vertical-align: middle; flex: none; }
-.live-dot::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: var(--status-running); animation: live-halo 1.8s ease-out infinite; }
-@keyframes live-halo { 0% { transform: scale(1); opacity: 0.55; } 100% { transform: scale(2.8); opacity: 0; } }
+/* Punto verde en la cabecera de un grupo que tiene contenedores en marcha (además del número). ESTÁTICO: con muchos grupos una animación
+   infinita por cabecera fuerza repintados continuos; solo el icono del detalle del contenedor se anima. El halo es un anillo fijo. */
+.live-dot { position: relative; display: inline-block; width: 8px; height: 8px; margin: 0 6px 0 8px; border-radius: 999px; background: var(--status-running); box-shadow: 0 0 0 3px color-mix(in oklab, var(--status-running) 28%, transparent); vertical-align: middle; flex: none; }
 /* Icono «En ejecución» del detalle: halo que se expande y núcleo que late. */
 .status.is-live svg.i { overflow: visible; }
 .status.is-live .dot-halo, .status.is-live .dot-core { transform-box: fill-box; transform-origin: center; }
@@ -585,8 +585,11 @@ tr.group-row .group-edit:hover, tr.group-row .group-edit:focus-visible { opacity
 @keyframes dot-halo { 0% { transform: scale(1); opacity: 0.7; } 100% { transform: scale(1.9); opacity: 0; } }
 @keyframes dot-core { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.3); } }
 @media (prefers-reduced-motion: reduce) {
-  .live-dot::after, .status.is-live .dot-halo, .status.is-live .dot-core { animation: none; }
+  .status.is-live .dot-halo, .status.is-live .dot-core { animation: none; }
 }
+/* Ventana sin foco (clase puesta por lib/windowActivity): toda animación se pausa; al volver reanuda donde iba. */
+html.window-blurred .spin, html.window-blurred .status.is-live .dot-halo, html.window-blurred .status.is-live .dot-core,
+html.window-blurred .status-restarting.is-live .i, html.window-blurred .skeleton { animation-play-state: paused; }
 
 /* Modales de puertos/IPs y de redes del grupo */
 .info-tabs { margin-top: 10px; }

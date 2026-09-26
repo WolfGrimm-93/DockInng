@@ -29,11 +29,11 @@ describe('routes', () => {
     expect(parseRoute(h).params.get('c')).toBe(c)
     expect(buildHref('images')).toBe('#images')
   })
-  it('tablas: 11 rutas, mismos títulos y NAV_OF que la plantilla', () => {
-    expect(Object.keys(TITLES)).toHaveLength(11)
+  it('tablas: 13 rutas, mismos títulos y NAV_OF que la plantilla', () => {
+    expect(Object.keys(TITLES)).toHaveLength(13)
     expect(TITLES['stack-edit']).toBe('Editar stack')
-    expect(NAV_OF).toMatchObject({ detail: 'containers', create: 'containers', pull: 'images', 'stack-edit': 'stacks', 'conn-new': 'settings' })
-    expect(NAV.map((n) => n.group)).toEqual(['Docker', 'Docker', 'Docker', 'Docker', 'Docker', 'Aplicación'])
+    expect(NAV_OF).toMatchObject({ detail: 'containers', create: 'containers', pull: 'images', 'stack-edit': 'stacks', 'conn-new': 'settings', build: 'images', cleanup: 'cleanup' })
+    expect(NAV.map((n) => n.group)).toEqual(['Docker', 'Docker', 'Docker', 'Docker', 'Docker', 'Docker', 'Aplicación'])
     expect(isRouteId('volumes')).toBe(true)
     expect(isRouteId('x')).toBe(false)
   })

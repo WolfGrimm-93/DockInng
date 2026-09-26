@@ -1,0 +1,53 @@
+/* Ola 2: conexiones remotas, huella de host, registros, build y limpieza guiada. Solo tokens del tema (var(--…)); sin colores fijos. */
+.check-row { display: flex; align-items: center; gap: 8px; }
+.tag.risk-low { color: var(--status-running); }
+.tag.risk-medium { color: var(--status-paused); }
+.tag.risk-high { color: var(--status-dead); }
+
+/* ---- Huella de host ---- */
+.hostkey { margin: 12px 0 0; display: grid; gap: 4px; min-width: 0; }
+.hostkey dt { color: var(--muted-foreground); font-size: var(--text-xs); }
+.hostkey dd { margin: 0 0 6px; min-width: 0; }
+.hostkey .fp { overflow-wrap: anywhere; word-break: break-all; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--muted); user-select: all; }
+.dlg-remote { margin-bottom: 10px; }
+.dlg-foot { flex-wrap: wrap; }
+
+/* ---- Registros ---- */
+.reg-row small { overflow-wrap: anywhere; }
+.setting-row, .conn { flex-wrap: wrap; }
+
+/* ---- Limpieza guiada ---- */
+.cleanup-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-content: start; padding-bottom: 88px; }
+.cleanup-cat { min-width: 0; }
+.cleanup-cat.is-risky { border-color: color-mix(in oklch, var(--status-dead) 40%, var(--border)); }
+.cleanup-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px; }
+.cleanup-toggle { display: inline-flex; align-items: center; gap: 6px; flex: 1; min-width: 0; text-align: left; background: none; border: 0; color: inherit; font: inherit; cursor: pointer; padding: 4px 0; }
+.cleanup-toggle .chev { transition: transform 0.15s; transform: rotate(-90deg); flex: none; }
+.cleanup-toggle[aria-expanded="true"] .chev { transform: none; }
+.cleanup-toggle:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: var(--radius-sm); }
+.cleanup-hint { padding: 0 16px 8px; font-size: var(--text-xs); }
+.cleanup-empty { padding: 8px 16px 14px; color: var(--muted-foreground); }
+.cleanup-size { white-space: nowrap; color: var(--muted-foreground); font-size: var(--text-xs); }
+.cleanup-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--border); }
+.cleanup-list li + li { border-top: 1px solid var(--border); }
+.cleanup-item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 12px; padding: 8px 16px; cursor: pointer; }
+.cleanup-item:hover { background: color-mix(in oklch, var(--muted) 50%, transparent); }
+.cleanup-name { min-width: 0; display: grid; }
+.cleanup-name small { color: var(--muted-foreground); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; }
+.cleanup-bar { position: sticky; bottom: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 12px 16px; border-top: 1px solid var(--border); background: var(--popover); }
+.cleanup-sum { display: grid; min-width: 0; }
+@media (max-width: 640px) { .cleanup-item { grid-template-columns: auto minmax(0, 1fr); } .cleanup-item .tag, .cleanup-item .cleanup-size { grid-column: 2; justify-self: start; } }
+
+/* ---- Selector de conexión ---- */
+.ctx-tag { font-style: normal; font-size: 10px; font-weight: 600; letter-spacing: 0.03em; margin-left: 6px; padding: 1px 5px; border-radius: var(--radius-sm); background: var(--muted); color: var(--muted-foreground); vertical-align: 1px; }
+
+/* Título de vista: el contador pasa a otra línea en anchos estrechos en vez de partir el título letra a letra. */
+.view-title { flex-wrap: wrap; row-gap: 2px; }
+
+/* Muestras obsoletas (se vuelve a consumir tras un rato): atenuadas hasta que llegue la nueva. */
+.is-stale { opacity: 0.5; transition: opacity 0.2s; }
+@media (prefers-reduced-motion: reduce) { .is-stale { transition: none; } }
+
+/* B-12: con la ventana sin foco también se pausa la barra indeterminada; el giro del chevrón respeta prefers-reduced-motion. */
+html.window-blurred .progress.is-indeterminate i { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .cleanup-toggle .chev { transition: none; } }

@@ -70,7 +70,7 @@ export function applyPrepare(api: EngineApi): void {
   if (f.state === 'error') sim.setFault('permission')
   else if (f.state === 'daemon') sim.setFault('daemon')
   const ctx = f.state === 'ssh' ? 'staging' : f.ctx
-  if (ctx) void api.connection.select(ctx).catch(() => undefined)
+  if (ctx) void api.connections.select(ctx).catch(() => undefined)
 }
 /** Tras bootstrap: ?state=lost. */
 export function applyReady(_api: EngineApi, store: EngineStore): void {

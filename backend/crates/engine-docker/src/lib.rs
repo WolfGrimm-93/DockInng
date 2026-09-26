@@ -6,7 +6,9 @@ mod diagnose;
 mod error_map;
 mod exec;
 mod logs;
+mod podman;
 mod pull;
+mod registry;
 mod stacks;
 mod stats;
 
@@ -33,6 +35,7 @@ use futures_util::{StreamExt, stream};
 
 pub use error_map::{classify, from_status};
 pub use logs::{LineAssembler, MAX_LINE_BYTES};
+pub use podman::{PodmanCandidate, PodmanEnv, detect_podman, detect_podman_host};
 pub use stats::StatsTracker;
 
 /// Timeout de las llamadas cortas (solo hasta recibir cabeceras).
@@ -59,14 +62,110 @@ pub enum Endpoint {
     Unix(String),
     /// Cualquier otro `DOCKER_HOST` (tcp://, ...): lo resuelve bollard.
     Host(String),
+    /// Socket Unix privado de un túnel SSH hacia un daemon remoto. `label` es el nombre
+    /// legible para la UI (`ssh://usuario@host:puerto`).
+    Tunnel { socket: String, label: String },
+    /// Daemon remoto por TLS mutuo. Solo RUTAS de certificados; `cert_dir` es un directorio
+    /// privado con enlaces `ca.pem`/`cert.pem`/`key.pem` para los subprocesos de Docker.
+    Tls {
+        addr: String,
+        ca: String,
+        cert: String,
+        key: String,
+        cert_dir: String,
+        label: String,
+    },
 }
 
 impl Endpoint {
+    /// Valor utilizable como `DOCKER_HOST` por los subprocesos (Compose, build).
     pub fn display(&self) -> String {
         match self {
-            Endpoint::Unix(p) => format!("unix://{p}"),
+            Endpoint::Unix(p) | Endpoint::Tunnel { socket: p, .. } => format!("unix://{p}"),
             Endpoint::Host(h) => h.clone(),
+            Endpoint::Tls { addr, .. } => addr.clone(),
         }
+    }
+
+    /// Nombre para mostrar al usuario (un túnel no debe enseñar la ruta de su socket).
+    pub fn label(&self) -> String {
+        match self {
+            Endpoint::Tunnel { label, .. } | Endpoint::Tls { label, .. } => label.clone(),
+            other => other.display(),
+        }
+    }
+
+    /// Variables de entorno adicionales que necesitan los subprocesos de Docker.
+    pub fn docker_env(&self) -> Vec<(String, String)> {
+        match self {
+            Endpoint::Tls { cert_dir, .. } => vec![
+                ("DOCKER_TLS_VERIFY".into(), "1".into()),
+                ("DOCKER_CERT_PATH".into(), cert_dir.clone()),
+            ],
+            _ => Vec::new(),
+        }
+    }
+
+    /// ¿Apunta a un daemon en otra máquina?
+    pub fn is_remote(&self) -> bool {
+        matches!(self, Endpoint::Tunnel { .. } | Endpoint::Tls { .. })
+    }
+}
+
+/// Pista de fallo del transporte (p. ej. stderr clasificado de `ssh`): permite explicar por
+/// qué cayó una conexión remota con una causa más precisa que el error de socket.
+pub type FailureHint = Arc<dyn Fn() -> Option<(ConnectionCause, String)> + Send + Sync>;
+
+/// Destino del motor: endpoint + si está fijado (no se re-resuelve el entorno) + pista.
+#[derive(Clone)]
+pub struct Target {
+    endpoint: Endpoint,
+    fixed: bool,
+    hint: Option<FailureHint>,
+}
+
+impl Target {
+    /// Motor local integrado: se resuelve del entorno (`DOCKER_HOST`, socket por defecto).
+    pub fn local() -> Self {
+        Self {
+            endpoint: DockerEngine::resolve_from_env(),
+            fixed: false,
+            hint: None,
+        }
+    }
+
+    /// Socket Unix local concreto (Podman, sockets personalizados).
+    pub fn socket(path: &str) -> Self {
+        Self {
+            endpoint: Endpoint::Unix(path.to_string()),
+            fixed: true,
+            hint: None,
+        }
+    }
+
+    /// Túnel SSH ya levantado.
+    pub fn tunnel(socket: &str, label: &str, hint: Option<FailureHint>) -> Self {
+        Self {
+            endpoint: Endpoint::Tunnel {
+                socket: socket.to_string(),
+                label: label.to_string(),
+            },
+            fixed: true,
+            hint,
+        }
+    }
+
+    /// TLS mutuo con certificados por ruta.
+    pub fn tls(endpoint: Endpoint) -> Self {
+        Self {
+            endpoint,
+            fixed: true,
+            hint: None,
+        }
+    }
+
+    pub fn endpoint(&self) -> &Endpoint {
+        &self.endpoint
     }
 }
 
@@ -97,9 +196,9 @@ pub fn resolve_endpoint(
 
 struct Inner {
     docker: Mutex<Option<Docker>>,
-    endpoint: Mutex<Endpoint>,
-    /// Si el socket viene fijado (tests), no se vuelve a resolver el entorno.
-    fixed: bool,
+    /// Destino actual: se puede cambiar en caliente con `set_target` sin reconstruir nada
+    /// (todos los servicios comparten este mismo motor).
+    target: Mutex<Target>,
     negotiated: AtomicBool,
 }
 
@@ -118,12 +217,12 @@ impl Default for DockerEngine {
 impl DockerEngine {
     /// Nunca falla ni entra en panic, aunque no exista el socket.
     pub fn new() -> Self {
-        Self::build(Self::resolve_from_env(), false)
+        Self::build(Target::local())
     }
 
     /// Fija un socket concreto (tests y diagnóstico).
     pub fn with_socket(path: &str) -> Self {
-        Self::build(Endpoint::Unix(path.to_string()), true)
+        Self::build(Target::socket(path))
     }
 
     fn resolve_from_env() -> Endpoint {
@@ -134,34 +233,76 @@ impl DockerEngine {
         )
     }
 
-    fn build(endpoint: Endpoint, fixed: bool) -> Self {
+    fn build(target: Target) -> Self {
         Self {
             inner: Arc::new(Inner {
                 docker: Mutex::new(None),
-                endpoint: Mutex::new(endpoint),
-                fixed,
+                target: Mutex::new(target),
                 negotiated: AtomicBool::new(false),
             }),
         }
     }
 
+    fn target_lock(&self) -> std::sync::MutexGuard<'_, Target> {
+        self.inner.target.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     pub fn endpoint(&self) -> Endpoint {
-        self.inner
-            .endpoint
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone()
+        self.target_lock().endpoint.clone()
+    }
+
+    /// Cambia el destino en caliente y devuelve el anterior (para revertir si la conexión
+    /// nueva falla). Descarta el cliente cacheado; los `Arc` que comparten este motor siguen
+    /// siendo válidos. Quien lo llame debe abortar antes las suscripciones en curso.
+    pub fn set_target(&self, target: Target) -> Target {
+        let previous = std::mem::replace(&mut *self.target_lock(), target);
+        *self.inner.docker.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        self.inner.negotiated.store(false, Ordering::Relaxed);
+        previous
+    }
+
+    /// Endpoint REAL para subprocesos (`docker build`, Compose): el valor de `DOCKER_HOST`
+    /// (socket del túnel o `tcp://` con TLS) y las variables extra (`DOCKER_TLS_VERIFY`,
+    /// `DOCKER_CERT_PATH`). Nunca la etiqueta de la UI (`ssh://...`), que haría que el CLI de
+    /// docker abriera su propio ssh saltándose el modelo de seguridad.
+    pub fn subprocess_env(&self) -> (String, Vec<(String, String)>) {
+        let ep = self.endpoint();
+        (ep.display(), ep.docker_env())
+    }
+
+    /// Destino actual (para restaurarlo con `set_target`).
+    pub fn target(&self) -> Target {
+        self.target_lock().clone()
+    }
+
+    fn failure_hint(&self) -> Option<(ConnectionCause, String)> {
+        let hint = self.target_lock().hint.clone();
+        hint.and_then(|h| h())
     }
 
     fn connect(&self) -> Result<Docker, EngineError> {
         let endpoint = self.endpoint();
         let docker = match &endpoint {
-            Endpoint::Unix(p) => {
+            Endpoint::Unix(p) | Endpoint::Tunnel { socket: p, .. } => {
                 Docker::connect_with_unix(p, SHORT_TIMEOUT.as_secs(), bollard::API_DEFAULT_VERSION)
             }
             Endpoint::Host(_) => {
                 Docker::connect_with_defaults().map(|d| d.with_timeout(SHORT_TIMEOUT))
             }
+            Endpoint::Tls {
+                addr,
+                ca,
+                cert,
+                key,
+                ..
+            } => Docker::connect_with_ssl(
+                addr,
+                std::path::Path::new(key),
+                std::path::Path::new(cert),
+                std::path::Path::new(ca),
+                SHORT_TIMEOUT.as_secs(),
+                bollard::API_DEFAULT_VERSION,
+            ),
         };
         docker.map_err(|e| error_map::classify(&e))
     }
@@ -195,12 +336,9 @@ impl DockerEngine {
     fn reset(&self) {
         *self.inner.docker.lock().unwrap_or_else(|e| e.into_inner()) = None;
         self.inner.negotiated.store(false, Ordering::Relaxed);
-        if !self.inner.fixed {
-            *self
-                .inner
-                .endpoint
-                .lock()
-                .unwrap_or_else(|e| e.into_inner()) = Self::resolve_from_env();
+        let mut target = self.target_lock();
+        if !target.fixed {
+            target.endpoint = Self::resolve_from_env();
         }
     }
 
@@ -236,6 +374,10 @@ fn map<T>(r: Result<T, bollard::errors::Error>) -> Result<T, EngineError> {
 
 #[async_trait]
 impl EngineClient for DockerEngine {
+    fn is_remote(&self) -> bool {
+        self.target_lock().endpoint.is_remote()
+    }
+
     async fn ping(&self) -> Result<(), EngineError> {
         let d = self.client().await?;
         map(d.ping().await).map(|_| ())
@@ -275,10 +417,12 @@ impl EngineClient for DockerEngine {
 
     async fn diagnose(&self) -> ConnectionStatus {
         let endpoint = self.endpoint();
-        let display = endpoint.display();
+        // Lo que ve el usuario: un túnel muestra su destino (`ssh://...`), no la ruta del socket.
+        let display = endpoint.label();
         let (mut steps, sock_cause) = match &endpoint {
             Endpoint::Unix(p) => diagnose::check_unix_socket(p).await,
-            Endpoint::Host(_) => (
+            Endpoint::Tunnel { socket, .. } => diagnose::check_tunnel(socket, &display),
+            Endpoint::Host(_) | Endpoint::Tls { .. } => (
                 vec![
                     engine_core::DiagStep {
                         id: engine_core::DiagStepId::Socket,
@@ -325,6 +469,11 @@ impl EngineClient for DockerEngine {
             (None, Err(EngineError::Connection { cause, message })) => (cause, message),
             (None, Err(e)) => (ConnectionCause::Other, e.to_string()),
             (None, Ok(())) => (ConnectionCause::Other, "respuesta inesperada".into()),
+        };
+        // En remoto, el transporte (stderr de ssh) sabe mejor que el socket por qué falló.
+        let (cause, message) = match endpoint.is_remote().then(|| self.failure_hint()).flatten() {
+            Some((c, m)) => (c, m),
+            None => (cause, message),
         };
         ConnectionStatus::Failed {
             endpoint: display,
@@ -625,6 +774,119 @@ impl EngineClient for DockerEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn endpoint_remoto_display_etiqueta_y_entorno() {
+        let tunnel = Endpoint::Tunnel {
+            socket: "/run/user/1000/dockinng/tunnels/a.sock".into(),
+            label: "ssh://deploy@h:22".into(),
+        };
+        // Los subprocesos usan el socket del túnel; la UI muestra el destino, no la ruta.
+        assert_eq!(
+            tunnel.display(),
+            "unix:///run/user/1000/dockinng/tunnels/a.sock"
+        );
+        assert_eq!(tunnel.label(), "ssh://deploy@h:22");
+        assert!(tunnel.is_remote() && tunnel.docker_env().is_empty());
+        let tls = Endpoint::Tls {
+            addr: "tcp://h:2376".into(),
+            ca: "/c/ca.pem".into(),
+            cert: "/c/cert.pem".into(),
+            key: "/c/key.pem".into(),
+            cert_dir: "/run/x".into(),
+            label: "tls://h:2376".into(),
+        };
+        assert_eq!(tls.display(), "tcp://h:2376");
+        assert_eq!(
+            tls.docker_env(),
+            vec![
+                ("DOCKER_TLS_VERIFY".to_string(), "1".to_string()),
+                ("DOCKER_CERT_PATH".to_string(), "/run/x".to_string())
+            ]
+        );
+        let local = Endpoint::Unix("/var/run/docker.sock".into());
+        assert!(!local.is_remote() && local.docker_env().is_empty());
+        assert_eq!(local.label(), local.display());
+    }
+
+    #[test]
+    fn subprocess_env_del_tunel_es_el_socket_y_no_la_etiqueta() {
+        let e = DockerEngine::with_socket("/nonexistent/local.sock");
+        e.set_target(Target::tunnel("/run/x/t.sock", "ssh://u@h:22", None));
+        let (host, env) = e.subprocess_env();
+        assert_eq!(host, "unix:///run/x/t.sock");
+        assert!(env.is_empty());
+        e.set_target(Target::tls(Endpoint::Tls {
+            addr: "tcp://h:2376".into(),
+            ca: "/c".into(),
+            cert: "/d".into(),
+            key: "/k".into(),
+            cert_dir: "/run/certs".into(),
+            label: "tls://h:2376".into(),
+        }));
+        let (host, env) = e.subprocess_env();
+        assert_eq!(host, "tcp://h:2376");
+        assert!(env.contains(&("DOCKER_CERT_PATH".to_string(), "/run/certs".to_string())));
+        assert!(env.contains(&("DOCKER_TLS_VERIFY".to_string(), "1".to_string())));
+    }
+
+    #[test]
+    fn set_target_cambia_en_caliente_y_permite_restaurar() {
+        let e = DockerEngine::with_socket("/nonexistent/local.sock");
+        assert!(!EngineClient::is_remote(&e));
+        let clone = e.clone();
+        let previous = e.set_target(Target::tunnel("/nonexistent/t.sock", "ssh://x", None));
+        // Todas las copias del motor comparten el destino nuevo.
+        assert!(EngineClient::is_remote(&clone));
+        assert_eq!(clone.endpoint().label(), "ssh://x");
+        // Restaurar el destino anterior.
+        e.set_target(previous);
+        assert!(!EngineClient::is_remote(&clone));
+        assert_eq!(
+            clone.endpoint(),
+            Endpoint::Unix("/nonexistent/local.sock".into())
+        );
+        // Un destino fijado no se re-resuelve del entorno al reconectar.
+        e.reset();
+        assert_eq!(
+            e.endpoint(),
+            Endpoint::Unix("/nonexistent/local.sock".into())
+        );
+    }
+
+    #[tokio::test]
+    async fn diagnostico_de_tunel_usa_la_pista_del_transporte() {
+        let hint: FailureHint = Arc::new(|| {
+            Some((
+                ConnectionCause::AuthFailed,
+                "el servidor rechazó la autenticación".into(),
+            ))
+        });
+        let e = DockerEngine::with_socket("/nonexistent/local.sock");
+        // Túnel cuyo socket no existe: el paso «socket» falla y la pista decide la causa.
+        e.set_target(Target::tunnel("/nonexistent/t.sock", "ssh://x", Some(hint)));
+        match e.diagnose().await {
+            ConnectionStatus::Failed {
+                endpoint,
+                cause,
+                message,
+                ..
+            } => {
+                assert_eq!(endpoint, "ssh://x");
+                assert_eq!(cause, ConnectionCause::AuthFailed);
+                assert!(message.contains("autenticación"));
+            }
+            other => panic!("{other:?}"),
+        }
+        // Sin pista, la causa sale del socket del túnel ausente.
+        e.set_target(Target::tunnel("/nonexistent/t.sock", "ssh://x", None));
+        match e.diagnose().await {
+            ConnectionStatus::Failed { cause, .. } => {
+                assert_eq!(cause, ConnectionCause::Unreachable)
+            }
+            other => panic!("{other:?}"),
+        }
+    }
 
     #[test]
     fn endpoint_prioridad_env_defecto_y_rootless() {

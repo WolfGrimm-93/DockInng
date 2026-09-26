@@ -32,6 +32,13 @@ pub enum Action {
     /// Crear un contenedor con riesgos (bind sensible, `network=host`, `docker.sock`):
     /// confirmación simple, `--yes` la salta.
     CreateSensitive,
+    /// Olvidar las credenciales guardadas de un registro (confirmación simple).
+    RemoveRegistry,
+    /// Borrar un perfil de conexión guardado (confirmación simple: no toca el servidor remoto).
+    RemoveConnection,
+    /// Construir una imagen con un contexto sensible (`$HOME`, raíz, directorios del sistema):
+    /// confirmación simple, `--yes` la salta.
+    BuildSensitiveContext,
     /// Limpieza total del sistema (equivale a `system prune`). Prohibida.
     PruneSystem,
 }
@@ -136,7 +143,13 @@ impl ConfirmationPolicy {
                     Decision::Deny(DenyReason::NeedsConfirmationNonInteractive)
                 }
             }
-            RemoveContainer { .. } | RemoveImage | RemoveNetwork | CreateSensitive => simple(),
+            RemoveContainer { .. }
+            | RemoveImage
+            | RemoveNetwork
+            | CreateSensitive
+            | RemoveRegistry
+            | RemoveConnection
+            | BuildSensitiveContext => simple(),
             RemoveVolume { name } => typed(name),
             PruneVolumes => typed(CONFIRM_WORD),
             StackDown { project } => typed(project),
@@ -238,6 +251,13 @@ mod tests {
     #[test]
     fn create_sensitive_es_confirmacion_simple() {
         matriz_simple(Action::CreateSensitive);
+    }
+
+    #[test]
+    fn registro_conexion_y_contexto_sensible_son_confirmacion_simple() {
+        matriz_simple(Action::RemoveRegistry);
+        matriz_simple(Action::RemoveConnection);
+        matriz_simple(Action::BuildSensitiveContext);
     }
 
     #[test]

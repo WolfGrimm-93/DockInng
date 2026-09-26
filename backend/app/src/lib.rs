@@ -1,31 +1,48 @@
 //! Shell de escritorio (Tauri): expone el núcleo al frontend mediante comandos IPC.
 //! No contiene lógica de negocio; solo traduce entre la UI y `EngineClient`.
 
+mod build_feed;
 mod commands;
 mod commands_engine;
+mod commands_remote;
 mod commands_stacks;
+mod commands_store;
+mod commands_tools;
 mod exec_sessions;
 mod gpu;
 mod pull_feed;
 mod stack_ops;
 mod state;
 mod streams;
+mod switch;
 
 #[cfg(test)]
 mod tests_engine;
 #[cfg(test)]
 mod tests_stacks;
+#[cfg(test)]
+mod tests_store;
+#[cfg(test)]
+mod tests_tools;
 
 use std::sync::Arc;
 
 use engine_docker::DockerEngine;
+use store::Store;
 use tauri::{Manager, RunEvent, WindowEvent};
 
 use crate::state::AppState;
 
 pub fn run() {
     // El motor se construye sin fallar: sin socket la app arranca y muestra el estado de conexión.
-    let state = AppState::new(Arc::new(DockerEngine::new()));
+    let mut state = AppState::new(Arc::new(DockerEngine::new()));
+    // La persistencia es opcional: si falla, la app arranca igualmente (sin grupos ni perfiles).
+    match Store::open_default() {
+        Ok(s) => state.store = Some(Arc::new(s)),
+        Err(e) => state.store_error = Some(e.to_string()),
+    }
+    // Sockets de túneles huérfanos de una ejecución anterior (p. ej. tras un cierre brusco).
+    state.remote.purge_stale();
 
     let built = tauri::Builder::default()
         .manage(state)
@@ -70,6 +87,26 @@ pub fn run() {
             commands_engine::create_container,
             commands_engine::create_volume,
             commands_engine::create_network,
+            commands_store::groups_load,
+            commands_store::groups_mutate,
+            commands_store::groups_import_legacy,
+            commands_store::prefs_get,
+            commands_store::prefs_set,
+            commands_remote::connection_list,
+            commands_remote::connection_probe_host_key,
+            commands_remote::connection_trust_host_key,
+            commands_remote::connection_test,
+            commands_remote::connection_save,
+            commands_remote::connection_delete,
+            commands_remote::connection_select,
+            commands_store::registry_list,
+            commands_store::registry_save,
+            commands_store::registry_delete,
+            commands_store::registry_test,
+            commands_tools::build_plan,
+            commands_tools::subscribe_build,
+            commands_tools::cleanup_report,
+            commands_tools::podman_detect,
         ])
         // Cada carga/recarga de página aborta lo anterior de esa ventana ANTES de que corra su
         // JS: sus canales ya no existen y `reset_subscriptions` no puede pisar lo nuevo.
@@ -105,8 +142,14 @@ pub fn run() {
                             .exec_sessions
                             .close_all(std::time::Duration::from_secs(3)),
                     );
+                    // Cierra el túnel SSH (mata sus `ssh` y borra el socket).
+                    tauri::async_runtime::block_on(state.remote.deactivate());
                 }
-                RunEvent::Exit => handle.state::<AppState>().streams.abort_all(),
+                RunEvent::Exit => {
+                    let state = handle.state::<AppState>();
+                    state.streams.abort_all();
+                    tauri::async_runtime::block_on(state.remote.deactivate());
+                }
                 _ => {}
             }
         }),

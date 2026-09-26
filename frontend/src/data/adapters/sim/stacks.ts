@@ -104,6 +104,11 @@ export function createSimStacks(ctx: SimCtx): { api: EngineApi['stacks']; contro
     if (/privileged:\s*true/.test(yaml)) risks.push({ type: 'privileged' })
     if (/docker\.sock/.test(yaml)) risks.push({ type: 'docker_sock' })
     if (/network_mode:\s*["']?host/.test(yaml)) risks.push({ type: 'host_network' })
+    if (ctx.isRemote()) {
+      // Con Compose sobre túnel, `./data` se resuelve en LOCAL a una ruta absoluta que el daemon remoto interpretará en su propio disco.
+      const rel = yaml.match(/^\s*-\s*["']?(\.{1,2}\/[^:"'\s]*)/m)
+      if (rel) risks.push({ type: 'remote_bind', path: `/home/usuario/proyectos/${rel[1].replace(/^\.\//, '')}` })
+    }
     return { issues, services: declaredServices(yaml).map((d) => d.name), risks }
   }
 

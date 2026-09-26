@@ -1,53 +1,24 @@
 //! CLI `dockinng`: adaptador de línea de comandos sobre el mismo núcleo que usa la GUI.
 
-use std::io::{self, IsTerminal, Write};
+mod apply;
+mod cli;
+mod cmd_cleanup;
+mod cmd_containers;
+mod cmd_context;
+mod cmd_images;
+mod cmd_logs;
+mod cmd_stacks;
+mod cmd_volumes;
+mod confirm;
+mod ctx;
+mod output;
+
 use std::process::ExitCode;
 
-use clap::{Parser, Subcommand};
-use engine_core::{
-    Action, ConfirmationPolicy, ConnectionCause, ConnectionStatus, Container, Decision, DenyReason,
-    DiagStepId, EngineClient, Interactivity, StepStatus,
-};
-use engine_docker::DockerEngine;
-
-#[derive(Parser)]
-#[command(
-    name = "dockinng",
-    version,
-    about = "Administra Docker desde la terminal"
-)]
-struct Cli {
-    #[command(subcommand)]
-    command: Command,
-}
-
-#[derive(Subcommand)]
-enum Command {
-    /// Lista contenedores
-    Ps {
-        /// Incluir los detenidos
-        #[arg(short, long)]
-        all: bool,
-    },
-    /// Inicia un contenedor
-    Start { id: String },
-    /// Detiene un contenedor
-    Stop { id: String },
-    /// Reinicia un contenedor
-    Restart { id: String },
-    /// Elimina un contenedor (pide confirmación)
-    Rm {
-        id: String,
-        /// Forzar aunque esté corriendo
-        #[arg(short, long)]
-        force: bool,
-        /// Confirmar sin preguntar
-        #[arg(short, long)]
-        yes: bool,
-    },
-    /// Diagnostica la conexión con el motor
-    Doctor,
-}
+use clap::{CommandFactory, Parser};
+use cli::{CleanupCmd, Cli, Command, ContextCmd, ImagesCmd, NetworksCmd, StacksCmd, VolumesCmd};
+use ctx::Ctx;
+use engine_core::StackOp;
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -61,303 +32,205 @@ async fn main() -> ExitCode {
 }
 
 async fn run(cli: Cli) -> Result<(), String> {
-    if let Command::Doctor = cli.command {
-        return doctor().await;
+    // Los completados no necesitan motor.
+    if let Command::Completions { shell } = &cli.command {
+        let mut cmd = Cli::command();
+        clap_complete::generate(*shell, &mut cmd, "dockinng", &mut std::io::stdout());
+        return Ok(());
     }
-
-    // El motor se construye sin fallar; los errores de conexión salen en cada llamada.
-    let engine = DockerEngine::new();
-    match cli.command {
-        Command::Ps { all } => {
-            let containers = engine
-                .list_containers(all)
-                .await
-                .map_err(|e| e.to_string())?;
-            print_containers(&containers);
-        }
-        Command::Start { id } => {
-            engine
-                .start_container(&id)
-                .await
-                .map_err(|e| e.to_string())?;
-            println!("{id}");
-        }
-        Command::Stop { id } => {
-            engine
-                .stop_container(&id)
-                .await
-                .map_err(|e| e.to_string())?;
-            println!("{id}");
-        }
-        Command::Restart { id } => {
-            engine
-                .restart_container(&id)
-                .await
-                .map_err(|e| e.to_string())?;
-            println!("{id}");
-        }
-        Command::Rm { id, force, yes } => {
-            let action = Action::RemoveContainer { force };
-            let interactivity = if io::stdin().is_terminal() {
-                Interactivity::Interactive
-            } else {
-                Interactivity::NonInteractive
-            };
-            match ConfirmationPolicy::decide(&action, interactivity, yes) {
-                Decision::Allow => {}
-                Decision::Confirm => {
-                    if !ask(&format!("¿Eliminar el contenedor {id}?")) {
-                        return Err("cancelado por el usuario".into());
-                    }
-                }
-                Decision::ConfirmTyped { expected } => {
-                    if !ask_typed(&expected) {
-                        return Err("cancelado por el usuario".into());
-                    }
-                }
-                Decision::Deny(DenyReason::Forbidden) => {
-                    return Err("acción prohibida por la política de seguridad".into());
-                }
-                Decision::Deny(DenyReason::NeedsConfirmationNonInteractive) => {
-                    return Err(
-                        "requiere confirmación: usa --yes o ejecútalo en una terminal".into(),
-                    );
-                }
-            }
-            engine
-                .remove_container(&id, force)
-                .await
-                .map_err(|e| e.to_string())?;
-            println!("{id}");
-        }
-        Command::Doctor => unreachable!(),
-    }
-    Ok(())
+    let ctx = Ctx::new(cli.json);
+    dispatch(&ctx, cli.command).await
 }
 
-/// Pregunta sí/no; cualquier cosa distinta de "s"/"si"/"y"/"yes" es no (deny por defecto).
-fn ask(question: &str) -> bool {
-    print!("{question} [s/N] ");
-    let _ = io::stdout().flush();
-    let mut answer = String::new();
-    if io::stdin().read_line(&mut answer).is_err() {
-        return false;
-    }
-    matches!(
-        answer.trim().to_lowercase().as_str(),
-        "s" | "si" | "sí" | "y" | "yes"
-    )
-}
-
-/// Confirmación escrita: hay que teclear exactamente lo que se pide. Cualquier otra cosa cancela.
-fn ask_typed(expected: &str) -> bool {
-    print!("Escribe «{expected}» para confirmar: ");
-    let _ = io::stdout().flush();
-    let mut answer = String::new();
-    if io::stdin().read_line(&mut answer).is_err() {
-        return false;
-    }
-    Decision::ConfirmTyped {
-        expected: expected.to_string(),
-    }
-    .accepts(Some(&answer))
-}
-
-/// Ancho máximo de las columnas nombre e imagen.
-const MAX_NAME: usize = 32;
-const MAX_IMAGE: usize = 40;
-
-/// Recorta a `max` caracteres con `…` (cuenta caracteres, no bytes).
-fn truncate(s: &str, max: usize) -> String {
-    if s.chars().count() <= max {
-        return s.to_string();
-    }
-    let mut out: String = s.chars().take(max.saturating_sub(1)).collect();
-    out.push('…');
-    out
-}
-
-/// Formatea la tabla de `ps`: anchos por columna según el contenido (con tope) y la imagen
-/// truncada. Función pura, sin TTY: la salida es la misma en modo no interactivo.
-fn format_containers(containers: &[Container]) -> Vec<String> {
-    let rows: Vec<[String; 4]> = containers
-        .iter()
-        .map(|c| {
-            [
-                c.id.chars().take(12).collect(),
-                truncate(c.names.first().map(String::as_str).unwrap_or("-"), MAX_NAME),
-                truncate(&c.image, MAX_IMAGE),
-                c.status.clone(),
-            ]
-        })
-        .collect();
-    let header = [
-        "ID".to_string(),
-        "NOMBRE".into(),
-        "IMAGEN".into(),
-        "ESTADO".into(),
-    ];
-    let widths: Vec<usize> = (0..3)
-        .map(|i| {
-            rows.iter()
-                .map(|r| r[i].chars().count())
-                .chain(std::iter::once(header[i].chars().count()))
-                .max()
-                .unwrap_or(0)
-        })
-        .collect();
-    std::iter::once(&header)
-        .chain(rows.iter())
-        .map(|r| {
-            format!(
-                "{:<w0$}  {:<w1$}  {:<w2$}  {}",
-                r[0],
-                r[1],
-                r[2],
-                r[3],
-                w0 = widths[0],
-                w1 = widths[1],
-                w2 = widths[2]
-            )
-        })
-        .collect()
-}
-
-fn print_containers(containers: &[Container]) {
-    // writeln en vez de println: si la salida se corta (`| head`) salimos sin panic.
-    let mut out = io::stdout().lock();
-    for line in format_containers(containers) {
-        if writeln!(out, "{line}").is_err() {
-            return;
-        }
-    }
-}
-
-/// Diagnóstico de la conexión: consume `EngineClient::diagnose`, la misma fuente que la GUI.
-async fn doctor() -> Result<(), String> {
-    match std::env::var("DOCKER_HOST") {
-        Ok(h) => println!("• DOCKER_HOST = {h}"),
-        Err(_) => println!("• DOCKER_HOST no definido (se usa el socket local)"),
-    }
-    let engine = DockerEngine::new();
-    match engine.diagnose().await {
-        ConnectionStatus::Connected { endpoint, server } => {
-            println!("✓ conectado a {endpoint}");
-            println!(
-                "✓ Docker {} (API {}) en {}/{}",
-                server.version, server.api_version, server.os, server.arch
-            );
-            Ok(())
-        }
-        ConnectionStatus::Failed {
-            endpoint,
-            cause,
-            message,
-            steps,
-        } => {
-            println!("• endpoint: {endpoint}");
-            for s in &steps {
-                let label = match s.id {
-                    DiagStepId::Socket => "socket",
-                    DiagStepId::Permissions => "permisos",
-                    DiagStepId::Daemon => "daemon",
+async fn dispatch(ctx: &Ctx, command: Command) -> Result<(), String> {
+    use cmd_containers::Verb;
+    match command {
+        Command::Ps { all } => cmd_containers::ps(ctx, all).await,
+        Command::Start { id } => cmd_containers::lifecycle(ctx, Verb::Start, &id).await,
+        Command::Stop { id } => cmd_containers::lifecycle(ctx, Verb::Stop, &id).await,
+        Command::Restart { id } => cmd_containers::lifecycle(ctx, Verb::Restart, &id).await,
+        Command::Rm { id, force, confirm } => cmd_containers::rm(ctx, &id, force, confirm).await,
+        Command::Doctor => cmd_containers::doctor(ctx).await,
+        Command::Images(c) => match c {
+            ImagesCmd::Ls => cmd_images::ls(ctx).await,
+            ImagesCmd::Pull { reference } => cmd_images::pull(ctx, &reference).await,
+            ImagesCmd::Rm { reference, confirm } => cmd_images::rm(ctx, &reference, confirm).await,
+            ImagesCmd::Prune { confirm } => cmd_images::prune(ctx, confirm).await,
+            ImagesCmd::Build {
+                context,
+                file,
+                tag,
+                build_args,
+                target,
+                no_cache,
+                pull,
+                confirm,
+            } => {
+                let args = cmd_images::BuildArgs {
+                    context,
+                    file,
+                    tag,
+                    build_args,
+                    target,
+                    no_cache,
+                    pull,
                 };
-                let mark = match s.status {
-                    StepStatus::Ok => "✓",
-                    StepStatus::Fail => "✗",
-                    StepStatus::Skipped => "-",
-                };
-                // Un paso omitido no tiene detalle: se dice explícitamente.
-                let detail = if s.detail.is_empty() {
-                    "no comprobado"
-                } else {
-                    s.detail.as_str()
-                };
-                println!("{mark} {label}: {detail}");
+                cmd_images::build(ctx, args, confirm).await
             }
-            match cause {
-                ConnectionCause::SocketMissing => {
-                    println!("  ¿Está corriendo el daemon? (systemctl status docker)")
-                }
-                ConnectionCause::PermissionDenied => {
-                    println!("  Agrega tu usuario al grupo docker (sudo usermod -aG docker $USER).")
-                }
-                ConnectionCause::DaemonDown => {
-                    println!("  El socket existe pero nadie responde: inicia el servicio docker.")
-                }
-                ConnectionCause::Other => {}
+        },
+        Command::Volumes(c) => match c {
+            VolumesCmd::Ls => cmd_volumes::volumes_ls(ctx).await,
+            VolumesCmd::Create { name, labels } => {
+                cmd_volumes::volumes_create(ctx, &name, &labels).await
             }
-            Err(format!("el motor no está disponible: {message}"))
-        }
+            VolumesCmd::Rm { name } => cmd_volumes::volumes_rm(ctx, &name).await,
+            VolumesCmd::Prune => cmd_volumes::volumes_prune(ctx).await,
+        },
+        Command::Networks(c) => match c {
+            NetworksCmd::Ls => cmd_volumes::networks_ls(ctx).await,
+            NetworksCmd::Create { name, labels } => {
+                cmd_volumes::networks_create(ctx, &name, &labels).await
+            }
+            NetworksCmd::Rm { id, confirm } => cmd_volumes::networks_rm(ctx, &id, confirm).await,
+        },
+        Command::Logs { id, follow, tail } => cmd_logs::logs(ctx, &id, follow, tail).await,
+        Command::Stacks(c) => match c {
+            StacksCmd::Ls => cmd_stacks::ls(ctx).await,
+            StacksCmd::Up(t) => {
+                cmd_stacks::run_op(ctx, t, |services| StackOp::Up { services }).await
+            }
+            StacksCmd::Down { name } => cmd_stacks::down(ctx, &name).await,
+            StacksCmd::Restart(t) => {
+                cmd_stacks::run_op(ctx, t, |services| StackOp::Restart { services }).await
+            }
+            StacksCmd::Stop(t) => {
+                cmd_stacks::run_op(ctx, t, |services| StackOp::Stop { services }).await
+            }
+            StacksCmd::Start(t) => {
+                cmd_stacks::run_op(ctx, t, |services| StackOp::Start { services }).await
+            }
+            StacksCmd::Pull(t) => {
+                cmd_stacks::run_op(ctx, t, |services| StackOp::Pull { services }).await
+            }
+        },
+        Command::Cleanup(c) => match c {
+            CleanupCmd::Plan { min_age_days } => cmd_cleanup::plan(ctx, min_age_days).await,
+            CleanupCmd::Apply {
+                defaults,
+                min_age_days,
+                containers,
+                images,
+                volumes,
+                networks,
+                confirm,
+            } => {
+                let args = cmd_cleanup::ApplyArgs {
+                    defaults,
+                    min_age_days,
+                    containers,
+                    images,
+                    volumes,
+                    networks,
+                };
+                cmd_cleanup::apply_cmd(ctx, args, confirm).await
+            }
+        },
+        Command::Context(c) => match c {
+            ContextCmd::Ls => cmd_context::ls(ctx),
+            ContextCmd::Rm { target, confirm } => cmd_context::rm(ctx, &target, confirm),
+        },
+        Command::Completions { .. } => unreachable!("se atiende antes de crear el contexto"),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use engine_core::ContainerState;
-
     use super::*;
 
-    fn c(id: &str, name: &str, image: &str, status: &str) -> Container {
-        Container {
-            id: id.into(),
-            names: if name.is_empty() {
-                vec![]
-            } else {
-                vec![name.into()]
-            },
-            image: image.into(),
-            image_id: String::new(),
-            state: ContainerState::Running,
-            status: status.into(),
-            created: 0,
-            compose_project: None,
-            compose_service: None,
-            ports: vec![],
-            mounts: vec![],
-            networks: vec![],
-            endpoints: vec![],
+    fn parse(args: &[&str]) -> Result<Cli, clap::Error> {
+        Cli::try_parse_from(std::iter::once("dockinng").chain(args.iter().copied()))
+    }
+
+    #[test]
+    fn el_arbol_de_comandos_es_consistente() {
+        Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn parseo_de_comandos_principales() {
+        for args in [
+            &["ps", "-a"][..],
+            &["images", "ls", "--json"],
+            &[
+                "images",
+                "build",
+                ".",
+                "-t",
+                "x:1",
+                "--build-arg",
+                "A=1",
+                "--no-cache",
+            ],
+            &["volumes", "create", "v", "--label", "a=b"],
+            &["networks", "rm", "n", "--yes"],
+            &["logs", "c1", "-f", "--tail", "50"],
+            &["stacks", "up", "demo", "-s", "web", "-s", "db"],
+            &["stacks", "down", "demo"],
+            &["cleanup", "plan", "--min-age-days", "30"],
+            &["cleanup", "apply", "--defaults", "--volume", "v", "--yes"],
+            &["completions", "fish"],
+            &["context", "ls", "--json"],
+            &["context", "rm", "x", "--yes"],
+        ] {
+            assert!(parse(args).is_ok(), "{args:?}");
         }
     }
 
     #[test]
-    fn truncado_con_puntos_suspensivos_por_caracteres() {
-        assert_eq!(truncate("corto", 10), "corto");
-        assert_eq!(truncate("abcdefghij", 10), "abcdefghij");
-        assert_eq!(truncate("abcdefghijk", 10), "abcdefghi…");
-        // Caracteres multibyte: no corta a mitad de un carácter.
-        assert_eq!(truncate("ñandú-ñandú", 5), "ñand…");
+    fn rechaza_lo_que_no_existe() {
+        // No hay `system prune` ni `prune` suelto; `--yes` no existe en down/volumes rm.
+        for args in [
+            &["system", "prune"][..],
+            &["prune"],
+            &["stacks", "down", "demo", "--yes"],
+            &["volumes", "rm", "v", "--yes"],
+            &["volumes", "prune", "--yes"],
+            &["cleanup", "apply", "--prune"],
+            &["logs"],
+        ] {
+            assert!(parse(args).is_err(), "{args:?}");
+        }
     }
 
     #[test]
-    fn columnas_alineadas_aunque_la_imagen_sea_larga() {
-        let largo = "clamav/clamav:stable@sha256:0e31ce089574268aefa0b543767d66b70240ab51ed49eec53e07f18d5629d817";
-        let lines = format_containers(&[
-            c(
-                "8d8ab4a11854aaaa",
-                "filemeshy-clamav-1",
-                largo,
-                "Up 5 hours",
-            ),
-            c("b7e0", "", "nginx", "Exited"),
-        ]);
-        assert_eq!(lines.len(), 3);
-        // La columna ESTADO empieza en la misma posición en todas las filas.
-        let pos: Vec<usize> = ["ESTADO", "Up 5 hours", "Exited"]
-            .iter()
-            .zip(&lines)
-            .map(|(needle, l)| l.chars().count() - needle.chars().count())
-            .collect();
-        assert!(pos.iter().all(|p| *p == pos[0]), "{lines:#?}");
-        assert!(lines[1].contains('…'));
-        assert!(lines[1].starts_with("8d8ab4a11854  "));
-        assert!(lines[2].contains(" -  "), "sin nombre se muestra '-'");
+    fn ayuda_menciona_los_grupos() {
+        let help = Cli::command().render_help().to_string();
+        for w in [
+            "images",
+            "volumes",
+            "networks",
+            "logs",
+            "stacks",
+            "cleanup",
+            "completions",
+            "--json",
+        ] {
+            assert!(help.contains(w), "falta {w} en la ayuda:\n{help}");
+        }
     }
 
     #[test]
-    fn sin_contenedores_solo_cabecera() {
-        let l = format_containers(&[]);
-        assert_eq!(l.len(), 1);
-        assert!(l[0].starts_with("ID") && l[0].ends_with("ESTADO"));
+    fn completions_no_vacios_y_con_subcomandos() {
+        use clap_complete::Shell;
+        for shell in [Shell::Bash, Shell::Zsh, Shell::Fish] {
+            let mut buf = Vec::new();
+            let mut cmd = Cli::command();
+            clap_complete::generate(shell, &mut cmd, "dockinng", &mut buf);
+            let s = String::from_utf8(buf).unwrap();
+            assert!(!s.is_empty());
+            for sub in ["cleanup", "stacks", "images"] {
+                assert!(s.contains(sub), "{shell:?} sin {sub}");
+            }
+        }
     }
 }

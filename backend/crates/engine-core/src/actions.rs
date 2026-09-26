@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::{ApiError, ApiErrorCode};
 use crate::broker::{Broker, Clock, RedeemError, SystemClock, TICKET_TTL};
+use crate::cleanup::CleanupSelection;
 use crate::client::EngineClient;
 use crate::error::EngineError;
 use crate::model::ContainerState;
@@ -45,6 +46,10 @@ pub enum ActionRequest {
     /// Borra los archivos de un stack propio (irreversible).
     StackDelete {
         name: String,
+    },
+    /// Limpieza guiada: el usuario marca elementos concretos (nunca un prune ciego).
+    Cleanup {
+        selection: CleanupSelection,
     },
     PruneSystem,
 }
@@ -115,6 +120,8 @@ pub enum PlanWarning {
     BindMountsKept { items: Vec<String> },
     /// Imagen usada por contenedores.
     InUse { count: u32 },
+    /// Limpieza: elementos omitidos porque ya no existen o pasaron a estar en uso.
+    Skipped { items: Vec<String> },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -258,6 +265,19 @@ impl ActionService {
     /// Resuelve objetivos, aplica la política y emite el ticket. La GUI siempre es
     /// interactiva y sin `assume_yes`.
     pub async fn plan(&self, req: ActionRequest) -> Result<ActionPlan, ActionError> {
+        self.plan_with(req, Interactivity::Interactive, false).await
+    }
+
+    /// Como [`Self::plan`] pero con la interactividad y el `--yes` reales del llamador (CLI).
+    /// El ticket se emite con la exigencia máxima (la de una persona delante): `assume_yes` solo
+    /// relaja la decisión mostrada al llamador para las confirmaciones simples, nunca la
+    /// confirmación escrita ni los prunes de imágenes. Con `Deny` no hay ticket.
+    pub async fn plan_with(
+        &self,
+        req: ActionRequest,
+        interactivity: Interactivity,
+        assume_yes: bool,
+    ) -> Result<ActionPlan, ActionError> {
         let mut warnings = Vec::new();
         // Elementos que solo se muestran en el plan (p. ej. los contenedores de un stack que
         // se baja: `down` los detiene, pero no se ejecuta nada por ellos).
@@ -267,8 +287,8 @@ impl ActionService {
                 return Ok(ActionPlan {
                     decision: PlanDecision::from(&decide(
                         &Action::PruneSystem,
-                        Interactivity::Interactive,
-                        false,
+                        interactivity,
+                        assume_yes,
                     )),
                     ticket: None,
                     expires_in_secs: 0,
@@ -284,6 +304,9 @@ impl ActionService {
             ActionRequest::StackDelete { name } => self.plan_stack_delete(name).await?,
             ActionRequest::RemoveContainers { ids } => {
                 self.plan_containers(ids, &mut warnings).await?
+            }
+            ActionRequest::Cleanup { selection } => {
+                self.plan_cleanup(selection, &mut warnings).await?
             }
             ActionRequest::RemoveImage { reference } => {
                 validate::image_reference(&reference)?;
@@ -333,9 +356,7 @@ impl ActionService {
             ActionRequest::RemoveNetwork { id } => {
                 validate::container_id(&id)?;
                 let nets = self.engine.list_networks().await?;
-                let n = nets
-                    .iter()
-                    .find(|n| n.id == id || n.name == id)
+                let n = resolve_network(&nets, &id)?
                     .ok_or_else(|| EngineError::NotFound(format!("red {id}")))?;
                 if n.system {
                     return Err(EngineError::Conflict(format!(
@@ -374,7 +395,9 @@ impl ActionService {
         }
 
         let actions: Vec<Action> = items.iter().map(|i| i.action.clone()).collect();
+        // Exigencia máxima (persona delante) = la del ticket; `effective` = la del llamador.
         let decision = decide_batch(&actions, Interactivity::Interactive, false);
+        let effective = decide_batch(&actions, interactivity, assume_yes);
         // Una imagen con varias etiquetas ocupa el espacio una sola vez.
         let mut counted = std::collections::HashSet::new();
         let known: Vec<u64> = items
@@ -399,8 +422,9 @@ impl ActionService {
             })
             .chain(display_only)
             .collect::<Vec<_>>();
-        let needs_ticket =
-            !items.is_empty() && !matches!(decision, Decision::Allow | Decision::Deny(_));
+        let needs_ticket = !items.is_empty()
+            && !matches!(decision, Decision::Allow | Decision::Deny(_))
+            && !matches!(effective, Decision::Deny(_));
         let ticket = if needs_ticket {
             Some(
                 self.broker
@@ -411,7 +435,7 @@ impl ActionService {
             None
         };
         Ok(ActionPlan {
-            decision: PlanDecision::from(&decision),
+            decision: PlanDecision::from(&effective),
             ticket,
             expires_in_secs: TICKET_TTL.as_secs() as u32,
             affected,
@@ -572,6 +596,147 @@ impl ActionService {
         }
     }
 
+    /// Limpieza guiada: cada elemento marcado se valida por separado y se expande a los mismos
+    /// borrados unitarios que el resto de acciones. Un elemento que ya no existe o que pasó a
+    /// estar en uso desde que se generó el informe se OMITE con un aviso (no tumba el plan);
+    /// la re-verificación por elemento al ejecutar sigue siendo la barrera real.
+    async fn plan_cleanup(
+        &self,
+        sel: CleanupSelection,
+        warnings: &mut Vec<PlanWarning>,
+    ) -> Result<Vec<PlannedItem>, ActionError> {
+        if sel.is_empty() {
+            return Err(EngineError::InvalidInput("no hay nada seleccionado".into()).into());
+        }
+        if sel.len() > MAX_ITEMS {
+            return Err(EngineError::InvalidInput(format!(
+                "demasiados elementos ({}, máximo {MAX_ITEMS})",
+                sel.len()
+            ))
+            .into());
+        }
+        let mut out: Vec<PlannedItem> = Vec::new();
+        let mut skipped: Vec<String> = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for id in &sel.containers {
+            validate::container_id(id)?;
+            let d = match self.engine.inspect_container(id).await {
+                Ok(d) => d,
+                Err(EngineError::NotFound(_)) => {
+                    skipped.push(id.clone());
+                    continue;
+                }
+                Err(e) => return Err(e.into()),
+            };
+            if !seen.insert((ItemKind::Container, d.summary.id.clone())) {
+                continue;
+            }
+            if d.summary.state.is_live() {
+                skipped.push(
+                    d.summary
+                        .names
+                        .first()
+                        .cloned()
+                        .unwrap_or_else(|| id.clone()),
+                );
+                continue;
+            }
+            out.push(PlannedItem {
+                kind: ItemKind::Container,
+                id: d.summary.id.clone(),
+                name: d.summary.names.first().cloned().unwrap_or_default(),
+                action: Action::RemoveContainer { force: false },
+                force: false,
+                fingerprint: Some(d.created_at.clone()),
+                size_bytes: None,
+                state: Some(d.summary.state),
+            });
+        }
+        if !sel.images.is_empty() {
+            let images = self.engine.list_images().await?;
+            for target in &sel.images {
+                validate::image_reference(target)?;
+                let rows: Vec<&crate::Image> = images
+                    .iter()
+                    .filter(|i| i.reference == *target || i.id == *target)
+                    .collect();
+                if rows.is_empty() {
+                    skipped.push(target.clone());
+                    continue;
+                }
+                for row in rows {
+                    if row.containers > 0 {
+                        skipped.push(row.reference.clone());
+                        continue;
+                    }
+                    if seen.insert((ItemKind::Image, row.reference.clone())) {
+                        out.push(image_item(row, Action::PruneImages));
+                    }
+                }
+            }
+        }
+        if !sel.volumes.is_empty() {
+            let vols = self.engine.list_volumes().await?;
+            for name in &sel.volumes {
+                validate::volume_name(name)?;
+                match vols.iter().find(|v| v.name == *name) {
+                    None => skipped.push(name.clone()),
+                    Some(v) if !v.used_by.is_empty() => skipped.push(name.clone()),
+                    Some(v) => {
+                        if seen.insert((ItemKind::Volume, v.name.clone())) {
+                            out.push(volume_item(v, Action::PruneVolumes));
+                        }
+                    }
+                }
+            }
+        }
+        if !sel.networks.is_empty() {
+            let nets = self.engine.list_networks().await?;
+            for id in &sel.networks {
+                validate::container_id(id)?;
+                let Some(n) = resolve_network(&nets, id)? else {
+                    skipped.push(id.clone());
+                    continue;
+                };
+                // Una red del sistema no es "en uso": es un error de la selección.
+                if n.system {
+                    return Err(EngineError::Conflict(format!(
+                        "la red {} es del sistema y no se puede eliminar",
+                        n.name
+                    ))
+                    .into());
+                }
+                if !n.connected.is_empty() {
+                    skipped.push(n.name.clone());
+                    continue;
+                }
+                if seen.insert((ItemKind::Network, n.id.clone())) {
+                    out.push(PlannedItem {
+                        kind: ItemKind::Network,
+                        id: n.id.clone(),
+                        name: n.name.clone(),
+                        action: Action::RemoveNetwork,
+                        force: false,
+                        fingerprint: Some(n.id.clone()),
+                        size_bytes: None,
+                        state: None,
+                    });
+                }
+            }
+        }
+        if !skipped.is_empty() {
+            if out.is_empty() {
+                return Err(EngineError::Conflict(format!(
+                    "nada que limpiar: ya no existen o están en uso ({})",
+                    skipped.join(", ")
+                ))
+                .into());
+            }
+            warnings.push(PlanWarning::Skipped { items: skipped });
+        }
+        Ok(out)
+    }
+
     async fn plan_containers(
         &self,
         ids: Vec<String>,
@@ -653,6 +818,7 @@ impl ActionService {
         // Cachés por ejecución: una sola lista de imágenes / redes.
         let mut images: Option<Vec<crate::Image>> = None;
         let mut networks: Option<Vec<crate::Network>> = None;
+        let mut volumes: Option<Vec<crate::Volume>> = None;
 
         for item in payload.items {
             let r = ItemRef {
@@ -661,7 +827,7 @@ impl ActionService {
                 name: item.name.clone(),
             };
             match self
-                .run_item(&item, &decision, &mut images, &mut networks)
+                .run_item(&item, &decision, &mut images, &mut networks, &mut volumes)
                 .await
             {
                 Ok(()) => {
@@ -686,6 +852,7 @@ impl ActionService {
         confirmed: &Decision,
         images: &mut Option<Vec<crate::Image>>,
         networks: &mut Option<Vec<crate::Network>>,
+        volumes: &mut Option<Vec<crate::Volume>>,
     ) -> Result<(), ApiError> {
         let changed = |m: String| ApiError::new(ApiErrorCode::StateChanged, m);
         // Defensa en profundidad: la política por elemento no puede ser más estricta
@@ -747,6 +914,23 @@ impl ActionService {
                         item.name
                     )));
                 }
+                // Un prune/limpieza solo borra volúmenes que siguen sin uso.
+                if item.action == Action::PruneVolumes {
+                    if volumes.is_none() {
+                        *volumes = Some(self.engine.list_volumes().await?);
+                    }
+                    let in_use = volumes
+                        .as_deref()
+                        .unwrap_or(&[])
+                        .iter()
+                        .any(|x| x.name == item.name && !x.used_by.is_empty());
+                    if in_use {
+                        return Err(changed(format!(
+                            "el volumen {} ahora está en uso; no se tocó",
+                            item.name
+                        )));
+                    }
+                }
                 self.engine.remove_volume(&item.name).await?;
             }
             ItemKind::Stack => self.run_stack_item(item).await?,
@@ -771,6 +955,25 @@ impl ActionService {
             }
         }
         Ok(())
+    }
+}
+
+/// Resuelve una red: primero por id exacto y solo entonces por nombre; un nombre repetido
+/// (varias redes con el mismo nombre) es ambiguo y se rechaza. `None` = no existe.
+fn resolve_network<'a>(
+    nets: &'a [crate::Network],
+    id: &str,
+) -> Result<Option<&'a crate::Network>, EngineError> {
+    if let Some(n) = nets.iter().find(|n| n.id == id) {
+        return Ok(Some(n));
+    }
+    let mut by_name = nets.iter().filter(|n| n.name == id);
+    match (by_name.next(), by_name.next()) {
+        (Some(_), Some(_)) => Err(EngineError::Conflict(format!(
+            "el nombre de red {id} es ambiguo: usa el id"
+        ))),
+        (found, None) => Ok(found),
+        _ => Ok(None),
     }
 }
 

@@ -14,7 +14,7 @@ describe('adaptador simulado: datos de la plantilla', () => {
     expect((await api.images.list())).toHaveLength(12)
     expect((await api.volumes.list())).toHaveLength(7)
     expect((await api.networks.list())).toHaveLength(6)
-    expect((await api.connection.profiles()).map((p) => p.name)).toEqual(['Local', 'prod-hetzner', 'staging-lab'])
+    expect((await api.connections.list()).map((p) => p.name)).toEqual(['Local', 'prod-hetzner', 'staging-lab'])
   })
   it('derivados coherentes: en uso de imágenes, conectados de redes', async () => {
     const api = mk()

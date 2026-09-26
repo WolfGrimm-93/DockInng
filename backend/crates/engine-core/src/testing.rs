@@ -20,6 +20,8 @@ pub struct MockState {
     pub fail: HashMap<String, EngineError>,
     /// Retardo artificial de `stats_snapshot` (tests con tiempo pausado).
     pub stats_delay: Option<std::time::Duration>,
+    /// Uso de disco a devolver en `system_usage` (por defecto: desconocido).
+    pub usage: Option<SystemUsage>,
 }
 
 #[derive(Default)]
@@ -241,6 +243,9 @@ impl EngineClient for MockEngine {
 
     async fn system_usage(&self) -> Result<SystemUsage, EngineError> {
         self.record("system_usage".into(), "system_usage")?;
+        if let Some(u) = self.state().usage.clone() {
+            return Ok(u);
+        }
         Ok(SystemUsage {
             host: HostResources {
                 cpu_count: 8,

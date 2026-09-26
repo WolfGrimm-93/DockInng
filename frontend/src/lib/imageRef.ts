@@ -28,3 +28,10 @@ export function validateImageRef(ref: string): string | null {
   if (!/^[a-z0-9][a-zA-Z0-9._:/@-]*$/.test(r)) return 'Formato no válido: usa «nombre:etiqueta» o «registro/nombre:etiqueta».'
   return null
 }
+
+/** Servidor del registro de una referencia (`ghcr.io/x/y:1` → `ghcr.io`; sin host explícito → `docker.io`). */
+export function registryOf(ref: string): string {
+  const r = ref.trim().replace(/^https?:\/\//, '')
+  const first = r.split('/')[0]
+  return r.includes('/') && (first.includes('.') || first.includes(':') || first === 'localhost') ? first.toLowerCase() : 'docker.io'
+}

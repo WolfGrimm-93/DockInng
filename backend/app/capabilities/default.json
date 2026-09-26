@@ -45,6 +45,26 @@
     "allow-plan-create-container",
     "allow-create-container",
     "allow-create-volume",
-    "allow-create-network"
+    "allow-create-network",
+    "allow-groups-load",
+    "allow-groups-mutate",
+    "allow-groups-import-legacy",
+    "allow-prefs-get",
+    "allow-prefs-set",
+    "allow-connection-list",
+    "allow-connection-probe-host-key",
+    "allow-connection-trust-host-key",
+    "allow-connection-test",
+    "allow-connection-save",
+    "allow-connection-delete",
+    "allow-connection-select",
+    "allow-registry-list",
+    "allow-registry-save",
+    "allow-registry-delete",
+    "allow-registry-test",
+    "allow-build-plan",
+    "allow-subscribe-build",
+    "allow-cleanup-report",
+    "allow-podman-detect"
   ]
 }

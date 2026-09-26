@@ -89,6 +89,33 @@ pub async fn check_unix_socket(path: &str) -> (Vec<DiagStep>, Option<ConnectionC
     (steps, cause)
 }
 
+/// Pasos "socket" y "permisos" de un túnel SSH: el socket es local y privado; lo que importa
+/// (host, autenticación, docker remoto) se diagnostica en el paso "daemon".
+pub fn check_tunnel(socket: &str, label: &str) -> (Vec<DiagStep>, Option<ConnectionCause>) {
+    let exists = std::fs::metadata(socket).is_ok();
+    let steps = vec![
+        DiagStep {
+            id: DiagStepId::Socket,
+            status: if exists {
+                StepStatus::Ok
+            } else {
+                StepStatus::Fail
+            },
+            detail: if exists {
+                format!("túnel activo hacia {label}")
+            } else {
+                format!("el túnel hacia {label} ya no existe")
+            },
+        },
+        DiagStep {
+            id: DiagStepId::Permissions,
+            status: StepStatus::Skipped,
+            detail: String::new(),
+        },
+    ];
+    (steps, (!exists).then_some(ConnectionCause::Unreachable))
+}
+
 /// Paso "daemon" a partir del resultado de `ping`.
 pub fn daemon_step(result: &Result<(), EngineError>, skipped: bool) -> DiagStep {
     if skipped {

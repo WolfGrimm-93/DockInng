@@ -4,7 +4,7 @@
 
 Aplicación de escritorio nativa para Linux que administra Docker desde una interfaz gráfica, al estilo de Docker Desktop. Habla directo con la Docker Engine API. Una CLI complementaria (`dockinng`) comparte el mismo núcleo.
 
-> Estado: en desarrollo. **Datos reales de Docker:** contenedores (listar, iniciar, detener, reiniciar, eliminar, eventos en vivo, logs, stats, inspect, terminal embebida, crear), imágenes (listar, eliminar, pull con progreso por capa), volúmenes y redes (listar, crear, eliminar) y stacks de Docker Compose (descubrir, up/down/reiniciar/detener/iniciar, progreso en vivo, editor de YAML y `.env` con validación, stacks propios y vinculados). **Aún simulado y marcado como "No conectado aún":** conexiones remotas SSH/TLS. Detalle en [PENDIENTES.md](PENDIENTES.md).
+> Estado: en desarrollo. **Datos reales de Docker:** contenedores (listar, iniciar, detener, reiniciar, eliminar, eventos en vivo, logs, stats, inspect, terminal embebida, crear), imágenes (listar, eliminar, pull con progreso por capa), volúmenes y redes (listar, crear, eliminar) y stacks de Docker Compose (descubrir, up/down/reiniciar/detener/iniciar, progreso en vivo, editor de YAML y `.env` con validación, stacks propios y vinculados). **También real:** motores remotos por SSH o TLS con selector de contexto, credenciales de registros en el llavero del sistema, builds de imagen, limpieza guiada, un almacén SQLite para grupos y preferencias y una CLI mucho más amplia. Podman solo se detecta. Detalle en [PENDIENTES.md](PENDIENTES.md).
 
 ## Stack
 
@@ -59,6 +59,13 @@ Configuración > Apariencia permite elegir modo claro, oscuro o sistema, un colo
 - **Stacks:** los proyectos de Compose se descubren por sus etiquetas; también puedes crear los tuyos (se guardan en `~/.local/share/dockinng/stacks/`) o vincular un archivo compose existente. Levantar/reiniciar/detener/iniciar/actualizar muestran progreso en vivo y se pueden cancelar; *bajar* y *eliminar* exigen escribir el nombre del stack. Un stack creado fuera de la app es de solo lectura hasta que vincules su archivo.
 - **Terminal:** un shell real dentro de un contenedor en marcha (xterm.js), con ajuste de tamaño, copiar/pegar y un aviso de riesgo si el contenedor es privilegiado o monta `docker.sock`. Cerrar la pestaña termina el shell.
 - **Pull y crear:** el pull muestra el progreso por capa y sigue en segundo plano; crear un contenedor nunca hace pull por su cuenta (te lleva al pull si falta la imagen) y las opciones de riesgo (binds sensibles, `network=host`, `docker.sock`) piden confirmación.
+
+## Conexiones remotas, registros, builds y limpieza
+
+- **Motores remotos:** por SSH (mediante un túnel privado que ejecuta `docker system dial-stdio`) o TLS. SSH verifica siempre la clave del host con un `known_hosts` propio de DockInng: la primera conexión muestra la huella y pide confirmarla, y una clave cambiada se bloquea sin opción de aceptarla desde la app. DockInng nunca guarda ni copia llaves privadas, solo sus rutas (o usa tu ssh-agent).
+- **Registros:** las credenciales viven en el llavero del sistema (Secret Service), nunca en la base de datos ni en `~/.docker/config.json`.
+- **Builds y limpieza:** los builds de imagen usan `docker build` (los contextos sensibles piden confirmación). La limpieza guiada solo *planifica* lo que se podría borrar, con una estimación del espacio, y cada borrado pasa por un ticket de confirmación; nunca se hace un prune a ciegas.
+- **CLI:** `dockinng` cubre contenedores, imágenes, volúmenes, redes, logs, stacks, limpieza y `completions` de shell, con la misma política de confirmación que la app (`--yes` nunca salta las confirmaciones escritas).
 
 ## Puertos e IPs
 

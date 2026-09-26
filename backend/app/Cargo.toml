@@ -16,6 +16,9 @@ tauri-build = { version = "2", features = [] }
 engine-core = { path = "../crates/engine-core" }
 engine-docker = { path = "../crates/engine-docker" }
 compose = { path = "../crates/compose" }
+store = { path = "../crates/store" }
+transport = { path = "../crates/transport" }
+builder = { path = "../crates/builder" }
 base64.workspace = true
 tauri = { version = "2", features = [] }
 serde.workspace = true

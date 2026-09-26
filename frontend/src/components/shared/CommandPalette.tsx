@@ -35,6 +35,7 @@ export function usePaletteItems(query = ''): PaletteItem[] {
       ...NAV.map((n): PaletteItem => ({ id: `go-${n.id}`, title: `Ir a ${n.label}`, icon: n.icon, kind: 'Vista', run: () => route.go(n.id) })),
       { id: 'new-container', title: 'Nuevo contenedor…', icon: 'plus', kind: 'Acción', run: () => route.go('create') },
       { id: 'pull-image', title: 'Descargar imagen…', icon: 'download', kind: 'Acción', run: () => route.go('pull') },
+      { id: 'build-image', title: 'Construir imagen…', icon: 'layers', kind: 'Acción', run: () => route.go('build') },
       { id: 'theme', title: 'Cambiar tema claro/oscuro', icon: 'sun', kind: 'Acción', run: toggle },
       { id: 'sidebar', title: 'Colapsar o expandir barra lateral', icon: 'panel', kind: 'Acción', run: () => setCollapsed(!collapsed) },
       { id: 'prune-system', title: 'Limpiar todo el sistema', icon: 'ban', kind: 'Bloqueado', run: () => void blocked() },

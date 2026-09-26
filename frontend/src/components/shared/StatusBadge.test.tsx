@@ -66,3 +66,20 @@ describe('tooltips del riel', () => {
     useUiStore.setState({ collapsed: false })
   })
 })
+
+describe('StatusBadge: indicadores animados solo en el detalle', () => {
+  it('«en ejecución» y «reiniciando» llevan is-live solo con la prop live (detalle); en filas no', async () => {
+    const { render } = await import('@testing-library/react')
+    const { StatusBadge } = await import('./StatusBadge')
+    const a = render(<StatusBadge state="restarting" />)
+    expect(a.container.querySelector('.is-live')).toBeNull()
+    a.unmount()
+    const b = render(<StatusBadge state="restarting" live />)
+    expect(b.container.querySelector('.status-restarting.is-live')).not.toBeNull()
+    expect(b.container).toHaveTextContent('Reiniciando') // el texto y el icono se conservan (accesibilidad)
+    b.unmount()
+    const c = render(<StatusBadge state="running" live />)
+    expect(c.container.querySelector('.status-running.is-live')).not.toBeNull()
+    expect(c.container.querySelector('svg')).not.toBeNull()
+  })
+})

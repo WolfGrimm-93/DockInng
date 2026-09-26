@@ -95,7 +95,7 @@ describe('engineStore', () => {
     await store.getState().selectProfile('staging')
     c = store.getState().connection
     expect(c.status === 'error' && c.issue).toBe('ssh')
-    if (c.status === 'error') expect(c.diagnostic.steps[1].command).toBe('ssh staging-lab docker info')
+    if (c.status === 'error') expect(c.diagnostic.steps[1].command).toBe('ssh ops@192.168.1.40 docker info')
   })
   it('previewConnection muestra el panel sin tocar el motor', async () => {
     await store.getState().bootstrap()
@@ -175,6 +175,7 @@ describe('runContainerOps', () => {
 describe('feedback: estadísticas y reconexión', () => {
   it('el primer muestreo de stats llega tras cargar la lista (no «—» hasta el 2º tick)', async () => {
     const st = createEngineStore(api, { statsIntervalMs: 60_000, storage: null })
+    st.getState().retainStats() // sin consumidor (vista) no se muestrea
     await st.getState().bootstrap()
     await settle()
     expect(Object.keys(st.getState().stats).length).toBe(7)

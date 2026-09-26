@@ -1,6 +1,6 @@
-// ADAPTADOR TAURI: implementa EngineApi contra los 40 comandos IPC del backend. Solo `connections` (perfiles remotos, Ola 2) se delega en el
-// adaptador simulado con `mutateWorld:false` (no inserta datos falsos en listas reales). Args camelCase (Tauri v2); errores = ApiError{code,message,cause}
-// (un String antiguo se normaliza a code:'internal').
+// ADAPTADOR TAURI: implementa EngineApi contra los 60 comandos IPC del backend (40 de la Ola 1 + 20 de la Ola 2). Todo es real: ya no hay
+// delegación en el adaptador simulado. Args camelCase (Tauri v2); errores = ApiError{code,message,cause}
+// (un String antiguo se normaliza a code:'internal'). Lo de la Ola 2 vive en ./store.ts.
 //  Conexión/motor:  connection_status, reconnect, system_usage, gpu_status, reset_subscriptions, unsubscribe
 //  Contenedores:    list_containers{all}, inspect_container{id}, start_container/stop_container/restart_container{id}, container_stats_snapshot{ids} (máx. 64)
 //  Recursos:        list_images, list_volumes, list_networks, create_volume{spec}, create_network{spec}
@@ -11,17 +11,21 @@
 //  Terminal:        subscribe_exec{id,cols,rows,onEvent}, exec_write{subscriptionId,data}, exec_resize{subscriptionId,cols,rows}, exec_close{subscriptionId}
 //  Stacks:          compose_info{recheck?}, list_stacks, stack_read{name}, stack_save{name,yaml,env,expectedRevision}, stack_validate{name,yaml,env},
 //                   stack_create{name,yaml,env}, stack_link{path}, stack_unlink{name}, run_stack_op{name,op,onEvent}, cancel_stack_op{subscriptionId}
+//  Ola 2:           groups_load, groups_mutate{op}, groups_import_legacy{payload}, prefs_get{key}, prefs_set{key,value},
+//                   connection_list, connection_probe_host_key{spec}, connection_trust_host_key{spec,fingerprint}, connection_test{spec}, connection_save{spec},
+//                   connection_delete{id,confirmed}, connection_select{id}, registry_list, registry_save{server,username,secret}, registry_delete{id,confirmed},
+//                   registry_test{id}, build_plan{spec}, subscribe_build{spec,ticket,onEvent}, cleanup_report{minAgeDays}, podman_detect
 import { invoke } from '@tauri-apps/api/core'
 import type { EngineApi } from '../../api'
 import { toApiError } from '../../errors'
 import type {
-  ActionOutcome, ActionPlan, ComposeInfo, ConnectionProfile, ConnectionStatus, Container, ContainerDetail, ContainerStats, CreatePlan, CreateResult,
+  ActionOutcome, ActionPlan, BuildFeed, BuildPlan, CleanupReport, ComposeInfo, ConnTestResult, HostKeyProbe, PodmanCandidate, ConnectionStatus, Container, ContainerDetail, ContainerStats, CreatePlan, CreateResult,
   EngineFeed, GpuInfo, Image, LogFeed, Network, PullFeed, StackFiles, StackOpFeed, StackSummary, StackValidation, StatsFeed, StatsSnapshotItem,
   SystemUsage, Volume,
 } from '../../types'
-import { createSimApi } from '../sim'
 import { openExec } from './exec'
 import { subscribe, subscribeHandle } from './streams'
+import { createTauriStore, normalizeProfile, type RawProfile } from './store'
 
 async function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   try {
@@ -32,15 +36,20 @@ async function call<T>(command: string, args?: Record<string, unknown>): Promise
 }
 
 export function createTauriApi(): EngineApi {
-  // Mundo simulado SOLO para lo no conectado y para los perfiles no locales.
-  const sim = createSimApi({ mutateWorld: false })
+  const store = createTauriStore()
   let active = 'local'
-  let lastEndpoint = 'unix:///var/run/docker.sock'
-  let lastVersion = ''
+  let lastEndpoint = 'unix:///var/run/docker.sock' // último destino visto (respaldo de un estado «failed» sin endpoint)
+  let lastVersion = '' // versión del motor ACTIVO
+  let localEndpoint = 'unix:///var/run/docker.sock' // destino/versión del motor LOCAL (no se pisan al cambiar a una conexión remota)
+  let localVersion = ''
 
   const remember = (s: ConnectionStatus): ConnectionStatus => {
     lastEndpoint = s.endpoint
     if (s.state === 'connected') lastVersion = `Docker ${s.server.version} · API ${s.server.api_version}`
+    if (active === 'local') {
+      localEndpoint = s.endpoint
+      if (s.state === 'connected') localVersion = lastVersion
+    }
     return s
   }
 
@@ -48,7 +57,7 @@ export function createTauriApi(): EngineApi {
     mode: 'tauri',
     capabilities: {
       connection: 'live', containers: 'live', images: 'live', volumes: 'live', networks: 'live', actions: 'live', events: 'live', logs: 'live', stats: 'live', inspect: 'live', system: 'live',
-      exec: 'live', pull: 'live', create: 'live', stacks: 'live', connections: 'simulated',
+      exec: 'live', pull: 'live', create: 'live', stacks: 'live', connections: 'live', store: 'live', registries: 'live', build: 'live', cleanup: 'live',
     },
     connection: {
       async status() {
@@ -68,18 +77,7 @@ export function createTauriApi(): EngineApi {
           return { state: 'failed', endpoint: lastEndpoint, cause: a.cause ?? 'other', message: a.message, steps: [] }
         }
       },
-      async profiles(): Promise<ConnectionProfile[]> {
-        const others = (await sim.connection.profiles()).filter((p) => p.id !== 'local')
-        const local: ConnectionProfile = { id: 'local', name: 'Local', target: lastEndpoint, kind: 'local', icon: 'monitor', remote: false, version: lastVersion, simulated: false }
-        return [local, ...others]
-      },
       activeId: () => active,
-      async select(id) {
-        // D6: solo «Local» es real. Las demás no cambian la conexión activa (la UI muestra un toast simulado).
-        if (id !== 'local') throw { code: 'not_implemented', message: 'Conexión simulada: todavía no se puede conectar a hosts remotos.' }
-        active = 'local'
-        return remember(await invoke<ConnectionStatus>('connection_status'))
-      },
     },
     containers: {
       list: (all = true) => call<Container[]>('list_containers', { all }),
@@ -100,6 +98,8 @@ export function createTauriApi(): EngineApi {
     },
     system: {
       usage: () => call<SystemUsage>('system_usage'),
+      cleanupReport: (o) => call<CleanupReport>('cleanup_report', { minAgeDays: o.minAgeDays }),
+      podmanDetect: () => call<PodmanCandidate[]>('podman_detect'),
       // La GPU es opcional: cualquier fallo del IPC se trata como «sin GPU», nunca como error visible.
       async gpu() {
         try {
@@ -112,6 +112,9 @@ export function createTauriApi(): EngineApi {
     },
     images: {
       list: () => call<Image[]>('list_images'),
+      planBuild: (spec) => call<BuildPlan>('build_plan', { spec }),
+      build: (spec, ticket, on) =>
+        subscribe<BuildFeed>('subscribe_build', { spec, ticket }, on, (error) => on({ type: 'ended', outcome: 'failed', image_id: null, error })),
       pull: (reference, on) =>
         subscribe<PullFeed>('subscribe_pull', { reference }, on, (error) => on({ type: 'ended', outcome: 'error', up_to_date: false, digest: null, error })),
     },
@@ -146,7 +149,23 @@ export function createTauriApi(): EngineApi {
       link: (path) => call<StackSummary>('stack_link', { path }),
       unlink: (name) => call<void>('stack_unlink', { name }),
     },
-    connections: sim.connections,
+    connections: {
+      list: async () => (await store.listProfiles()).map((p) => (p.id === 'local' ? { ...p, target: localEndpoint, version: localVersion || p.version } : p.id === active ? { ...p, version: lastVersion || p.version } : p)),
+      probeHostKey: (spec) => call<HostKeyProbe>('connection_probe_host_key', { spec }),
+      trustHostKey: (spec, fingerprint) => call<HostKeyProbe>('connection_trust_host_key', { spec, fingerprint }),
+      test: (spec) => call<ConnTestResult>('connection_test', { spec }),
+      save: async (spec, id) => normalizeProfile(await call<RawProfile>('connection_save', id ? { spec, id } : { spec })),
+      remove: (id, confirmed) => call<void>('connection_delete', { id, confirmed }),
+      async select(id) {
+        // Si falla (Err), el backend deja el motor en el destino previo: `active` NO cambia.
+        const status = await call<ConnectionStatus>('connection_select', { id })
+        active = id
+        return remember(status)
+      },
+    },
+    registries: store.registries,
+    groups: store.groups,
+    prefs: store.prefs,
   }
 }
 

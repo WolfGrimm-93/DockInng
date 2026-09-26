@@ -24,7 +24,7 @@ function warnOf<T extends PlanWarning['type']>(ws: PlanWarning[], t: T): Extract
   return ws.find((w) => w.type === t) as Extract<PlanWarning, { type: T }> | undefined
 }
 
-function listOf(items: AffectedItem[], icon?: IconName): DialogListItem[] {
+export function listOf(items: AffectedItem[], icon?: IconName): DialogListItem[] {
   // key estable id+nombre+índice: prune_images produce una fila por etiqueta con el MISMO id de imagen.
   return items.map((i, n) => ({
     key: `${i.id}|${i.name}|${n}`,

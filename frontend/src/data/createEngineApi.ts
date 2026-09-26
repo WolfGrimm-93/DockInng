@@ -9,7 +9,7 @@ export const isDesktop = (): boolean => isTauri()
 
 export function createEngineApi(): EngineApi {
   if (isDesktop()) return createTauriApi()
-  return createSimApi()
+  return createSimApi({ persist: true })
 }
 
 /** Acceso a los controles del simulado (devFlags/tests) solo si el adaptador activo lo es. */

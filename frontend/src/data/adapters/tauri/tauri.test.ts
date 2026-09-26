@@ -78,15 +78,15 @@ describe('adaptador Tauri (contrato IPC del backend)', () => {
     handler = () => ({ reject: { code: 'internal', message: 'sin backend' } })
     expect(await api.connection.status()).toMatchObject({ state: 'failed', cause: 'other', message: 'sin backend' })
   })
-  it('conexiones no locales: select lanza not_implemented (solo toast, sin cambiar la activa)', async () => {
+  it('Ola 2: el perfil «local» toma el destino y la versión reales; las conexiones guardadas llegan de connection_list (nunca simuladas)', async () => {
     const api = createTauriApi()
-    handler = (cmd) => (cmd === 'connection_status' ? { state: 'connected', endpoint: 'unix:///var/run/docker.sock', server: { version: '27.3.1', api_version: '1.47', os: 'linux', arch: 'x86_64' } } : undefined)
+    handler = (cmd) => (cmd === 'connection_status' ? { state: 'connected', endpoint: 'unix:///var/run/docker.sock', server: { version: '27.3.1', api_version: '1.47', os: 'linux', arch: 'x86_64' } }
+      : cmd === 'connection_list' ? [{ id: 'local', name: 'Local', kind: 'local', remote: false }, { id: '01935f00-0000-7000-8000-0000000000aa', name: 'prod', kind: 'ssh', remote: true, target: 'ssh://deploy@203.0.113.10' }] : undefined)
     await api.connection.status()
-    await expect(api.connection.select('prod')).rejects.toMatchObject({ code: 'not_implemented' })
     expect(api.connection.activeId()).toBe('local')
-    const profiles = await api.connection.profiles()
+    const profiles = await api.connections.list()
     expect(profiles[0]).toMatchObject({ id: 'local', target: 'unix:///var/run/docker.sock', simulated: false, version: 'Docker 27.3.1 · API 1.47' })
-    expect(profiles.slice(1).every((p) => p.simulated)).toBe(true)
+    expect(profiles[1]).toMatchObject({ name: 'prod', remote: true, simulated: false, icon: 'server' })
   })
   it('streams: subscribe_logs con Channel y cancelación con unsubscribe(subscriptionId) — incluso si se cancela antes de recibir el id', async () => {
     const api = createTauriApi()
@@ -102,9 +102,10 @@ describe('adaptador Tauri (contrato IPC del backend)', () => {
     await new Promise((r) => setTimeout(r, 5))
     expect(calls.some((c) => c.cmd === 'unsubscribe' && (c.args as { subscriptionId: string }).subscriptionId === 'sub-1')).toBe(true)
   })
-  it('Ola 1: exec, pull, create y stacks ya son reales (solo connections sigue simulado)', () => {
+  it('Ola 1 y 2: todo es real en Tauri (ya no hay nada simulado)', () => {
     const api = createTauriApi()
-    expect(api.capabilities).toMatchObject({ exec: 'live', pull: 'live', create: 'live', stacks: 'live', containers: 'live', connections: 'simulated' })
+    expect(api.capabilities).toMatchObject({ exec: 'live', pull: 'live', create: 'live', stacks: 'live', containers: 'live', connections: 'live', store: 'live', registries: 'live', build: 'live', cleanup: 'live' })
+    expect(Object.values(api.capabilities).every((c) => c === 'live')).toBe(true)
     expect(calls).toHaveLength(0)
   })
 })
@@ -164,6 +165,7 @@ describe('contrato serde del backend', () => {
       return ({ connection_status: F.statusConnected, list_containers: [F.container], list_images: [], list_volumes: [], list_networks: [] } as Record<string, unknown>)[cmd]
     }
     const store = createEngineStore(createTauriApi(), { statsIntervalMs: 10, storage: null })
+    store.getState().retainStats() // solo se muestrea si alguna vista lo consume
     await store.getState().bootstrap()
     await new Promise((r) => setTimeout(r, 200))
     expect(n).toBeGreaterThan(1)

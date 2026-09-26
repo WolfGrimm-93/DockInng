@@ -43,6 +43,14 @@ pub struct ApiError {
     pub code: ApiErrorCode,
     pub message: String,
     pub cause: Option<ConnectionCause>,
+    /// Solo `connection_select`: `true` si el backend YA abortó suscripciones, terminales y
+    /// tickets del contexto anterior antes de fallar. Ausente (false) = no tocó nada.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub quiesced: bool,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 impl ApiError {
@@ -51,6 +59,7 @@ impl ApiError {
             code,
             message: message.into(),
             cause: None,
+            quiesced: false,
         }
     }
 }
@@ -80,6 +89,7 @@ impl From<&EngineError> for ApiError {
             code,
             message,
             cause,
+            quiesced: false,
         }
     }
 }
