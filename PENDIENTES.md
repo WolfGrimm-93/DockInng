@@ -37,7 +37,7 @@ Ver detalle y contexto en Obsidian: `Proyectos/DockInng/DockInng - Lista de trab
 - [ ] Un fallo de un archivo linked/descubierto inválido puede filtrar un fragmento en el mensaje de error de Compose (truncado a 2 KiB y con los valores del `.env` ocultos).
 - [ ] Cerrar la terminal en un Docker REMOTO no mata el shell (el respaldo Ctrl-C + `exit` está sin probar; el `kill -HUP` por cgroup solo funciona con motor local).
 - [ ] Sin verificar: xterm y CodeMirror en WebKitGTK real (portapapeles, teclado, rendimiento con salida masiva, lectores de pantalla); pull contra Docker Hub o registros con credenciales; Compose distinto de 5.5.1 y v1; estado `Warning` de `--progress json`; contenedor sin `/bin/sh`.
-- [ ] El test live de pull por capas y cancelación (`live_engine.rs`, `live_pull_por_capas_y_cancelacion_contra_registro_local`) se salta solo si no hay registro en 127.0.0.1:54109 (`DOCKINNG_LIVE_REGISTRY=1`) y aparece como «ok»: pull por capas y cancelación no están probados contra un registro real (requiere una imagen `registry:2` local).
+- [x] Pruebas live contra Docker local verificadas el 28 de septiembre de 2026: ciclo de vida, diagnóstico, endpoints, estadísticas, eventos, logs, planificación/ejecución, creación, `exec`, resize, pull por capas y cancelación, volúmenes, redes, Compose y TLS mTLS pasaron. El pull live utilizó el registro local en `127.0.0.1:54109`.
 - [ ] La validación simulada de YAML (`lib/yamlCheck.ts`) es heurística (p. ej. `services: [` sin cerrar pasa); solo importa en el modo simulado, el real usa `docker compose config`.
 - [ ] Los tests del editor y de la terminal usan CodeMirror/xterm simulados en jsdom; lo real solo se probó en Chromium con guiones fuera del repo.
 
@@ -61,8 +61,8 @@ Ver detalle y contexto en Obsidian: `Proyectos/DockInng/DockInng - Lista de trab
 - [ ] Verificar la app real con `tauri dev` (IPC, permisos sin `core:default`, CSP) y con `tauri build` (hash del script inline de prepaint).
 - [ ] Probar en WebKitGTK real: `color-mix`/`oklch`, foco e `inert`, lectores de pantalla.
 - [ ] Test de contrato IPC generado desde Rust (hoy los fixtures TS son manuales y solo `tsc` detecta deriva).
-- [ ] Prunes reales de imágenes/volúmenes/redes sin ejecutar contra Docker (solo mocks y plan de solo lectura).
-- [ ] Reconexión con el daemon real caído (solo probada con mocks).
+- [x] Prunes reales de imágenes/volúmenes/redes verificados contra Docker local mediante `live_cleanup` el 28 de septiembre de 2026.
+- [x] Reconexión con el daemon real verificada en el ciclo live local; la reconexión SSH tras cortes prolongados sigue pendiente.
 - [ ] Heurística TTY de bollard falla si la salida empieza con un byte de control ≤2 (caso raro).
 - [ ] `time_nano` (i64) pierde precisión en JS por encima de 2^53; no se usa aún.
 
