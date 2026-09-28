@@ -190,6 +190,7 @@ export function createSimStore(ctx: SimCtx, getActive: () => string, opts: SimSt
         const p: ConnectionProfile = {
           id: id ?? uuidv7(), name, target, kind: spec.kind, icon: 'server', remote: true, version: '', simulated: true,
           host_key_fp: spec.kind === 'ssh' ? trustedHosts.get(hostKey(spec)) ?? null : null,
+          spec: structuredClone(spec),
         }
         const at = ctx.world.profiles.findIndex((x) => x.id === p.id)
         if (at >= 0) ctx.world.profiles[at] = p

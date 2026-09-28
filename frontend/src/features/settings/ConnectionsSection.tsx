@@ -1,8 +1,8 @@
 // Pestaña «Conexiones» de Configuración: lista de conexiones (Local real + SSH/TLS guardadas), con insignias (Activa, Remota, SSH/TLS, Podman,
-// Simulada) y borrado con confirmación. La conexión activa y la local no se pueden borrar. Editar una conexión guardada no está en el contrato IPC
-// (connection_list no devuelve el spec): se elimina y se vuelve a crear (deuda anotada).
+// Simulada) y borrado con confirmación. La conexión activa y la local no se pueden borrar.
 import { safeText } from '@/lib/safeText'
 import { useConfirm } from '@/components/shared/confirmApi'
+import { useHashRoute } from '@/app/useHashRoute'
 import { Icon } from '@/components/shared/Icon'
 import { SafeName } from '@/components/shared/SafeName'
 import { Button } from '@/components/ui/button'
@@ -16,6 +16,7 @@ import { isPodmanTarget } from './podman'
 
 export function ConnectionsSection() {
   const conn = useConnection()
+  const route = useHashRoute()
   const api = useEngineApi()
   const store = useEngineStoreApi()
   const confirm = useConfirm()
@@ -59,6 +60,7 @@ export function ConnectionsSection() {
                 <DropdownMenu>
                   <DropdownMenuTrigger className={buttonVariants({ variant: 'ghost', size: 'icon-sm' })} aria-label={`Más opciones de ${label}`}><Icon name="dots" /></DropdownMenuTrigger>
                   <DropdownMenuContent>
+                    <DropdownMenuItem disabled={active || !p.spec} onClick={() => p.spec && !active && route.go('conn-new', { id: p.id })}><Icon name="edit" />{active ? 'Editar (cambia de conexión antes)' : 'Editar'}</DropdownMenuItem>
                     <DropdownMenuItem disabled={active} onClick={() => void remove(p)}><Icon name="trash" />{active ? 'Eliminar (cambia de conexión antes)' : 'Eliminar…'}</DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>

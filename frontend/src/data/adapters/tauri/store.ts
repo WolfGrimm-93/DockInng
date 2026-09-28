@@ -4,7 +4,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import type { EngineApi } from '../../api'
 import { toApiError } from '../../errors'
-import type { ConnectionProfile, GroupsSnapshot, RegistrySummary, SshIdentity } from '../../types'
+import type { ConnSpec, ConnectionProfile, GroupsSnapshot, RegistrySummary, SshIdentity } from '../../types'
 
 async function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   try {
@@ -17,6 +17,7 @@ async function call<T>(command: string, args?: Record<string, unknown>): Promise
 /** Forma serde de `connection_list`/`connection_save` (engine-core `ConnectionProfile` con el spec aplanado): SIN target/icono/versión. */
 export type RawProfile = Partial<ConnectionProfile> & { id: string; name: string; kind: ConnectionProfile['kind'] } & {
   host?: string; port?: number; user?: string; mode?: 'explicit' | 'alias'
+  ca_path?: string; cert_path?: string; key_path?: string
   /** Solo SSH: cómo se autentica (el adaptador no lo usa; viaja en el perfil serde). */
   identity?: SshIdentity
 }
@@ -34,6 +35,11 @@ export function targetOf(raw: RawProfile): string {
 /** Rellena lo que el backend no calcula (icono, versión, destino legible) y fuerza `simulated:false`. */
 export function normalizeProfile(raw: RawProfile): ConnectionProfile {
   const remote = raw.remote ?? raw.kind !== 'local'
+  const spec: ConnSpec | undefined = raw.kind === 'ssh' && raw.host !== undefined
+    ? { kind: 'ssh', name: raw.name, host: raw.host, port: raw.port ?? 22, user: raw.user ?? '', mode: raw.mode ?? 'explicit', identity: raw.identity ?? { type: 'agent' } }
+    : raw.kind === 'tls' && raw.host !== undefined && raw.ca_path !== undefined && raw.cert_path !== undefined && raw.key_path !== undefined
+      ? { kind: 'tls', name: raw.name, host: raw.host, port: raw.port ?? 2376, ca_path: raw.ca_path, cert_path: raw.cert_path, key_path: raw.key_path }
+      : undefined
   return {
     id: raw.id,
     name: raw.name,
@@ -44,6 +50,7 @@ export function normalizeProfile(raw: RawProfile): ConnectionProfile {
     version: raw.version ?? '',
     simulated: false,
     host_key_fp: raw.host_key_fp ?? null,
+    spec,
   }
 }
 

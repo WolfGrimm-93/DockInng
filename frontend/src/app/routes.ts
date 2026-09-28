@@ -41,7 +41,7 @@ export interface RouteParams {
   create: { image?: string; remote?: '1' }
   pull: { image?: string; pull?: 'running' | 'done' | 'canceled' | 'error' } // pull= (dev)
   'stack-edit': { stack?: string; yaml?: 'broken'; run?: 'up' | 'done'; file?: 'env' } // yaml/run/file (dev)
-  'conn-new': { test?: 'testing' | 'ok' | 'fail' } // test= (dev)
+  'conn-new': { id?: string; test?: 'testing' | 'ok' | 'fail' } // id=edición, test=dev
   build: { context?: string; tag?: string }
 }
 

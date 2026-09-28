@@ -168,10 +168,13 @@ pub fn on_pref_changed<R: Runtime>(app: &AppHandle<R>, key: &str, value: &serde_
     }
 }
 
-/// Cierre ordenado: terminales exec (matan su shell dentro del contenedor, con tope de 3 s) y
-/// túnel SSH. Es idempotente: se puede llamar antes de salir y otra vez al recibir `Exit`.
+/// Cierre ordenado: primero aborta todas las tareas supervisadas (incluidos `compose up`/`pull`),
+/// para que sus guardias maten los subprocesos antes de que el runtime de Tauri desaparezca;
+/// después cierra terminales exec (con tope de 3 s) y el túnel SSH. Es idempotente: se puede
+/// llamar antes de salir y otra vez al recibir `Exit`.
 pub fn graceful_shutdown<R: Runtime>(app: &AppHandle<R>) {
     let state = app.state::<AppState>();
+    state.streams.abort_all();
     tauri::async_runtime::block_on(state.exec_sessions.close_all(Duration::from_secs(3)));
     tauri::async_runtime::block_on(state.remote.deactivate());
 }

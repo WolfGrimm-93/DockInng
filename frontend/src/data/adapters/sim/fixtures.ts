@@ -151,8 +151,8 @@ export function buildWorld(now: number = Date.now()): World {
   const ownStacks: SimOwnStack[] = [{ name: 'tienda', origin: 'linked', path: '~/proyectos/tienda/docker-compose.yml', yaml: SAMPLE_YAML, env: SAMPLE_ENV, revision: 1 }]
   const profiles: ConnectionProfile[] = [
     { id: 'local', name: 'Local', target: 'unix:///var/run/docker.sock', kind: 'local', icon: 'monitor', remote: false, version: 'Docker 27.3.1 · API 1.47', simulated: false },
-    { id: 'prod', name: 'prod-hetzner', target: 'ssh://deploy@203.0.113.10', kind: 'ssh', icon: 'server', remote: true, version: 'Docker 26.1.4 · API 1.45', simulated: true },
-    { id: 'staging', name: 'staging-lab', target: 'ssh://ops@192.168.1.40', kind: 'ssh', icon: 'server', remote: true, version: '', simulated: true, failsToConnect: true },
+    { id: 'prod', name: 'prod-hetzner', target: 'ssh://deploy@203.0.113.10', kind: 'ssh', icon: 'server', remote: true, version: 'Docker 26.1.4 · API 1.45', simulated: true, spec: { kind: 'ssh', name: 'prod-hetzner', host: '203.0.113.10', port: 22, user: 'deploy', mode: 'explicit', identity: { type: 'agent' } } },
+    { id: 'staging', name: 'staging-lab', target: 'ssh://ops@192.168.1.40', kind: 'ssh', icon: 'server', remote: true, version: '', simulated: true, failsToConnect: true, spec: { kind: 'ssh', name: 'staging-lab', host: '192.168.1.40', port: 22, user: 'ops', mode: 'explicit', identity: { type: 'agent' } } },
   ]
   return { containers, images, volumes, networks, ownStacks, profiles, usage }
 }
