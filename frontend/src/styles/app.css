@@ -427,6 +427,8 @@ a.crumb { text-decoration: underline; } /* en la plantilla los <a> conservan el 
 .form-section > h2 { font-size: var(--text-base); font-weight: 600; padding: 12px 16px; border-bottom: 1px solid var(--border); }
 .form-body { padding: 14px 16px; display: grid; gap: 12px; }
 .f-row { display: grid; gap: 4px; min-width: 0; }
+.f-inline { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.f-inline > :first-child { flex: 1 1 auto; min-width: 0; }
 .f-row > label, .f-label { font-weight: 550; }
 .f-hint { color: var(--muted-foreground); font-size: var(--text-xs); }
 .f-error { color: var(--status-dead); font-size: var(--text-xs); display: flex; gap: 4px; align-items: center; }

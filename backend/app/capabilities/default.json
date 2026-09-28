@@ -77,6 +77,7 @@
     "allow-window-toggle-maximize",
     "allow-window-close",
     "allow-window-start-drag",
-    "allow-window-start-resize"
+    "allow-window-start-resize",
+    "dialog:allow-open"
   ]
 }

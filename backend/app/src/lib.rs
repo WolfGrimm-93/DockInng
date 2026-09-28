@@ -56,6 +56,7 @@ pub fn run() {
     state.remote.purge_stale();
 
     let built = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(state)
         .invoke_handler(tauri::generate_handler![
             commands::connection_status,
@@ -345,6 +346,7 @@ mod tests {
             .expect("permissions")
             .iter()
             .filter_map(|p| p.as_str())
+            .filter(|p| p.starts_with("allow-"))
             .map(String::from)
             .collect();
         in_caps.sort_unstable();

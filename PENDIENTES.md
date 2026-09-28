@@ -31,7 +31,7 @@ Ver detalle y contexto en Obsidian: `Proyectos/DockInng/DockInng - Lista de trab
 
 ## Ola 1: pendientes tras la auditoría (rama `feature/wave1-stacks-terminal-images`)
 - [ ] **Cerrar la ventana con una operación en curso** (up/pull): `beforeunload` probablemente no se dispara con el botón de cerrar de Tauri/WebKitGTK; al destruir la ventana se hace SIGTERM a compose y el stack puede quedar a medias. Verificar con la ventana real y, si hace falta, confirmar desde el backend.
-- [ ] «Abrir archivo Compose» exige escribir la ruta: falta el selector nativo (`tauri-plugin-dialog` + permiso `dialog:allow-open`).
+- [x] «Abrir archivo Compose» tiene selector nativo de archivos Compose (`tauri-plugin-dialog` + permiso `dialog:allow-open`); la ruta absoluta escrita sigue disponible como alternativa.
 - [ ] Riesgo aceptado: con `stack_create` + `run_stack_op(up)` con `privileged` o bind a `/` se obtiene root en el host sin ticket; la barrera real es la CSP y la ausencia de contenido remoto.
 - [ ] El pre-escaneo de `include` remoto (git/oci/http/ssh) es de mejor esfuerzo por líneas: un YAML muy retorcido podría evadirlo. `include`/`extends`/`env_file` locales que salgan del directorio del stack no se restringen. Sin test del tope de 2 validaciones simultáneas.
 - [ ] Un fallo de un archivo linked/descubierto inválido puede filtrar un fragmento en el mensaje de error de Compose (truncado a 2 KiB y con los valores del `.env` ocultos).
