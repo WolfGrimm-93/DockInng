@@ -379,7 +379,28 @@ pub struct LegacyImportReport {
 }
 
 /// Claves de preferencias permitidas (lista blanca validada en Rust).
-pub const PREF_KEYS: &[&str] = &["polling", "last_connection_id"];
+pub const PREF_KEYS: &[&str] = &[
+    "polling",
+    "last_connection_id",
+    "notify_enabled",
+    "notify_events",
+    "tray_enabled",
+    "close_to_tray",
+    "window_decorations",
+    "start_minimized",
+];
+
+/// Preferencias cuyo valor es un booleano (o `null` para volver al valor por defecto).
+pub const BOOL_PREF_KEYS: &[&str] = &[
+    "notify_enabled",
+    "tray_enabled",
+    "close_to_tray",
+    "window_decorations",
+    "start_minimized",
+];
+
+/// Eventos notificables de `notify_events` (objeto con estas claves booleanas, todas opcionales).
+pub const NOTIFY_EVENT_KEYS: &[&str] = &["die", "oom", "unhealthy", "op_done"];
 
 #[cfg(test)]
 mod tests {

@@ -20,6 +20,11 @@ impl BuildGuards {
             service: BuildService::new(),
         })
     }
+
+    /// Builds en curso (a lo sumo uno en toda la app).
+    pub fn active_count(&self) -> usize {
+        usize::from(self.service.is_active())
+    }
 }
 
 /// `Sink` de la ventana visto como destino del builder.

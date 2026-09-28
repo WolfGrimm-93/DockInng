@@ -14,7 +14,10 @@ use engine_core::{
 use engine_docker::DockerEngine;
 
 fn temp_socket(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("dockinng-test-{}", uuid::Uuid::now_v7()));
+    // `UnixListener::bind` has a small platform limit for socket paths.  Keep this
+    // fixture independent of a possibly long `TMPDIR`/`XDG_RUNTIME_DIR`.
+    let base = PathBuf::from("/tmp");
+    let dir = base.join(format!("dkl-{}", uuid::Uuid::now_v7().simple()));
     std::fs::create_dir_all(&dir).expect("dir temporal");
     dir.join(format!("{tag}.sock"))
 }

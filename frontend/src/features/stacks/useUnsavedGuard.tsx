@@ -4,7 +4,7 @@
 //  - beforeunload: cerrar o recargar la ventana pide confirmación (también protege el texto sin guardar).
 import { useEffect, useRef } from 'react'
 import { registerNavBlocker } from '@/app/navGuard'
-import { useConfirm } from '@/components/shared/ConfirmDialog'
+import { useConfirm } from '@/components/shared/confirmApi'
 
 export function useUnsavedGuard(dirty: boolean, opts: { onSave?: () => Promise<boolean>; title?: string; description?: string; okLabel?: string; cancelLabel?: string; note?: string } = {}): void {
   const confirm = useConfirm()

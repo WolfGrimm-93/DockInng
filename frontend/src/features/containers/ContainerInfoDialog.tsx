@@ -6,28 +6,57 @@ import { Icon } from '@/components/shared/Icon'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { Tabs, TabsList, TabsPanel, TabsTab } from '@/components/ui/tabs'
+import { apiErrorMessage } from '@/data/errors'
 import { containerName } from '@/data/store/engineStore'
-import { useEngineApi } from '@/data/store/hooks'
-import type { Container, ContainerDetail } from '@/data/types'
+import { useConnection, useEngineApi } from '@/data/store/hooks'
+import type { Container, ContainerDetail, OpenPortScheme } from '@/data/types'
+import { copyText } from '@/lib/clipboard'
 import { safeText } from '@/lib/safeText'
+import { toast } from '@/lib/toastStore'
 import { endpointsOf, hasIp } from '../common/netinfo'
-import { portEntries, portLabel, publishedPorts, totalPorts } from '../common/ports'
+import { portEntries, portLabel, publishedPorts, totalPorts, type PortEntry } from '../common/ports'
 
 export type InfoTab = 'ports' | 'ips'
 export interface InfoTarget { c: Container; tab: InfoTab }
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 
+/** Solo un puerto tcp publicado y suelto (no un rango) se puede copiar/abrir. */
+const actionable = (e: PortEntry): e is PortEntry & { host: number } => e.host !== null && e.proto === 'tcp' && e.count === 1
+/** 443 y 8443 del contenedor hablan https; el resto, http (el backend solo acepta estos dos esquemas). */
+const schemeOf = (e: PortEntry): OpenPortScheme => (e.container === 443 || e.container === 8443 ? 'https' : 'http')
+
 function PortsPanel({ c }: { c: Container }) {
+  const api = useEngineApi()
+  const remote = useConnection().profile.remote
+  const running = c.state === 'running'
   const entries = useMemo(() => portEntries(c.ports), [c.ports])
   if (!entries.length) return <p className="muted">Este contenedor no expone puertos.</p>
   const name = safeText(containerName(c), { singleLine: true })
+  // En remoto `localhost` no apunta al contenedor: se copia solo el número de puerto.
+  const copy = async (port: number) => {
+    const text = remote ? String(port) : `localhost:${port}`
+    if (await copyText(text)) toast.ok(`Copiado: ${text}`)
+    else toast.warn('No se pudo copiar', { sub: text })
+  }
+  const open = async (e: PortEntry & { host: number }) => {
+    const scheme = schemeOf(e)
+    try {
+      await api.containers.openPort(c.id, e.host, scheme)
+      toast.ok(`Abriendo ${scheme}://127.0.0.1:${e.host}/`, api.mode === 'browser' ? { sub: 'Simulado: no se abre ningún navegador.' } : undefined)
+    } catch (err) {
+      const m = apiErrorMessage(err)
+      toast.err(m.title, { sub: m.detail })
+    }
+  }
+  // Motivo visible por el que «Abrir» no está disponible (no solo un tooltip).
+  const whyNoOpen = remote ? 'Solo en este equipo' : !running ? 'Contenedor detenido' : null
   return (
     <div className="ports-scroll" tabIndex={0} role="region" aria-label={`Lista de puertos de ${name}`}>
       <table className="ports-table">
         <caption className="sr-only">Puertos abiertos de {name}</caption>
         <thead>
-          <tr><th scope="col">Equipo</th><th scope="col">Contenedor</th><th scope="col">Protocolo</th><th scope="col">Enlace</th></tr>
+          <tr><th scope="col">Equipo</th><th scope="col">Contenedor</th><th scope="col">Protocolo</th><th scope="col">Enlace</th><th scope="col" className="ports-actions-h">Acciones</th></tr>
         </thead>
         <tbody>
           {entries.map((e, i) => (
@@ -43,6 +72,19 @@ function PortsPanel({ c }: { c: Container }) {
               </td>
               <td>{e.proto.toUpperCase()}</td>
               <td>{e.bindings.length ? e.bindings.join(' · ') : <span className="muted" title="El contenedor lo expone pero no está publicado en el equipo">Solo expuesto</span>}</td>
+              <td className="ports-actions-cell">
+                {actionable(e) ? (
+                  <span className="ports-actions">
+                    <Button variant="secondary" size="sm" onClick={() => void copy(e.host)} aria-label={`Copiar puerto ${e.host} de ${name}`} title={remote ? `Copia solo el número de puerto (${e.host}): en una conexión remota «localhost» no apunta al contenedor` : `Copia localhost:${e.host}`}>
+                      <Icon name="copy" size="sm" />Copiar
+                    </Button>
+                    <Button variant="secondary" size="sm" disabled={whyNoOpen !== null} onClick={() => void open(e)} aria-label={`Abrir puerto ${e.host} de ${name} en el navegador`} title={whyNoOpen ?? `Abre ${schemeOf(e)}://127.0.0.1:${e.host}/ en el navegador`}>
+                      <Icon name="globe" size="sm" />Abrir
+                    </Button>
+                    {whyNoOpen ? <span className="why">{whyNoOpen}</span> : null}
+                  </span>
+                ) : null}
+              </td>
             </tr>
           ))}
         </tbody>

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="DockInng">
+  <title>DockInng</title>
+  <rect width="32" height="32" rx="8" fill="#00935d"/>
+  <!-- Una D cuya cavidad es un contenedor atracado en su muelle -->
+  <path fill="#f5fcf8" fill-rule="evenodd" d="M8 7h7a9 9 0 0 1 0 18H8zm4.5 4.5v9h5v-9z"/>
+</svg>

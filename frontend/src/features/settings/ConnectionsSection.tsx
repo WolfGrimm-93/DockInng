@@ -2,10 +2,11 @@
 // Simulada) y borrado con confirmación. La conexión activa y la local no se pueden borrar. Editar una conexión guardada no está en el contrato IPC
 // (connection_list no devuelve el spec): se elimina y se vuelve a crear (deuda anotada).
 import { safeText } from '@/lib/safeText'
-import { useConfirm } from '@/components/shared/ConfirmDialog'
+import { useConfirm } from '@/components/shared/confirmApi'
 import { Icon } from '@/components/shared/Icon'
 import { SafeName } from '@/components/shared/SafeName'
-import { Button, buttonVariants } from '@/components/ui/button'
+import { Button } from '@/components/ui/button'
+import { buttonVariants } from '@/components/ui/buttonVariants'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { apiErrorMessage } from '@/data/errors'
 import { useConnection, useEngineStore, useEngineStoreApi, useEngineApi } from '@/data/store/hooks'

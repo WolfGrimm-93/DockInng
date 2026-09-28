@@ -16,6 +16,12 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT"
 publish = false
+authors = ["wolfgrimm <mferrer_inf@hotmail.com>"]
+description = "Docker manager for Linux (desktop GUI + CLI)"
+repository = "https://github.com/WolfGrimm-93/DockInng"
+homepage = "https://github.com/WolfGrimm-93/DockInng"
+keywords = ["docker", "containers", "compose", "desktop", "tauri"]
+categories = ["development-tools"]
 
 [workspace.dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }

@@ -199,8 +199,10 @@ mod tests {
 
     #[test]
     fn sockets_falsos_en_tempdir() {
-        let dir =
-            std::env::temp_dir().join(format!("dockinng-test-podman-{}", uuid::Uuid::now_v7()));
+        // `UnixListener::bind` has a small platform limit for socket paths.  Do not use
+        // `temp_dir()`/`TMPDIR` (or an arbitrarily long XDG path) for this fixture.
+        let base = std::path::PathBuf::from("/tmp");
+        let dir = base.join(format!("dkp-{}", uuid::Uuid::now_v7().simple()));
         std::fs::create_dir_all(dir.join("podman")).expect("mkdir");
         let sock = dir.join("podman/podman.sock");
         let _listener = UnixListener::bind(&sock).expect("bind");

@@ -32,6 +32,23 @@ La GUI y la CLI son adaptadores del mismo núcleo; el frontend nunca habla con D
 
 Rust (stable), Node.js, `pnpm`, Docker y las dependencias de Tauri para Linux (WebKitGTK 4.1, GTK 3, librsvg). Tu usuario debe poder acceder al socket de Docker (grupo `docker`).
 
+## Instalación
+
+Los paquetes se construyen desde el código fuente; aún no hay versiones precompiladas.
+
+```bash
+# Debian / Ubuntu (.deb) y Fedora / openSUSE (.rpm)
+pnpm --dir frontend install
+cd backend/app && ../../frontend/node_modules/.bin/tauri build --bundles deb,rpm
+# Salida: backend/target/release/bundle/{deb,rpm}/
+sudo apt install ./dockinng_0.1.0_amd64.deb    # o: sudo dnf install ./dockinng-0.1.0-1.x86_64.rpm
+
+# Arch Linux
+cd backend/app/packaging/arch && makepkg -si
+```
+
+Los `.deb`/`.rpm` contienen la app de escritorio (`dockinng-app`). El CLI `dockinng` lo instala el paquete de Arch; en otras distribuciones se compila con `cd backend && cargo install --path crates/dockinng-cli`. Dependencias en ejecución: WebKitGTK 4.1, GTK 3 y libayatana-appindicator (bandeja del sistema). Licencias: [LICENSE](LICENSE) y [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
 ## Desarrollo
 
 ```bash

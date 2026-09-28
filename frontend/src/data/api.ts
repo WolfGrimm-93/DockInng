@@ -7,6 +7,7 @@ import type {
   CreateResult, CreateVolumeSpec, EngineFeed, ExecOptions, ExecSession, GpuInfo, GroupOp, GroupsImportResult, GroupsSnapshot, HostKeyProbe,
   Image, LegacyGroupsPayload, LogFeed, Network, PodmanCandidate, PrefKey, PullFeed, RegistrySummary, RegistryTestResult, StackFiles,
   StackOpFeed, StackOpRequest, StackSummary, StackValidation, StatsSnapshotItem, SystemUsage, Unsubscribe, Volume,
+  BusySummary, NotifyRequest, OpenPortScheme, TrayStatus, WindowEdge,
 } from './types'
 
 export type Feature =
@@ -43,6 +44,9 @@ export interface EngineApi {
     planCreate(spec: CreateContainerSpec): Promise<CreatePlan>
     /** `create_container`. NUNCA descarga la imagen: si falta lanza `image_missing` (la UI enruta al pull). `ticket` solo si el plan lo exigió. */
     create(spec: CreateContainerSpec, start: boolean, ticket: string | null): Promise<CreateResult>
+    /** `open_port_in_browser`: el BACKEND arma la URL (`scheme://127.0.0.1:port/`) a partir de los puertos realmente publicados (tcp) por ese contenedor y abre el navegador
+     *  del sistema. Solo con conexión local y contenedor en ejecución. El renderizador nunca aporta host ni ruta. */
+    openPort(id: string, port: number, scheme: OpenPortScheme): Promise<void>
   }
   /** Franja de consumo: `usage` = `system_usage` (CPU/RAM del equipo + disco de Docker); `gpu` = `gpu_status` (nunca lanza: sin GPU => []). */
   system: {
@@ -125,6 +129,27 @@ export interface EngineApi {
     load(): Promise<GroupsSnapshot>
     mutate(op: GroupOp): Promise<GroupsSnapshot>
     importLegacy(payload: LegacyGroupsPayload): Promise<GroupsImportResult>
+  }
+  /** Bandeja, notificaciones nativas, ventana propia (sin marco) y cierre controlado (Ola 3). En el navegador/simulado los comandos de ventana no hacen nada. */
+  window: {
+    /** `tray_status`: ¿hay bandeja del sistema? (sin appindicator/host SNI no hay y `close_to_tray` se ignora). */
+    trayStatus(): Promise<TrayStatus>
+    /** `busy_summary`: operaciones en curso (stacks, descargas, builds, terminales). */
+    busySummary(): Promise<BusySummary>
+    /** `notify_user`: notificación nativa; el backend valida `kind`, respeta las prefs y decide si mostrarla según el foco. */
+    notifyUser(n: NotifyRequest): Promise<void>
+    /** `quit_app`: `true` sale siempre (tras el ConfirmDialog). OJO: `false` NO significa «cancelar»: es una petición de salida que, con operaciones en curso, vuelve a pedir confirmación (`quit_requested`). Cancelar = no llamar. */
+    quitApp(confirmed: boolean): Promise<void>
+    /** `window_set_decorations`: barra del sistema (true) o ventana sin marco con `WindowChrome` (false). */
+    setDecorations(enabled: boolean): Promise<void>
+    minimize(): Promise<void>
+    toggleMaximize(): Promise<void>
+    /** Pasa por el cierre controlado del backend (respeta `close_to_tray` y las operaciones en curso). */
+    close(): Promise<void>
+    startDrag(): Promise<void>
+    startResize(edge: WindowEdge): Promise<void>
+    /** `subscribe_app_events`: mensaje `quit_requested` (cierre pedido con operaciones en curso; canal del backend, sin permisos de eventos de Tauri). Devuelve la baja. */
+    onQuitRequested(cb: (summary: BusySummary) => void): Unsubscribe
   }
   /** Preferencias (lista blanca de claves). `get` devuelve `null` si nunca se guardó. */
   prefs: {

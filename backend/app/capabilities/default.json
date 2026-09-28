@@ -65,6 +65,18 @@
     "allow-build-plan",
     "allow-subscribe-build",
     "allow-cleanup-report",
-    "allow-podman-detect"
+    "allow-podman-detect",
+    "allow-open-port-in-browser",
+    "allow-tray-status",
+    "allow-notify-user",
+    "allow-busy-summary",
+    "allow-quit-app",
+    "allow-subscribe-app-events",
+    "allow-window-set-decorations",
+    "allow-window-minimize",
+    "allow-window-toggle-maximize",
+    "allow-window-close",
+    "allow-window-start-drag",
+    "allow-window-start-resize"
   ]
 }

@@ -2,7 +2,7 @@
 // El secreto (contraseña o token) entra UNA vez por el campo `type=password` y nunca se vuelve a mostrar ni a leer: la lista solo trae servidor y usuario.
 // Se limpia del estado del formulario en cuanto se envía. Eliminar pasa por ConfirmDialog (nivel Confirmar). «Probar» solo por gesto del usuario.
 import { useEffect, useRef, useState } from 'react'
-import { useConfirm } from '@/components/shared/ConfirmDialog'
+import { useConfirm } from '@/components/shared/confirmApi'
 import { FormDialog } from '@/components/shared/FormDialog'
 import { Icon } from '@/components/shared/Icon'
 import { SafeName } from '@/components/shared/SafeName'

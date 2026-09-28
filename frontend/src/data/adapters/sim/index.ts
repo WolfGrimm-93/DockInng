@@ -18,6 +18,7 @@ import { FAIL_START, LIVE_LOGS, LOG_SEED, buildWorld, type World } from './fixtu
 import { createSimPull } from './pull'
 import { createSimResources } from './resources'
 import { createSimStacks, type SimStackControls } from './stacks'
+import { createSimWindow, type SimWindowControls } from './window'
 
 export type SimFault = 'permission' | 'daemon' | null
 export interface SimOptions {
@@ -43,6 +44,8 @@ export interface SimControls {
   stacks: SimStackControls
   /** Contadores de sesiones de terminal (detección de fugas en tests/E2E). */
   exec: ExecStats
+  /** Ola 3: llamadas registradas de ventana/notificaciones/abrir puerto y control de la bandeja y del cierre. */
+  window: SimWindowControls
 }
 export type SimEngineApi = EngineApi & { sim: SimControls }
 
@@ -105,6 +108,7 @@ export function createSimApi(opts: SimOptions = {}): SimEngineApi {
   const buildMod = { planBuild: (spec: BuildSpec) => loadBuild().then((b) => b.planBuild(spec)) }
   const stacksMod = createSimStacks(ctx)
   const execMod = createSimExec(ctx)
+  const windowMod = createSimWindow()
   const pullMod = createSimPull(ctx)
   const createMod = createSimCreate(ctx)
   const resMod = createSimResources(ctx)
@@ -334,6 +338,7 @@ export function createSimApi(opts: SimOptions = {}): SimEngineApi {
       },
       stacks: stacksMod.controls,
       exec: execMod.stats,
+      window: windowMod.controls,
     },
     connection: {
       async status() {
@@ -395,6 +400,15 @@ export function createSimApi(opts: SimOptions = {}): SimEngineApi {
       },
       planCreate: createMod.planCreate,
       create: createMod.create,
+      // No abre nada: valida como el backend (puerto tcp publicado, contenedor en marcha, solo local) y registra la llamada.
+      async openPort(id, port, scheme) {
+        if (scheme !== 'http' && scheme !== 'https') throw apiError('invalid_input', 'Esquema no permitido.')
+        if (ctx.isRemote()) throw apiError('invalid_input', 'Solo se puede abrir en el equipo local.')
+        const c = find(id)
+        if (c.state !== 'running') throw apiError('conflict', 'El contenedor no está en ejecución.')
+        if (!c.ports.some((p) => p.public_port === port && p.protocol === 'tcp')) throw apiError('invalid_input', `El puerto ${port} no está publicado por este contenedor.`)
+        windowMod.controls.openedPorts.push({ id: c.id, port, scheme })
+      },
     },
     system: {
       // Datos de ejemplo coherentes con el mundo simulado (la capa real vive en el adaptador Tauri).
@@ -472,6 +486,7 @@ export function createSimApi(opts: SimOptions = {}): SimEngineApi {
     registries: storeMod.registries,
     groups: storeMod.groups,
     prefs: storeMod.prefs,
+    window: windowMod.api,
   }
   return api
 }

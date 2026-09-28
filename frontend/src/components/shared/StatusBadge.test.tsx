@@ -7,7 +7,8 @@ import { useUiStore } from '@/app/uiStore'
 import { createSimApi } from '@/data/adapters/sim'
 import type { ContainerState } from '@/data/types'
 import { PageHeader } from './PageHeader'
-import { STATUS_UI, StatusBadge, toUiStatus } from './StatusBadge'
+import { StatusBadge } from './StatusBadge'
+import { STATUS_UI, toUiStatus } from './statusUi'
 
 describe('StatusBadge', () => {
   const cases: [ContainerState, string, string][] = [

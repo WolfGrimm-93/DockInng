@@ -1,10 +1,8 @@
 // Toaster PROPIO (sin sonner/next-themes). Contrato: montar <Toaster/> una vez (providers); emitir con `toast`/`policyDenied`
-// de '@/lib/toastStore' (re-exportados aquí). Pausa el temporizador con hover/foco; solo `err` usa role="alert"; el resto role="status".
+// de '@/lib/toastStore'. Pausa el temporizador con hover/foco; solo `err` usa role="alert"; el resto role="status".
 import { useEffect, useRef, useSyncExternalStore } from 'react'
 import { getToasts, subscribeToasts, toast, type ToastItem } from '@/lib/toastStore'
 import { Icon } from './Icon'
-
-export { toast, policyDenied } from '@/lib/toastStore'
 
 function OverflowView({ t }: { t: ToastItem }) {
   return (

@@ -5,6 +5,16 @@ Ver detalle y contexto en Obsidian: `Proyectos/DockInng/DockInng - Lista de trab
 ## Simulado en la UI
 - Nada queda simulado contra Docker. Podman solo se **detecta** (no se puede guardar una conexión Podman: el contrato solo admite `ssh` y `tls`).
 
+## Ola 3: empaquetado (sin verificar)
+
+- [ ] Instalar los `.deb` y `.rpm` en una distro real (no hay `dpkg`/`rpm` aquí); pasar `lintian`/`rpmlint`.
+- [ ] Confirmar los nombres de dependencias de Debian/Ubuntu (`libwebkit2gtk-4.1-0`, `libgtk-3-0`, `libayatana-appindicator3-1`) y de Fedora (`webkit2gtk4.1`, `gtk3`, `libayatana-appindicator-gtk3`): solo se comprobaron los de Arch.
+- [ ] Build completo del PKGBUILD con red (`pnpm install`, `cargo fetch`), con tag `v0.1.0` publicado y `updpkgsums`; `namcap` no está instalado.
+- [ ] El CLI `dockinng` no va en el deb/rpm (`externalBin` exige el binario precompilado y rompería `tauri dev`): solo en el PKGBUILD.
+- [ ] AppImage descartado (descarga herramientas; WebKitGTK empaquetado da problemas en Wayland).
+- [ ] Bandeja en Plasma: comprobar `tray.png` sobre paneles claro y oscuro, y `StartupWMClass=dockinng-app` en Wayland.
+- [ ] `backend/app/Cargo.toml` no hereda `authors`/`description` del workspace (fuera de alcance).
+
 ## Ola 2: pendientes tras la auditoría (rama `feature/wave2-persistence-remote`)
 - [ ] **No verificado con servidores reales:** SSH/Docker remotos (PATH real, rootless, shells con banner, latencia, cortes de red), ProxyJump/alias complejos con TOFU (falla cerrado), llaves con passphrase sin agente (no soportado), dockerd con TLS real. Solo se probó contra un `sshd` local desechable y un fixture TLS en proceso.
 - [ ] Llavero real (Secret Service/KWallet) sin ejercitar (`live_llavero_real`, opt-in `DOCKINNG_LIVE_KEYRING=1`): puede abrir un diálogo de desbloqueo. Pull con registro autenticado sin probar (falta `registry:2`).

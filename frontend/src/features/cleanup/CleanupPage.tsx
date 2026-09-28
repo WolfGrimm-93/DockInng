@@ -4,7 +4,7 @@
 //   - Los volúmenes NUNCA vienen marcados (pueden tener datos); si hay alguno en la selección, la confirmación es escrita (ELIMINAR).
 //   - La caché de build es solo informativa (la API no permite borrarla por elemento).
 import { useEffect, useMemo, useState } from 'react'
-import { useGuardedAction } from '@/components/shared/ConfirmDialog'
+import { useGuardedAction } from '@/components/shared/useGuardedAction'
 import { Icon } from '@/components/shared/Icon'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { SafeName } from '@/components/shared/SafeName'

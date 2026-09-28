@@ -7,7 +7,7 @@ import { devFlagsEnabled, setComposeMissing, useComposeMissing } from '@/app/dev
 import { useHashRoute } from '@/app/useHashRoute'
 import { asSim } from '@/data/createEngineApi'
 import { CodeEditor, type CodeEditorHandle } from '@/components/shared/code-editor/CodeEditor'
-import { useConfirm } from '@/components/shared/ConfirmDialog'
+import { useConfirm } from '@/components/shared/confirmApi'
 import { Icon } from '@/components/shared/Icon'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { Segmented } from '@/components/shared/Segmented'

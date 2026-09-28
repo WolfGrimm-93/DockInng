@@ -1,0 +1,2545 @@
+{
+  "api_errors": {
+    "by_cause": {
+      "auth_failed": {
+        "cause": "auth_failed",
+        "code": "connection",
+        "message": "sin conexión"
+      },
+      "daemon_down": {
+        "cause": "daemon_down",
+        "code": "connection",
+        "message": "sin conexión"
+      },
+      "host_key_changed": {
+        "cause": "host_key_changed",
+        "code": "connection",
+        "message": "sin conexión"
+      },
+      "host_key_unknown": {
+        "cause": "host_key_unknown",
+        "code": "connection",
+        "message": "sin conexión"
+      },
+      "other": {
+        "cause": "other",
+        "code": "connection",
+        "message": "sin conexión"
+      },
+      "permission_denied": {
+        "cause": "permission_denied",
+        "code": "connection",
+        "message": "sin conexión"
+      },
+      "remote_docker_missing": {
+        "cause": "remote_docker_missing",
+        "code": "connection",
+        "message": "sin conexión"
+      },
+      "socket_missing": {
+        "cause": "socket_missing",
+        "code": "connection",
+        "message": "sin conexión"
+      },
+      "tls_invalid": {
+        "cause": "tls_invalid",
+        "code": "connection",
+        "message": "sin conexión"
+      },
+      "unreachable": {
+        "cause": "unreachable",
+        "code": "connection",
+        "message": "sin conexión"
+      }
+    },
+    "by_code": {
+      "auth_required": {
+        "cause": null,
+        "code": "auth_required",
+        "message": "mensaje de AuthRequired"
+      },
+      "compose_failed": {
+        "cause": null,
+        "code": "compose_failed",
+        "message": "mensaje de ComposeFailed"
+      },
+      "compose_missing": {
+        "cause": null,
+        "code": "compose_missing",
+        "message": "mensaje de ComposeMissing"
+      },
+      "conflict": {
+        "cause": null,
+        "code": "conflict",
+        "message": "mensaje de Conflict"
+      },
+      "connection": {
+        "cause": null,
+        "code": "connection",
+        "message": "mensaje de Connection"
+      },
+      "engine": {
+        "cause": null,
+        "code": "engine",
+        "message": "mensaje de Engine"
+      },
+      "image_missing": {
+        "cause": null,
+        "code": "image_missing",
+        "message": "mensaje de ImageMissing"
+      },
+      "internal": {
+        "cause": null,
+        "code": "internal",
+        "message": "mensaje de Internal"
+      },
+      "invalid_compose": {
+        "cause": null,
+        "code": "invalid_compose",
+        "message": "mensaje de InvalidCompose"
+      },
+      "invalid_input": {
+        "cause": null,
+        "code": "invalid_input",
+        "message": "mensaje de InvalidInput"
+      },
+      "no_shell": {
+        "cause": null,
+        "code": "no_shell",
+        "message": "mensaje de NoShell"
+      },
+      "not_found": {
+        "cause": null,
+        "code": "not_found",
+        "message": "mensaje de NotFound"
+      },
+      "not_implemented": {
+        "cause": null,
+        "code": "not_implemented",
+        "message": "mensaje de NotImplemented"
+      },
+      "policy_denied": {
+        "cause": null,
+        "code": "policy_denied",
+        "message": "mensaje de PolicyDenied"
+      },
+      "registry_unreachable": {
+        "cause": null,
+        "code": "registry_unreachable",
+        "message": "mensaje de RegistryUnreachable"
+      },
+      "state_changed": {
+        "cause": null,
+        "code": "state_changed",
+        "message": "mensaje de StateChanged"
+      },
+      "ticket_expired": {
+        "cause": null,
+        "code": "ticket_expired",
+        "message": "mensaje de TicketExpired"
+      },
+      "ticket_invalid": {
+        "cause": null,
+        "code": "ticket_invalid",
+        "message": "mensaje de TicketInvalid"
+      },
+      "timeout": {
+        "cause": null,
+        "code": "timeout",
+        "message": "mensaje de Timeout"
+      },
+      "typed_mismatch": {
+        "cause": null,
+        "code": "typed_mismatch",
+        "message": "mensaje de TypedMismatch"
+      }
+    },
+    "quiesced": {
+      "cause": null,
+      "code": "conflict",
+      "message": "cambio de conexión en curso",
+      "quiesced": true
+    }
+  },
+  "commands": {
+    "build_plan": {
+      "args": {
+        "spec": {
+          "build_args": [
+            [
+              "VERSION",
+              "1"
+            ]
+          ],
+          "context_dir": "/home/u/app",
+          "dockerfile": "Dockerfile",
+          "no_cache": false,
+          "pull": true,
+          "tag": "app:dev",
+          "target": null
+        }
+      },
+      "result": {
+        "decision": {
+          "type": "confirm"
+        },
+        "expires_in_secs": 90,
+        "ticket": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3d",
+        "warnings": [
+          {
+            "path": "/home/u",
+            "type": "sensitive_context"
+          }
+        ]
+      },
+      "result_type": "BuildPlan"
+    },
+    "busy_summary": {
+      "args": {},
+      "result": {
+        "builds": 0,
+        "pulls": 0,
+        "stacks": 1,
+        "terminals": 2
+      },
+      "result_type": "BusySummary"
+    },
+    "cancel_action": {
+      "args": {
+        "ticket": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3d"
+      },
+      "result": null,
+      "result_type": "void"
+    },
+    "cancel_stack_op": {
+      "args": {
+        "subscriptionId": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3c"
+      },
+      "result": null,
+      "result_type": "void"
+    },
+    "cleanup_report": {
+      "args": {
+        "minAgeDays": 7
+      },
+      "result": {
+        "categories": [
+          {
+            "executable": true,
+            "id": "unused_volumes",
+            "items": [
+              {
+                "estimate": "upper_bound",
+                "id": "data",
+                "kind": "volume",
+                "name": "data",
+                "reason": "sin uso",
+                "risk": "high",
+                "selected_by_default": false,
+                "size_bytes": 10
+              }
+            ],
+            "reclaimable_bytes": 10
+          },
+          {
+            "executable": false,
+            "id": "build_cache",
+            "items": [],
+            "reclaimable_bytes": null
+          }
+        ],
+        "defaults_truncated": false,
+        "generated_at": "2025-01-02T03:04:05Z",
+        "total_reclaimable_bytes": 10,
+        "unknown_count": 1
+      },
+      "result_type": "CleanupReport"
+    },
+    "compose_info": {
+      "args": {
+        "recheck": false
+      },
+      "result": {
+        "available": true,
+        "docker_cli": true,
+        "flavor": "plugin",
+        "supported": true,
+        "version": "2.29.7"
+      },
+      "result_type": "ComposeInfo"
+    },
+    "connection_delete": {
+      "args": {
+        "confirmed": true,
+        "id": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3e"
+      },
+      "result": null,
+      "result_type": "void"
+    },
+    "connection_list": {
+      "args": {},
+      "result": [
+        {
+          "host": "10.0.0.5",
+          "host_key_fp": "SHA256:abc",
+          "id": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3e",
+          "identity": {
+            "path": "/home/u/.ssh/id_ed25519",
+            "type": "file"
+          },
+          "kind": "ssh",
+          "mode": "alias",
+          "name": "srv",
+          "port": 22,
+          "remote": true,
+          "simulated": false,
+          "user": "deploy"
+        }
+      ],
+      "result_type": "ConnectionProfile[]"
+    },
+    "connection_probe_host_key": {
+      "args": {
+        "spec": {
+          "host": "10.0.0.5",
+          "identity": {
+            "type": "agent"
+          },
+          "kind": "ssh",
+          "mode": "explicit",
+          "name": "srv",
+          "port": 22,
+          "user": "deploy"
+        }
+      },
+      "result": {
+        "fingerprint_sha256": "SHA256:abc",
+        "key_type": "ssh-ed25519",
+        "state": "unknown"
+      },
+      "result_type": "HostKeyProbe"
+    },
+    "connection_save": {
+      "args": {
+        "id": null,
+        "spec": {
+          "host": "10.0.0.5",
+          "identity": {
+            "type": "agent"
+          },
+          "kind": "ssh",
+          "mode": "explicit",
+          "name": "srv",
+          "port": 22,
+          "user": "deploy"
+        }
+      },
+      "result": {
+        "host": "10.0.0.5",
+        "host_key_fp": "SHA256:abc",
+        "id": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3e",
+        "identity": {
+          "path": "/home/u/.ssh/id_ed25519",
+          "type": "file"
+        },
+        "kind": "ssh",
+        "mode": "alias",
+        "name": "srv",
+        "port": 22,
+        "remote": true,
+        "simulated": false,
+        "user": "deploy"
+      },
+      "result_type": "ConnectionProfile"
+    },
+    "connection_select": {
+      "args": {
+        "id": "local"
+      },
+      "result": {
+        "endpoint": "unix:///var/run/docker.sock",
+        "server": {
+          "api_version": "1.47",
+          "arch": "amd64",
+          "os": "linux",
+          "version": "27.3.1"
+        },
+        "state": "connected"
+      },
+      "result_type": "ConnectionStatus"
+    },
+    "connection_status": {
+      "args": {},
+      "result": {
+        "endpoint": "unix:///var/run/docker.sock",
+        "server": {
+          "api_version": "1.47",
+          "arch": "amd64",
+          "os": "linux",
+          "version": "27.3.1"
+        },
+        "state": "connected"
+      },
+      "result_type": "ConnectionStatus"
+    },
+    "connection_test": {
+      "args": {
+        "spec": {
+          "host": "10.0.0.5",
+          "identity": {
+            "type": "agent"
+          },
+          "kind": "ssh",
+          "mode": "explicit",
+          "name": "srv",
+          "port": 22,
+          "user": "deploy"
+        }
+      },
+      "result": {
+        "cause": "auth_failed",
+        "error": {
+          "cause": null,
+          "code": "conflict",
+          "message": "recurso en uso"
+        },
+        "ok": false,
+        "server": null
+      },
+      "result_type": "ConnTestResult"
+    },
+    "connection_trust_host_key": {
+      "args": {
+        "fingerprint": "SHA256:abc",
+        "spec": {
+          "host": "10.0.0.5",
+          "identity": {
+            "type": "agent"
+          },
+          "kind": "ssh",
+          "mode": "explicit",
+          "name": "srv",
+          "port": 22,
+          "user": "deploy"
+        }
+      },
+      "result": {
+        "fingerprint_sha256": "SHA256:abc",
+        "key_type": "ssh-ed25519",
+        "state": "unknown"
+      },
+      "result_type": "HostKeyProbe"
+    },
+    "container_stats_snapshot": {
+      "args": {
+        "ids": [
+          "3f1a9c0e5b7d2a46e8c0f1b3d5a79e2c4b6d8f0a1c3e5b7d9f1a3c5e7b9d1f30",
+          "b2"
+        ]
+      },
+      "result": [
+        {
+          "error": null,
+          "id": "3f1a9c0e5b7d2a46e8c0f1b3d5a79e2c4b6d8f0a1c3e5b7d9f1a3c5e7b9d1f30",
+          "stats": {
+            "block_read_bytes": 3,
+            "block_write_bytes": 4,
+            "cpu_percent": 12.5,
+            "mem_limit_bytes": 2097152,
+            "mem_percent": 50.0,
+            "mem_used_bytes": 1048576,
+            "net_rx_bytes": 10,
+            "net_rx_bytes_per_sec": 1.5,
+            "net_tx_bytes": 20,
+            "net_tx_bytes_per_sec": 2.5,
+            "pids": 7,
+            "read_at": "2025-01-02T03:04:05Z"
+          }
+        },
+        {
+          "error": {
+            "cause": null,
+            "code": "conflict",
+            "message": "recurso en uso"
+          },
+          "id": "b2",
+          "stats": null
+        }
+      ],
+      "result_type": "StatsSnapshotItem[]"
+    },
+    "create_container": {
+      "args": {
+        "spec": {
+          "command": null,
+          "env": [
+            {
+              "key": "MODE",
+              "value": "prod"
+            }
+          ],
+          "image": "nginx:1.27",
+          "labels": {
+            "team": "a"
+          },
+          "name": "web",
+          "network": null,
+          "ports": [
+            {
+              "container_port": 80,
+              "host_ip": "127.0.0.1",
+              "host_port": 8080,
+              "protocol": "tcp"
+            }
+          ],
+          "restart": "unless-stopped",
+          "restart_max_retries": null,
+          "volumes": [
+            {
+              "read_only": false,
+              "source": "data",
+              "target": "/data"
+            }
+          ]
+        },
+        "start": true,
+        "ticket": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3d"
+      },
+      "result": {
+        "id": "3f1a9c0e5b7d2a46e8c0f1b3d5a79e2c4b6d8f0a1c3e5b7d9f1a3c5e7b9d1f30",
+        "name": "web",
+        "start_error": {
+          "cause": null,
+          "code": "conflict",
+          "message": "recurso en uso"
+        },
+        "started": false,
+        "warnings": [
+          "aviso"
+        ]
+      },
+      "result_type": "CreateResult"
+    },
+    "create_network": {
+      "args": {
+        "spec": {
+          "gateway": null,
+          "internal": false,
+          "labels": {},
+          "name": "lan",
+          "subnet": "10.9.0.0/24"
+        }
+      },
+      "result": {
+        "compose_project": "shop",
+        "connected": [
+          "web"
+        ],
+        "driver": "bridge",
+        "id": "n1",
+        "internal": false,
+        "name": "shop_default",
+        "scope": "local",
+        "subnets": [
+          "172.18.0.0/16"
+        ],
+        "system": false
+      },
+      "result_type": "Network"
+    },
+    "create_volume": {
+      "args": {
+        "spec": {
+          "labels": {
+            "a": "b"
+          },
+          "name": "data"
+        }
+      },
+      "result": {
+        "anonymous": false,
+        "compose_project": "shop",
+        "created_at": "2025-01-02T03:04:05Z",
+        "driver": "local",
+        "labels": {
+          "com.docker.compose.project": "shop"
+        },
+        "mountpoint": "/var/lib/docker/volumes/data/_data",
+        "name": "data",
+        "size_bytes": 4096,
+        "used_by": [
+          "web"
+        ]
+      },
+      "result_type": "Volume"
+    },
+    "exec_close": {
+      "args": {
+        "subscriptionId": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3c"
+      },
+      "result": null,
+      "result_type": "void"
+    },
+    "exec_resize": {
+      "args": {
+        "cols": 100,
+        "rows": 30,
+        "subscriptionId": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3c"
+      },
+      "result": null,
+      "result_type": "void"
+    },
+    "exec_write": {
+      "args": {
+        "data": "bHMK",
+        "subscriptionId": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3c"
+      },
+      "result": null,
+      "result_type": "void"
+    },
+    "execute_action": {
+      "args": {
+        "ticket": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3d",
+        "typed": "ELIMINAR"
+      },
+      "result": {
+        "failed": [
+          {
+            "error": {
+              "cause": null,
+              "code": "conflict",
+              "message": "recurso en uso"
+            },
+            "item": {
+              "id": "data",
+              "kind": "volume",
+              "name": "data"
+            }
+          }
+        ],
+        "freed_bytes": 4096,
+        "succeeded": [
+          {
+            "id": "3f1a9c0e5b7d2a46e8c0f1b3d5a79e2c4b6d8f0a1c3e5b7d9f1a3c5e7b9d1f30",
+            "kind": "container",
+            "name": "web"
+          }
+        ]
+      },
+      "result_type": "ActionOutcome"
+    },
+    "gpu_status": {
+      "args": {},
+      "result": [
+        {
+          "index": 0,
+          "mem_total_bytes": 8192,
+          "mem_used_bytes": 1024,
+          "name": "NVIDIA RTX",
+          "temperature_c": 60,
+          "utilization_percent": 37.5
+        },
+        {
+          "index": 1,
+          "mem_total_bytes": 4096,
+          "mem_used_bytes": 0,
+          "name": "NVIDIA T4",
+          "temperature_c": null,
+          "utilization_percent": 0.0
+        }
+      ],
+      "result_type": "GpuInfo[]"
+    },
+    "groups_import_legacy": {
+      "args": {
+        "payload": {
+          "assign": {
+            "local\u0000web": "g1"
+          },
+          "groups": [
+            {
+              "hue": 210,
+              "id": "g1",
+              "name": "Web"
+            }
+          ],
+          "stackHue": {
+            "shop": 120
+          },
+          "v": 1
+        }
+      },
+      "result": {
+        "already_imported": false,
+        "dropped_assignments": 0,
+        "imported_assignments": 1,
+        "imported_groups": 1,
+        "snapshot": {
+          "assignments": [
+            {
+              "connection_id": "local",
+              "container_name": "web",
+              "group_id": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b40"
+            }
+          ],
+          "groups": [
+            {
+              "hue": 210,
+              "id": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b40",
+              "name": "Web"
+            }
+          ],
+          "legacy_imported": true,
+          "stack_hues": {
+            "shop": 120
+          }
+        }
+      },
+      "result_type": "LegacyImportReport"
+    },
+    "groups_load": {
+      "args": {},
+      "result": {
+        "assignments": [
+          {
+            "connection_id": "local",
+            "container_name": "web",
+            "group_id": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b40"
+          }
+        ],
+        "groups": [
+          {
+            "hue": 210,
+            "id": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b40",
+            "name": "Web"
+          }
+        ],
+        "legacy_imported": true,
+        "stack_hues": {
+          "shop": 120
+        }
+      },
+      "result_type": "GroupsSnapshot"
+    },
+    "groups_mutate": {
+      "args": {
+        "op": {
+          "hue": 210,
+          "name": "Web",
+          "type": "create_group"
+        }
+      },
+      "result": {
+        "assignments": [
+          {
+            "connection_id": "local",
+            "container_name": "web",
+            "group_id": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b40"
+          }
+        ],
+        "groups": [
+          {
+            "hue": 210,
+            "id": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b40",
+            "name": "Web"
+          }
+        ],
+        "legacy_imported": true,
+        "stack_hues": {
+          "shop": 120
+        }
+      },
+      "result_type": "GroupsSnapshot"
+    },
+    "inspect_container": {
+      "args": {
+        "id": "3f1a9c0e5b7d2a46e8c0f1b3d5a79e2c4b6d8f0a1c3e5b7d9f1a3c5e7b9d1f30"
+      },
+      "result": {
+        "cpu_limit": 1.5,
+        "created_at": "2025-01-02T03:04:05Z",
+        "error": null,
+        "exit_code": null,
+        "finished_at": null,
+        "ip_address": "172.18.0.2",
+        "memory_limit_bytes": 536870912,
+        "networks": [
+          {
+            "aliases": [],
+            "gateway": "172.18.0.1",
+            "ip_address": "172.18.0.2",
+            "ipv6_address": null,
+            "mac_address": null,
+            "name": "shop_default"
+          }
+        ],
+        "oom_killed": false,
+        "pid": 4242,
+        "raw": {
+          "Id": "3f1a9c0e5b7d2a46e8c0f1b3d5a79e2c4b6d8f0a1c3e5b7d9f1a3c5e7b9d1f30",
+          "State": {
+            "Status": "running"
+          }
+        },
+        "restart_count": 1,
+        "restart_policy": "unless-stopped",
+        "started_at": "2025-01-02T03:04:06Z",
+        "summary": {
+          "compose_project": "shop",
+          "compose_service": "web",
+          "created": 1727300000,
+          "endpoints": [
+            {
+              "aliases": [
+                "web"
+              ],
+              "gateway": "172.18.0.1",
+              "ip_address": "172.18.0.2",
+              "ipv6_address": null,
+              "mac_address": "02:42:ac:12:00:02",
+              "name": "shop_default"
+            }
+          ],
+          "id": "3f1a9c0e5b7d2a46e8c0f1b3d5a79e2c4b6d8f0a1c3e5b7d9f1a3c5e7b9d1f30",
+          "image": "nginx:1.27",
+          "image_id": "sha256:aa11",
+          "mounts": [
+            {
+              "destination": "/data",
+              "kind": "volume",
+              "name": "data",
+              "read_write": true,
+              "source": "/var/lib/docker/volumes/data/_data"
+            },
+            {
+              "destination": "/etc/conf",
+              "kind": "bind",
+              "name": null,
+              "read_write": false,
+              "source": "/srv/conf"
+            }
+          ],
+          "names": [
+            "web"
+          ],
+          "networks": [
+            "shop_default"
+          ],
+          "ports": [
+            {
+              "ip": "0.0.0.0",
+              "private_port": 80,
+              "protocol": "tcp",
+              "public_port": 8080
+            },
+            {
+              "ip": null,
+              "private_port": 443,
+              "protocol": "tcp",
+              "public_port": null
+            }
+          ],
+          "state": "running",
+          "status": "Up 3 hours"
+        },
+        "tty": false
+      },
+      "result_type": "ContainerDetail"
+    },
+    "list_containers": {
+      "args": {
+        "all": true
+      },
+      "result": [
+        {
+          "compose_project": "shop",
+          "compose_service": "web",
+          "created": 1727300000,
+          "endpoints": [
+            {
+              "aliases": [
+                "web"
+              ],
+              "gateway": "172.18.0.1",
+              "ip_address": "172.18.0.2",
+              "ipv6_address": null,
+              "mac_address": "02:42:ac:12:00:02",
+              "name": "shop_default"
+            }
+          ],
+          "id": "3f1a9c0e5b7d2a46e8c0f1b3d5a79e2c4b6d8f0a1c3e5b7d9f1a3c5e7b9d1f30",
+          "image": "nginx:1.27",
+          "image_id": "sha256:aa11",
+          "mounts": [
+            {
+              "destination": "/data",
+              "kind": "volume",
+              "name": "data",
+              "read_write": true,
+              "source": "/var/lib/docker/volumes/data/_data"
+            },
+            {
+              "destination": "/etc/conf",
+              "kind": "bind",
+              "name": null,
+              "read_write": false,
+              "source": "/srv/conf"
+            }
+          ],
+          "names": [
+            "web"
+          ],
+          "networks": [
+            "shop_default"
+          ],
+          "ports": [
+            {
+              "ip": "0.0.0.0",
+              "private_port": 80,
+              "protocol": "tcp",
+              "public_port": 8080
+            },
+            {
+              "ip": null,
+              "private_port": 443,
+              "protocol": "tcp",
+              "public_port": null
+            }
+          ],
+          "state": "running",
+          "status": "Up 3 hours"
+        },
+        {
+          "compose_project": null,
+          "compose_service": null,
+          "created": 0,
+          "endpoints": [],
+          "id": "b2",
+          "image": "alpine",
+          "image_id": "sha256:bb22",
+          "mounts": [],
+          "names": [
+            "job"
+          ],
+          "networks": [],
+          "ports": [],
+          "state": "exited",
+          "status": "Exited (1) 2 minutes ago"
+        }
+      ],
+      "result_type": "Container[]"
+    },
+    "list_images": {
+      "args": {},
+      "result": [
+        {
+          "containers": 1,
+          "created": 1727300000,
+          "dangling": false,
+          "id": "sha256:aa11",
+          "reference": "nginx:1.27",
+          "repository": "nginx",
+          "size_bytes": 190000000,
+          "tag": "1.27"
+        },
+        {
+          "containers": 0,
+          "created": 0,
+          "dangling": true,
+          "id": "sha256:bb22",
+          "reference": "<none>:<none>",
+          "repository": "<none>",
+          "size_bytes": 5000,
+          "tag": "<none>"
+        }
+      ],
+      "result_type": "Image[]"
+    },
+    "list_networks": {
+      "args": {},
+      "result": [
+        {
+          "compose_project": "shop",
+          "connected": [
+            "web"
+          ],
+          "driver": "bridge",
+          "id": "n1",
+          "internal": false,
+          "name": "shop_default",
+          "scope": "local",
+          "subnets": [
+            "172.18.0.0/16"
+          ],
+          "system": false
+        }
+      ],
+      "result_type": "Network[]"
+    },
+    "list_stacks": {
+      "args": {},
+      "result": [
+        {
+          "config_files": [
+            "compose.yaml"
+          ],
+          "containers": 2,
+          "editable": true,
+          "name": "shop",
+          "origin": "managed",
+          "path": "/home/u/.local/share/dockinng/stacks/shop",
+          "running": 1,
+          "services": [
+            {
+              "image": "nginx:1.27",
+              "name": "web",
+              "replicas": "1/1",
+              "running": 1,
+              "state": "running",
+              "total": 1
+            }
+          ],
+          "status": "partial",
+          "working_dir": null
+        }
+      ],
+      "result_type": "StackSummary[]"
+    },
+    "list_volumes": {
+      "args": {},
+      "result": [
+        {
+          "anonymous": false,
+          "compose_project": "shop",
+          "created_at": "2025-01-02T03:04:05Z",
+          "driver": "local",
+          "labels": {
+            "com.docker.compose.project": "shop"
+          },
+          "mountpoint": "/var/lib/docker/volumes/data/_data",
+          "name": "data",
+          "size_bytes": 4096,
+          "used_by": [
+            "web"
+          ]
+        }
+      ],
+      "result_type": "Volume[]"
+    },
+    "notify_user": {
+      "args": {
+        "body": "app:dev",
+        "kind": "op_done",
+        "title": "Build listo"
+      },
+      "result": null,
+      "result_type": "void"
+    },
+    "open_port_in_browser": {
+      "args": {
+        "id": "3f1a9c0e5b7d2a46e8c0f1b3d5a79e2c4b6d8f0a1c3e5b7d9f1a3c5e7b9d1f30",
+        "port": 8080,
+        "scheme": "http"
+      },
+      "result": null,
+      "result_type": "void"
+    },
+    "plan_action": {
+      "args": {
+        "request": {
+          "ids": [
+            "3f1a9c0e5b7d2a46e8c0f1b3d5a79e2c4b6d8f0a1c3e5b7d9f1a3c5e7b9d1f30"
+          ],
+          "type": "remove_containers"
+        }
+      },
+      "result": {
+        "affected": [
+          {
+            "detail": "imagen nginx",
+            "id": "3f1a9c0e5b7d2a46e8c0f1b3d5a79e2c4b6d8f0a1c3e5b7d9f1a3c5e7b9d1f30",
+            "kind": "container",
+            "name": "web",
+            "size_bytes": 2048,
+            "state": "running"
+          },
+          {
+            "detail": null,
+            "id": "data",
+            "kind": "volume",
+            "name": "data",
+            "size_bytes": null,
+            "state": null
+          }
+        ],
+        "decision": {
+          "expected": "ELIMINAR",
+          "type": "confirm_typed"
+        },
+        "expires_in_secs": 60,
+        "ticket": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3d",
+        "total_size_bytes": 2048,
+        "warnings": [
+          {
+            "count": 1,
+            "type": "running_force"
+          },
+          {
+            "items": [
+              "data"
+            ],
+            "type": "volumes_kept"
+          }
+        ]
+      },
+      "result_type": "ActionPlan"
+    },
+    "plan_create_container": {
+      "args": {
+        "spec": {
+          "command": null,
+          "env": [
+            {
+              "key": "MODE",
+              "value": "prod"
+            }
+          ],
+          "image": "nginx:1.27",
+          "labels": {
+            "team": "a"
+          },
+          "name": "web",
+          "network": null,
+          "ports": [
+            {
+              "container_port": 80,
+              "host_ip": "127.0.0.1",
+              "host_port": 8080,
+              "protocol": "tcp"
+            }
+          ],
+          "restart": "unless-stopped",
+          "restart_max_retries": null,
+          "volumes": [
+            {
+              "read_only": false,
+              "source": "data",
+              "target": "/data"
+            }
+          ]
+        }
+      },
+      "result": {
+        "decision": {
+          "type": "confirm"
+        },
+        "expires_in_secs": 120,
+        "field_errors": [
+          {
+            "field": "name",
+            "message": "ya existe"
+          }
+        ],
+        "normalized": {
+          "command": null,
+          "env": [
+            {
+              "key": "MODE",
+              "value": "prod"
+            }
+          ],
+          "image": "nginx:1.27",
+          "labels": {
+            "team": "a"
+          },
+          "name": "web",
+          "network": null,
+          "ports": [
+            {
+              "container_port": 80,
+              "host_ip": "127.0.0.1",
+              "host_port": 8080,
+              "protocol": "tcp"
+            }
+          ],
+          "restart": "unless-stopped",
+          "restart_max_retries": null,
+          "volumes": [
+            {
+              "read_only": false,
+              "source": "data",
+              "target": "/data"
+            }
+          ]
+        },
+        "ok": false,
+        "ticket": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3d",
+        "warnings": [
+          {
+            "type": "docker_socket"
+          },
+          {
+            "by": "x",
+            "port": 8080,
+            "type": "port_in_use"
+          }
+        ]
+      },
+      "result_type": "CreatePlan"
+    },
+    "podman_detect": {
+      "args": {},
+      "result": [
+        {
+          "path": "/run/user/1000/podman/podman.sock",
+          "rootless": true,
+          "source": "xdg"
+        }
+      ],
+      "result_type": "PodmanCandidate[]"
+    },
+    "prefs_get": {
+      "args": {
+        "key": "polling"
+      },
+      "result": {
+        "ms": 5000
+      },
+      "result_type": "json | null"
+    },
+    "prefs_set": {
+      "args": {
+        "key": "notify_events",
+        "value": {
+          "die": true,
+          "oom": false
+        }
+      },
+      "result": null,
+      "result_type": "void"
+    },
+    "quit_app": {
+      "args": {
+        "confirmed": false
+      },
+      "result": null,
+      "result_type": "void"
+    },
+    "reconnect": {
+      "args": {},
+      "result": {
+        "cause": "socket_missing",
+        "endpoint": "unix:///var/run/docker.sock",
+        "message": "no existe el socket",
+        "state": "failed",
+        "steps": [
+          {
+            "detail": "ausente",
+            "id": "socket",
+            "status": "fail"
+          },
+          {
+            "detail": "",
+            "id": "permissions",
+            "status": "skipped"
+          }
+        ]
+      },
+      "result_type": "ConnectionStatus"
+    },
+    "registry_delete": {
+      "args": {
+        "confirmed": true,
+        "id": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3d"
+      },
+      "result": null,
+      "result_type": "void"
+    },
+    "registry_list": {
+      "args": {},
+      "result": [
+        {
+          "id": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3d",
+          "server": "ghcr.io",
+          "username": "ana"
+        }
+      ],
+      "result_type": "RegistrySummary[]"
+    },
+    "registry_save": {
+      "args": {
+        "secret": "token-de-prueba",
+        "server": "ghcr.io",
+        "username": "ana"
+      },
+      "result": {
+        "id": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3d",
+        "server": "ghcr.io",
+        "username": "ana"
+      },
+      "result_type": "RegistrySummary"
+    },
+    "registry_test": {
+      "args": {
+        "id": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3d"
+      },
+      "result": null,
+      "result_type": "void"
+    },
+    "reset_subscriptions": {
+      "args": {},
+      "result": null,
+      "result_type": "void"
+    },
+    "restart_container": {
+      "args": {
+        "id": "3f1a9c0e5b7d2a46e8c0f1b3d5a79e2c4b6d8f0a1c3e5b7d9f1a3c5e7b9d1f30"
+      },
+      "result": null,
+      "result_type": "void"
+    },
+    "run_stack_op": {
+      "args": {
+        "name": "shop",
+        "onEvent": {
+          "$channel": "StackOpFeed"
+        },
+        "op": {
+          "services": null,
+          "type": "up"
+        }
+      },
+      "result": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3c",
+      "result_type": "string"
+    },
+    "stack_create": {
+      "args": {
+        "env": "",
+        "name": "shop",
+        "yaml": "services: {}\n"
+      },
+      "result": {
+        "config_files": [
+          "compose.yaml"
+        ],
+        "containers": 2,
+        "editable": true,
+        "name": "shop",
+        "origin": "managed",
+        "path": "/home/u/.local/share/dockinng/stacks/shop",
+        "running": 1,
+        "services": [
+          {
+            "image": "nginx:1.27",
+            "name": "web",
+            "replicas": "1/1",
+            "running": 1,
+            "state": "running",
+            "total": 1
+          }
+        ],
+        "status": "partial",
+        "working_dir": null
+      },
+      "result_type": "StackSummary"
+    },
+    "stack_link": {
+      "args": {
+        "path": "/home/u/shop/compose.yaml"
+      },
+      "result": {
+        "config_files": [
+          "compose.yaml"
+        ],
+        "containers": 2,
+        "editable": true,
+        "name": "shop",
+        "origin": "managed",
+        "path": "/home/u/.local/share/dockinng/stacks/shop",
+        "running": 1,
+        "services": [
+          {
+            "image": "nginx:1.27",
+            "name": "web",
+            "replicas": "1/1",
+            "running": 1,
+            "state": "running",
+            "total": 1
+          }
+        ],
+        "status": "partial",
+        "working_dir": null
+      },
+      "result_type": "StackSummary"
+    },
+    "stack_read": {
+      "args": {
+        "name": "shop"
+      },
+      "result": {
+        "config_files": [
+          "/x/compose.yaml"
+        ],
+        "editable": true,
+        "env": "A=1\n",
+        "env_path": "/x/.env",
+        "name": "shop",
+        "origin": "managed",
+        "path": "/x/compose.yaml",
+        "revision": "sha256:cc33",
+        "yaml": "services: {}\n"
+      },
+      "result_type": "StackFiles"
+    },
+    "stack_save": {
+      "args": {
+        "env": "A=1\n",
+        "expectedRevision": "sha256:cc33",
+        "name": "shop",
+        "yaml": "services: {}\n"
+      },
+      "result": {
+        "config_files": [
+          "/x/compose.yaml"
+        ],
+        "editable": true,
+        "env": "A=1\n",
+        "env_path": "/x/.env",
+        "name": "shop",
+        "origin": "managed",
+        "path": "/x/compose.yaml",
+        "revision": "sha256:cc33",
+        "yaml": "services: {}\n"
+      },
+      "result_type": "StackFiles"
+    },
+    "stack_unlink": {
+      "args": {
+        "name": "shop"
+      },
+      "result": null,
+      "result_type": "void"
+    },
+    "stack_validate": {
+      "args": {
+        "env": "",
+        "name": "shop",
+        "yaml": "services: {}\n"
+      },
+      "result": {
+        "issues": [
+          {
+            "column": 4,
+            "kind": "syntax",
+            "line": 2,
+            "message": "sangría"
+          }
+        ],
+        "ok": false,
+        "risks": [
+          {
+            "type": "privileged"
+          },
+          {
+            "path": "/etc",
+            "type": "sensitive_bind"
+          }
+        ],
+        "services": [
+          "web"
+        ]
+      },
+      "result_type": "StackValidation"
+    },
+    "start_container": {
+      "args": {
+        "id": "3f1a9c0e5b7d2a46e8c0f1b3d5a79e2c4b6d8f0a1c3e5b7d9f1a3c5e7b9d1f30"
+      },
+      "result": null,
+      "result_type": "void"
+    },
+    "stop_container": {
+      "args": {
+        "id": "3f1a9c0e5b7d2a46e8c0f1b3d5a79e2c4b6d8f0a1c3e5b7d9f1a3c5e7b9d1f30"
+      },
+      "result": null,
+      "result_type": "void"
+    },
+    "subscribe_app_events": {
+      "args": {
+        "onEvent": {
+          "$channel": "AppFeed"
+        }
+      },
+      "result": null,
+      "result_type": "void"
+    },
+    "subscribe_build": {
+      "args": {
+        "onEvent": {
+          "$channel": "BuildFeed"
+        },
+        "spec": {
+          "build_args": [
+            [
+              "VERSION",
+              "1"
+            ]
+          ],
+          "context_dir": "/home/u/app",
+          "dockerfile": "Dockerfile",
+          "no_cache": false,
+          "pull": true,
+          "tag": "app:dev",
+          "target": null
+        },
+        "ticket": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3d"
+      },
+      "result": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3c",
+      "result_type": "string"
+    },
+    "subscribe_engine_events": {
+      "args": {
+        "onEvent": {
+          "$channel": "EngineFeed"
+        }
+      },
+      "result": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3c",
+      "result_type": "string"
+    },
+    "subscribe_exec": {
+      "args": {
+        "cols": 80,
+        "id": "3f1a9c0e5b7d2a46e8c0f1b3d5a79e2c4b6d8f0a1c3e5b7d9f1a3c5e7b9d1f30",
+        "onEvent": {
+          "$channel": "ExecFeed"
+        },
+        "rows": 24
+      },
+      "result": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3c",
+      "result_type": "string"
+    },
+    "subscribe_logs": {
+      "args": {
+        "follow": true,
+        "id": "3f1a9c0e5b7d2a46e8c0f1b3d5a79e2c4b6d8f0a1c3e5b7d9f1a3c5e7b9d1f30",
+        "onEvent": {
+          "$channel": "LogFeed"
+        },
+        "tail": 200
+      },
+      "result": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3c",
+      "result_type": "string"
+    },
+    "subscribe_pull": {
+      "args": {
+        "onEvent": {
+          "$channel": "PullFeed"
+        },
+        "reference": "nginx:latest"
+      },
+      "result": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3c",
+      "result_type": "string"
+    },
+    "subscribe_stats": {
+      "args": {
+        "id": "3f1a9c0e5b7d2a46e8c0f1b3d5a79e2c4b6d8f0a1c3e5b7d9f1a3c5e7b9d1f30",
+        "onEvent": {
+          "$channel": "StatsFeed"
+        }
+      },
+      "result": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3c",
+      "result_type": "string"
+    },
+    "system_usage": {
+      "args": {},
+      "result": {
+        "container_disk": [
+          {
+            "id": "3f1a9c0e5b7d2a46e8c0f1b3d5a79e2c4b6d8f0a1c3e5b7d9f1a3c5e7b9d1f30",
+            "size_rw_bytes": 2048
+          }
+        ],
+        "disk": {
+          "build_cache": {
+            "reclaimable_bytes": 0,
+            "total_bytes": 0
+          },
+          "containers": {
+            "reclaimable_bytes": null,
+            "total_bytes": null
+          },
+          "images": {
+            "reclaimable_bytes": 500,
+            "total_bytes": 1000
+          },
+          "volumes": {
+            "reclaimable_bytes": 0,
+            "total_bytes": 10
+          }
+        },
+        "disk_known": true,
+        "host": {
+          "cpu_count": 8,
+          "mem_total_bytes": 17179869184
+        }
+      },
+      "result_type": "SystemUsage"
+    },
+    "tray_status": {
+      "args": {},
+      "result": {
+        "available": false,
+        "error": "falta libayatana-appindicator"
+      },
+      "result_type": "TrayStatus"
+    },
+    "unsubscribe": {
+      "args": {
+        "subscriptionId": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3c"
+      },
+      "result": null,
+      "result_type": "void"
+    },
+    "window_close": {
+      "args": {},
+      "result": null,
+      "result_type": "void"
+    },
+    "window_minimize": {
+      "args": {},
+      "result": null,
+      "result_type": "void"
+    },
+    "window_set_decorations": {
+      "args": {
+        "enabled": false
+      },
+      "result": null,
+      "result_type": "void"
+    },
+    "window_start_drag": {
+      "args": {},
+      "result": null,
+      "result_type": "void"
+    },
+    "window_start_resize": {
+      "args": {
+        "direction": "south_east"
+      },
+      "result": null,
+      "result_type": "void"
+    },
+    "window_toggle_maximize": {
+      "args": {},
+      "result": null,
+      "result_type": "void"
+    }
+  },
+  "enums": {
+    "ApiErrorCode": [
+      "connection",
+      "not_found",
+      "conflict",
+      "invalid_input",
+      "engine",
+      "timeout",
+      "policy_denied",
+      "ticket_invalid",
+      "ticket_expired",
+      "typed_mismatch",
+      "state_changed",
+      "not_implemented",
+      "internal",
+      "compose_missing",
+      "compose_failed",
+      "invalid_compose",
+      "image_missing",
+      "auth_required",
+      "registry_unreachable",
+      "no_shell"
+    ],
+    "BuildOutcome": [
+      "ok",
+      "failed",
+      "canceled"
+    ],
+    "BuildStream": [
+      "stdout",
+      "stderr"
+    ],
+    "CleanupCategoryId": [
+      "stopped_containers",
+      "dangling_images",
+      "unused_images",
+      "unused_volumes",
+      "unused_networks",
+      "build_cache"
+    ],
+    "CleanupRisk": [
+      "low",
+      "medium",
+      "high"
+    ],
+    "ComposeFlavor": [
+      "plugin",
+      "standalone",
+      "missing"
+    ],
+    "ConnectionCause": [
+      "socket_missing",
+      "permission_denied",
+      "daemon_down",
+      "other",
+      "host_key_unknown",
+      "host_key_changed",
+      "auth_failed",
+      "unreachable",
+      "remote_docker_missing",
+      "tls_invalid"
+    ],
+    "ContainerState": [
+      "created",
+      "running",
+      "paused",
+      "restarting",
+      "removing",
+      "stopping",
+      "exited",
+      "dead",
+      "unknown"
+    ],
+    "DiagStepId": [
+      "socket",
+      "permissions",
+      "daemon"
+    ],
+    "EndReason": [
+      "eof",
+      "container_stopped",
+      "error",
+      "internal"
+    ],
+    "EngineEventKind": [
+      "container",
+      "image",
+      "volume",
+      "network",
+      "daemon",
+      "other"
+    ],
+    "ExecEndReason": [
+      "process_exited",
+      "container_stopped",
+      "closed",
+      "no_shell",
+      "error",
+      "internal"
+    ],
+    "HostKeyState": [
+      "unknown",
+      "trusted",
+      "changed"
+    ],
+    "IssueKind": [
+      "syntax",
+      "schema",
+      "interpolation",
+      "other"
+    ],
+    "ItemKind": [
+      "container",
+      "image",
+      "volume",
+      "network",
+      "stack"
+    ],
+    "LayerPhase": [
+      "waiting",
+      "downloading",
+      "downloaded",
+      "extracting",
+      "complete"
+    ],
+    "LogStream": [
+      "stdout",
+      "stderr",
+      "console"
+    ],
+    "MountKind": [
+      "volume",
+      "bind",
+      "tmpfs",
+      "other"
+    ],
+    "PlanDenyReason": [
+      "forbidden",
+      "needs_confirmation_non_interactive"
+    ],
+    "PortProtocol": [
+      "tcp",
+      "udp"
+    ],
+    "ProgressKind": [
+      "network",
+      "container",
+      "volume",
+      "image",
+      "service",
+      "other"
+    ],
+    "ProgressStatus": [
+      "working",
+      "done",
+      "warning",
+      "error"
+    ],
+    "PullOutcome": [
+      "done",
+      "error"
+    ],
+    "RestartPolicy": [
+      "no",
+      "always",
+      "unless-stopped",
+      "on-failure"
+    ],
+    "ServicePhase": [
+      "waiting",
+      "pulling",
+      "creating",
+      "started"
+    ],
+    "SizeEstimate": [
+      "exact",
+      "upper_bound",
+      "unknown"
+    ],
+    "SshMode": [
+      "explicit",
+      "alias"
+    ],
+    "StackOrigin": [
+      "managed",
+      "linked",
+      "discovered"
+    ],
+    "StackOutcome": [
+      "success",
+      "failed",
+      "canceled",
+      "timeout"
+    ],
+    "StackStatus": [
+      "running",
+      "partial",
+      "stopped",
+      "declared"
+    ],
+    "StepStatus": [
+      "ok",
+      "fail",
+      "skipped"
+    ]
+  },
+  "feeds": {
+    "AppFeed": [
+      {
+        "summary": {
+          "builds": 1,
+          "pulls": 0,
+          "stacks": 1,
+          "terminals": 2
+        },
+        "type": "quit_requested"
+      },
+      {
+        "type": "window_visibility",
+        "visible": false
+      },
+      {
+        "type": "window_visibility",
+        "visible": true
+      }
+    ],
+    "BuildFeed": [
+      {
+        "stream": "stdout",
+        "text": "Step 1/3",
+        "type": "line"
+      },
+      {
+        "lines": [
+          {
+            "stream": "stdout",
+            "text": "a"
+          },
+          {
+            "stream": "stderr",
+            "text": "b"
+          }
+        ],
+        "type": "lines"
+      },
+      {
+        "n": 1,
+        "total": 3,
+        "type": "step"
+      },
+      {
+        "error": null,
+        "image_id": "sha256:ee55",
+        "outcome": "ok",
+        "type": "ended"
+      },
+      {
+        "error": {
+          "cause": null,
+          "code": "conflict",
+          "message": "recurso en uso"
+        },
+        "image_id": null,
+        "outcome": "failed",
+        "type": "ended"
+      },
+      {
+        "error": null,
+        "image_id": null,
+        "outcome": "canceled",
+        "type": "ended"
+      }
+    ],
+    "EngineFeed": [
+      {
+        "items": [
+          {
+            "action": "die",
+            "attributes": {
+              "exitCode": "1"
+            },
+            "id": "3f1a9c0e5b7d2a46e8c0f1b3d5a79e2c4b6d8f0a1c3e5b7d9f1a3c5e7b9d1f30",
+            "kind": "container",
+            "name": "web",
+            "time_nano": 1727300000000000000
+          },
+          {
+            "action": "pull",
+            "attributes": {
+              "exitCode": "1"
+            },
+            "id": "3f1a9c0e5b7d2a46e8c0f1b3d5a79e2c4b6d8f0a1c3e5b7d9f1a3c5e7b9d1f30",
+            "kind": "image",
+            "name": "web",
+            "time_nano": 1727300000000000000
+          }
+        ],
+        "resync": false,
+        "type": "events"
+      },
+      {
+        "items": [],
+        "resync": true,
+        "type": "events"
+      },
+      {
+        "status": {
+          "endpoint": "unix:///var/run/docker.sock",
+          "server": {
+            "api_version": "1.47",
+            "arch": "amd64",
+            "os": "linux",
+            "version": "27.3.1"
+          },
+          "state": "connected"
+        },
+        "type": "connection"
+      },
+      {
+        "status": {
+          "cause": "socket_missing",
+          "endpoint": "unix:///var/run/docker.sock",
+          "message": "no existe el socket",
+          "state": "failed",
+          "steps": [
+            {
+              "detail": "ausente",
+              "id": "socket",
+              "status": "fail"
+            },
+            {
+              "detail": "",
+              "id": "permissions",
+              "status": "skipped"
+            }
+          ]
+        },
+        "type": "connection"
+      },
+      {
+        "reason": "eof",
+        "type": "ended"
+      },
+      {
+        "reason": "container_stopped",
+        "type": "ended"
+      },
+      {
+        "reason": "error",
+        "type": "ended"
+      },
+      {
+        "reason": "internal",
+        "type": "ended"
+      }
+    ],
+    "ExecFeed": [
+      {
+        "risk": {
+          "docker_socket": false,
+          "host_network": true,
+          "host_pid": false,
+          "privileged": true
+        },
+        "shell": "/bin/sh",
+        "type": "opened"
+      },
+      {
+        "data": "aG9sYQ==",
+        "type": "output"
+      },
+      {
+        "error": null,
+        "exit_code": 0,
+        "reason": "process_exited",
+        "type": "ended"
+      },
+      {
+        "error": null,
+        "exit_code": null,
+        "reason": "container_stopped",
+        "type": "ended"
+      },
+      {
+        "error": null,
+        "exit_code": null,
+        "reason": "closed",
+        "type": "ended"
+      },
+      {
+        "error": null,
+        "exit_code": null,
+        "reason": "no_shell",
+        "type": "ended"
+      },
+      {
+        "error": {
+          "cause": null,
+          "code": "conflict",
+          "message": "recurso en uso"
+        },
+        "exit_code": null,
+        "reason": "error",
+        "type": "ended"
+      },
+      {
+        "error": null,
+        "exit_code": null,
+        "reason": "internal",
+        "type": "ended"
+      }
+    ],
+    "LogFeed": [
+      {
+        "dropped": 3,
+        "lines": [
+          {
+            "message": "listo",
+            "stream": "stdout",
+            "timestamp": "2025-01-02T03:04:05Z",
+            "truncated": false
+          },
+          {
+            "message": "aviso",
+            "stream": "stderr",
+            "timestamp": null,
+            "truncated": false
+          },
+          {
+            "message": "tty",
+            "stream": "console",
+            "timestamp": null,
+            "truncated": false
+          }
+        ],
+        "type": "lines"
+      },
+      {
+        "error": null,
+        "reason": "eof",
+        "type": "ended"
+      },
+      {
+        "error": null,
+        "reason": "container_stopped",
+        "type": "ended"
+      },
+      {
+        "error": {
+          "cause": null,
+          "code": "conflict",
+          "message": "recurso en uso"
+        },
+        "reason": "error",
+        "type": "ended"
+      },
+      {
+        "error": null,
+        "reason": "internal",
+        "type": "ended"
+      }
+    ],
+    "PullFeed": [
+      {
+        "reference": "nginx:latest",
+        "type": "started"
+      },
+      {
+        "done_bytes": 100,
+        "layers": [
+          {
+            "done": 50,
+            "id": "l1",
+            "phase": "downloading",
+            "total": 100
+          },
+          {
+            "done": 50,
+            "id": "l1",
+            "phase": "complete",
+            "total": 100
+          }
+        ],
+        "total_bytes": 200,
+        "type": "progress"
+      },
+      {
+        "digest": "sha256:dd44",
+        "error": null,
+        "outcome": "done",
+        "type": "ended",
+        "up_to_date": true
+      },
+      {
+        "digest": null,
+        "error": {
+          "cause": null,
+          "code": "conflict",
+          "message": "recurso en uso"
+        },
+        "outcome": "error",
+        "type": "ended",
+        "up_to_date": false
+      }
+    ],
+    "StackOpFeed": [
+      {
+        "compose_version": "2.29.7",
+        "op": "up",
+        "stack": "shop",
+        "type": "started"
+      },
+      {
+        "items": [
+          {
+            "current": null,
+            "details": null,
+            "id": "Container shop-web-1",
+            "kind": "container",
+            "name": "shop-web-1",
+            "parent_id": null,
+            "percent": null,
+            "status": "working",
+            "text": "Starting",
+            "total": null
+          },
+          {
+            "current": 5,
+            "details": "ok",
+            "id": "layer1",
+            "kind": "image",
+            "name": "nginx",
+            "parent_id": "Image nginx",
+            "percent": 50.0,
+            "status": "done",
+            "text": "Pulled",
+            "total": 10
+          }
+        ],
+        "services": [
+          {
+            "name": "web",
+            "percent": 80,
+            "phase": "pulling"
+          }
+        ],
+        "type": "progress"
+      },
+      {
+        "text": "Container shop-web-1 Started",
+        "type": "log"
+      },
+      {
+        "error": null,
+        "exit_code": 0,
+        "issues": [],
+        "outcome": "success",
+        "type": "ended"
+      },
+      {
+        "error": {
+          "cause": null,
+          "code": "conflict",
+          "message": "recurso en uso"
+        },
+        "exit_code": 1,
+        "issues": [
+          {
+            "column": null,
+            "kind": "schema",
+            "line": 3,
+            "message": "campo desconocido"
+          }
+        ],
+        "outcome": "failed",
+        "type": "ended"
+      },
+      {
+        "error": null,
+        "exit_code": 0,
+        "issues": [],
+        "outcome": "canceled",
+        "type": "ended"
+      },
+      {
+        "error": null,
+        "exit_code": 0,
+        "issues": [],
+        "outcome": "timeout",
+        "type": "ended"
+      }
+    ],
+    "StatsFeed": [
+      {
+        "stats": {
+          "block_read_bytes": 3,
+          "block_write_bytes": 4,
+          "cpu_percent": 12.5,
+          "mem_limit_bytes": 2097152,
+          "mem_percent": 50.0,
+          "mem_used_bytes": 1048576,
+          "net_rx_bytes": 10,
+          "net_rx_bytes_per_sec": 1.5,
+          "net_tx_bytes": 20,
+          "net_tx_bytes_per_sec": 2.5,
+          "pids": 7,
+          "read_at": "2025-01-02T03:04:05Z"
+        },
+        "type": "sample"
+      },
+      {
+        "error": null,
+        "reason": "eof",
+        "type": "ended"
+      },
+      {
+        "error": null,
+        "reason": "container_stopped",
+        "type": "ended"
+      },
+      {
+        "error": {
+          "cause": null,
+          "code": "conflict",
+          "message": "recurso en uso"
+        },
+        "reason": "error",
+        "type": "ended"
+      },
+      {
+        "error": null,
+        "reason": "internal",
+        "type": "ended"
+      }
+    ]
+  },
+  "note": "Generado por `UPDATE_CONTRACT=1 cargo test -p dockinng-app contract_fixtures`. No editar a mano.",
+  "types": {
+    "ActionRequest": [
+      {
+        "ids": [
+          "3f1a9c0e5b7d2a46e8c0f1b3d5a79e2c4b6d8f0a1c3e5b7d9f1a3c5e7b9d1f30"
+        ],
+        "type": "remove_containers"
+      },
+      {
+        "reference": "nginx:1.27",
+        "type": "remove_image"
+      },
+      {
+        "type": "prune_images"
+      },
+      {
+        "name": "data",
+        "type": "remove_volume"
+      },
+      {
+        "type": "prune_volumes"
+      },
+      {
+        "id": "n1",
+        "type": "remove_network"
+      },
+      {
+        "project": "shop",
+        "type": "stack_down"
+      },
+      {
+        "name": "shop",
+        "type": "stack_delete"
+      },
+      {
+        "selection": {
+          "containers": [
+            "b2"
+          ],
+          "images": [],
+          "networks": [],
+          "volumes": [
+            "data"
+          ]
+        },
+        "type": "cleanup"
+      },
+      {
+        "type": "prune_system"
+      }
+    ],
+    "BuildWarning": [
+      {
+        "path": "/home/u",
+        "type": "sensitive_context"
+      },
+      {
+        "name": "TOKEN",
+        "type": "secret_like_arg"
+      }
+    ],
+    "ConnSpec": [
+      {
+        "host": "10.0.0.5",
+        "identity": {
+          "type": "agent"
+        },
+        "kind": "ssh",
+        "mode": "explicit",
+        "name": "srv",
+        "port": 22,
+        "user": "deploy"
+      },
+      {
+        "ca_path": "/c/ca.pem",
+        "cert_path": "/c/cert.pem",
+        "host": "docker.lan",
+        "key_path": "/c/key.pem",
+        "kind": "tls",
+        "name": "tls",
+        "port": 2376
+      }
+    ],
+    "ConnectionStatus": [
+      {
+        "endpoint": "unix:///var/run/docker.sock",
+        "server": {
+          "api_version": "1.47",
+          "arch": "amd64",
+          "os": "linux",
+          "version": "27.3.1"
+        },
+        "state": "connected"
+      },
+      {
+        "cause": "host_key_changed",
+        "endpoint": "ssh://deploy@10.0.0.5",
+        "message": "la clave cambió",
+        "state": "failed",
+        "steps": []
+      }
+    ],
+    "CreateWarning": [
+      {
+        "reason": "sistema",
+        "source": "/etc",
+        "type": "sensitive_bind"
+      },
+      {
+        "type": "docker_socket"
+      },
+      {
+        "type": "host_network"
+      },
+      {
+        "by": "otro",
+        "port": 8080,
+        "type": "port_in_use"
+      },
+      {
+        "port": 80,
+        "type": "published_all_interfaces"
+      },
+      {
+        "source": "/srv",
+        "type": "remote_bind"
+      }
+    ],
+    "GroupOp": [
+      {
+        "hue": 210,
+        "name": "Web",
+        "type": "create_group"
+      },
+      {
+        "id": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3d",
+        "name": "Web2",
+        "type": "rename_group"
+      },
+      {
+        "hue": 30,
+        "id": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3d",
+        "type": "set_group_hue"
+      },
+      {
+        "id": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3d",
+        "type": "delete_group"
+      },
+      {
+        "connection_id": "local",
+        "group_id": null,
+        "names": [
+          "web"
+        ],
+        "type": "assign"
+      },
+      {
+        "hue": null,
+        "project": "shop",
+        "type": "set_stack_hue"
+      }
+    ],
+    "PlanDecision": [
+      {
+        "type": "allow"
+      },
+      {
+        "type": "confirm"
+      },
+      {
+        "expected": "ELIMINAR",
+        "type": "confirm_typed"
+      },
+      {
+        "reason": "forbidden",
+        "type": "deny"
+      }
+    ],
+    "PlanWarning": [
+      {
+        "count": 2,
+        "type": "running_force"
+      },
+      {
+        "items": [
+          "data"
+        ],
+        "type": "volumes_kept"
+      },
+      {
+        "items": [
+          "/srv"
+        ],
+        "type": "bind_mounts_kept"
+      },
+      {
+        "count": 1,
+        "type": "in_use"
+      },
+      {
+        "items": [
+          "x"
+        ],
+        "type": "skipped"
+      }
+    ],
+    "SshIdentity": [
+      {
+        "type": "agent"
+      },
+      {
+        "path": "/home/u/.ssh/id",
+        "type": "file"
+      }
+    ],
+    "StackOp": [
+      {
+        "services": null,
+        "type": "up"
+      },
+      {
+        "services": [
+          "web"
+        ],
+        "type": "restart"
+      },
+      {
+        "services": null,
+        "type": "stop"
+      },
+      {
+        "services": null,
+        "type": "start"
+      },
+      {
+        "services": [
+          "web",
+          "db"
+        ],
+        "type": "pull"
+      }
+    ],
+    "StackRisk": [
+      {
+        "type": "privileged"
+      },
+      {
+        "type": "host_network"
+      },
+      {
+        "type": "docker_sock"
+      },
+      {
+        "path": "/etc",
+        "type": "sensitive_bind"
+      },
+      {
+        "type": "pid_host"
+      },
+      {
+        "type": "cap_add_sys_admin"
+      },
+      {
+        "path": "/srv",
+        "type": "remote_bind"
+      }
+    ]
+  },
+  "version": 1
+}

@@ -152,6 +152,11 @@ impl BuildService {
         }
     }
 
+    /// Hay un build ejecutándose ahora mismo.
+    pub fn is_active(&self) -> bool {
+        self.active.load(Ordering::SeqCst)
+    }
+
     /// Valida la especificación y canoniza las rutas (toca el sistema de archivos, no el motor).
     pub fn prepare(&self, spec: &BuildSpec) -> Result<PreparedBuild, ApiError> {
         validate_spec(spec).map_err(ApiError::from)?;

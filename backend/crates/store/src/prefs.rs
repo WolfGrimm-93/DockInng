@@ -1,7 +1,7 @@
 //! Preferencias clave/valor con lista blanca de claves (validada aquí, no en la UI).
 
 use engine_core::LOCAL_CONNECTION_ID;
-use engine_core::connections::{PREF_KEYS, is_uuid_v7};
+use engine_core::connections::{BOOL_PREF_KEYS, NOTIFY_EVENT_KEYS, PREF_KEYS, is_uuid_v7};
 use rusqlite::{OptionalExtension, params};
 use serde_json::Value;
 
@@ -19,6 +19,35 @@ fn check_key(key: &str) -> Result<(), StoreError> {
             "preferencia desconocida: {key}"
         )))
     }
+}
+
+/// Forma estricta de las preferencias de la ventana y las notificaciones.
+fn validate_shape(key: &str, value: &Value) -> Result<(), StoreError> {
+    if BOOL_PREF_KEYS.contains(&key) {
+        return match value {
+            Value::Null | Value::Bool(_) => Ok(()),
+            _ => Err(StoreError::InvalidInput(format!(
+                "{key} debe ser un booleano o null"
+            ))),
+        };
+    }
+    if key == "notify_events" {
+        return match value {
+            Value::Null => Ok(()),
+            Value::Object(map)
+                if map
+                    .iter()
+                    .all(|(k, v)| NOTIFY_EVENT_KEYS.contains(&k.as_str()) && v.is_boolean()) =>
+            {
+                Ok(())
+            }
+            _ => Err(StoreError::InvalidInput(
+                "notify_events debe ser un objeto {die, oom, unhealthy, op_done: booleano} o null"
+                    .into(),
+            )),
+        };
+    }
+    Ok(())
 }
 
 impl Store {
@@ -51,6 +80,7 @@ impl Store {
                 ));
             }
         }
+        validate_shape(key, value)?;
         let json =
             serde_json::to_string(value).map_err(|e| StoreError::InvalidInput(e.to_string()))?;
         if json.len() > MAX_VALUE_BYTES {
@@ -86,5 +116,38 @@ mod tests {
         assert!(s.prefs_set("last_connection_id", &json!(5)).is_err());
         let big = json!("x".repeat(5000));
         assert!(s.prefs_set("polling", &big).is_err());
+    }
+
+    #[test]
+    fn preferencias_de_ventana_y_notificaciones_validan_la_forma() {
+        let t = TempDir::new("prefs-ola3");
+        let s = Store::open(&t.0.join("d")).unwrap();
+        for key in [
+            "notify_enabled",
+            "tray_enabled",
+            "close_to_tray",
+            "window_decorations",
+            "start_minimized",
+        ] {
+            assert_eq!(s.prefs_get(key).unwrap(), None);
+            s.prefs_set(key, &json!(true)).unwrap();
+            assert_eq!(s.prefs_get(key).unwrap(), Some(json!(true)));
+            s.prefs_set(key, &json!(null)).unwrap();
+            for bad in [json!("true"), json!(1), json!({}), json!([true])] {
+                assert!(s.prefs_set(key, &bad).is_err(), "{key} {bad}");
+            }
+        }
+        s.prefs_set("notify_events", &json!({"die": true, "oom": false}))
+            .unwrap();
+        assert!(s.prefs_set("notify_events", &json!({})).is_ok());
+        for bad in [
+            json!({"die": "yes"}),
+            json!({"otro": true}),
+            json!(true),
+            json!([1]),
+            json!({"die": null}),
+        ] {
+            assert!(s.prefs_set("notify_events", &bad).is_err(), "{bad}");
+        }
     }
 }

@@ -13,7 +13,17 @@ import { apiError, sleep, type SimCtx } from './ctx'
 
 const SEP = '\u0000'
 const nextFreeHue = (used: readonly number[]): number => GROUP_HUES.find((h) => !used.includes(h)) ?? GROUP_HUES[used.length % GROUP_HUES.length]
-const PREF_KEYS: readonly PrefKey[] = ['polling', 'last_connection_id']
+const PREF_KEYS: readonly PrefKey[] = ['polling', 'last_connection_id', 'notify_enabled', 'notify_events', 'tray_enabled', 'close_to_tray', 'window_decorations', 'start_minimized']
+const BOOL_PREFS: readonly PrefKey[] = ['notify_enabled', 'tray_enabled', 'close_to_tray', 'window_decorations', 'start_minimized']
+/** Validación de forma como la del backend: booleanos estrictos y `notify_events` con solo sus 4 claves (opcionales) booleanas. */
+function validPref(key: PrefKey, value: unknown): boolean {
+  if (BOOL_PREFS.includes(key)) return typeof value === 'boolean'
+  if (key === 'notify_events') {
+    const v = value as Record<string, unknown> | null
+    return !!v && typeof v === 'object' && !Array.isArray(v) && Object.entries(v).every(([k, x]) => ['die', 'oom', 'unhealthy', 'op_done'].includes(k) && typeof x === 'boolean')
+  }
+  return true
+}
 const SIM_GROUPS_KEY = 'dockinng.sim.groups.v1'
 
 export interface SimStoreOptions {
@@ -267,6 +277,7 @@ export function createSimStore(ctx: SimCtx, getActive: () => string, opts: SimSt
       },
       async set(key, value) {
         if (!PREF_KEYS.includes(key)) throw apiError('invalid_input', 'Preferencia no permitida.')
+        if (!validPref(key, value)) throw apiError('invalid_input', `Valor no válido para la preferencia ${key}.`)
         prefs.set(key, value)
       },
     },

@@ -4,7 +4,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import type { EngineApi } from '../../api'
 import { toApiError } from '../../errors'
-import type { ConnectionProfile, GroupsSnapshot, RegistrySummary } from '../../types'
+import type { ConnectionProfile, GroupsSnapshot, RegistrySummary, SshIdentity } from '../../types'
 
 async function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   try {
@@ -17,6 +17,8 @@ async function call<T>(command: string, args?: Record<string, unknown>): Promise
 /** Forma serde de `connection_list`/`connection_save` (engine-core `ConnectionProfile` con el spec aplanado): SIN target/icono/versión. */
 export type RawProfile = Partial<ConnectionProfile> & { id: string; name: string; kind: ConnectionProfile['kind'] } & {
   host?: string; port?: number; user?: string; mode?: 'explicit' | 'alias'
+  /** Solo SSH: cómo se autentica (el adaptador no lo usa; viaja en el perfil serde). */
+  identity?: SshIdentity
 }
 
 /** Destino legible a partir del spec aplanado (`ssh://user@host:port`, alias sin usuario, `tcp://host:port`). */

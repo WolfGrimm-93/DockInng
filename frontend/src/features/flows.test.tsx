@@ -150,10 +150,10 @@ describe('SettingsPage', () => {
   })
 
   describe('pestañas', () => {
-    it('hay 6 pestañas y solo se pinta el contenido de la activa', async () => {
+    it('hay 7 pestañas (Ola 3: Escritorio) y solo se pinta el contenido de la activa', async () => {
       renderView(<SettingsPage />, { hash: '#settings' })
       const tabs = await screen.findAllByRole('tab')
-      expect(tabs.map((t) => t.textContent?.trim())).toEqual(['Conexiones', 'Registros', 'Apariencia', 'Grupos', 'Seguridad', 'Datos'])
+      expect(tabs.map((t) => t.textContent?.trim())).toEqual(['Conexiones', 'Registros', 'Apariencia', 'Grupos', 'Escritorio', 'Seguridad', 'Datos'])
       expect(screen.getByRole('tab', { name: 'Conexiones' })).toHaveAttribute('aria-selected', 'true')
       // Lo de otras pestañas no está en la página.
       expect(screen.queryByRole('heading', { name: 'Niveles de seguridad' })).toBeNull()

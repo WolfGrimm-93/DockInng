@@ -6,7 +6,9 @@ import { createSimApi } from '@/data/adapters/sim'
 import { EngineProvider } from '@/data/EngineProvider'
 import type { ActionRequest } from '@/data/types'
 import { toast } from '@/lib/toastStore'
-import { ConfirmProvider, typedMatches, useBlockedDialog, useConfirm, useGuardedAction, type ConfirmRequest, type GuardedResult } from './ConfirmDialog'
+import { ConfirmProvider } from './ConfirmDialog'
+import { typedMatches, useBlockedDialog, useConfirm, type ConfirmRequest } from './confirmApi'
+import { useGuardedAction, type GuardedResult } from './useGuardedAction'
 
 beforeEach(() => toast.clear())
 

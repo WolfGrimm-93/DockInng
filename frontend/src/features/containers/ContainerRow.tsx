@@ -1,7 +1,7 @@
 // Fila de la tabla de contenedores (memoizada). Datos en vivo por fila: estado de operación (useRowOps) y muestreo (useStats).
 // Todo texto de Docker (nombre, imagen, puertos) se pinta como nodo de texto de React: nunca HTML.
 import { safeText } from '@/lib/safeText'
-import { memo, useMemo, type Ref, type CSSProperties } from 'react'
+import { memo, useMemo, type Ref, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 import { Icon } from '@/components/shared/Icon'
 import { StatusBadge } from '@/components/shared/StatusBadge'
 import { Button } from '@/components/ui/button'
@@ -14,6 +14,8 @@ import { statusTextEs } from '@/lib/format'
 import { isOn } from '../common/containerUtils'
 import { mainPortsText, portEntries } from '../common/ports'
 import { AssignGroupMenu } from '../groups/AssignGroupMenu'
+import { useDragStore } from '../groups/dragStore'
+import { DRAG_HELP_ID } from '../groups/DragTray'
 
 export interface ContainerRowProps {
   c: Container
@@ -29,11 +31,13 @@ export interface ContainerRowProps {
   onDelete(c: Container): void
   /** Abre el modal de puertos e IPs del contenedor (el ojo está en todas las filas: las IPs sirven para cualquier contenedor). */
   onShowInfo(c: Container): void
+  /** `pointerdown` del asa de arrastre (mover la fila, o la selección, a un grupo). */
+  onGripPointerDown(e: ReactPointerEvent<HTMLElement>, c: Container): void
 }
 
 const MIB = 1024 * 1024
 
-function ContainerRowImpl({ c, selected, locked, href, index, measure, groupHue, onSelect, onOp, onDelete, onShowInfo }: ContainerRowProps) {
+function ContainerRowImpl({ c, selected, locked, href, index, measure, groupHue, onSelect, onOp, onDelete, onShowInfo, onGripPointerDown }: ContainerRowProps) {
   const name = safeText(containerName(c), { singleLine: true })
   const image = safeText(c.image, { singleLine: true })
   const op = useRowOps(c.id)
@@ -46,19 +50,26 @@ function ContainerRowImpl({ c, selected, locked, href, index, measure, groupHue,
   const memMib = stats ? Math.round(stats.mem_used_bytes / MIB) : 0
   const memPct = stats ? Math.min(100, stats.mem_percent) : 0
   const blockedByBusy = !!busy
+  // Solo las filas arrastradas se re-renderizan cuando empieza/termina un arrastre.
+  const dragging = useDragStore((s) => s.ids.includes(c.id))
   return (
     <tr
       ref={measure}
       data-index={index}
       data-name={name}
-      className={groupHue != null ? 'in-group' : undefined}
+      className={[groupHue != null ? 'in-group' : '', dragging ? 'is-dragging' : ''].filter(Boolean).join(' ') || undefined}
       style={groupHue != null ? ({ '--grp-h': groupHue } as CSSProperties) : undefined}
       aria-rowindex={index + 2}
       aria-selected={selected}
       aria-busy={busy ? true : undefined}
     >
       <td className="col-check">
-        <Checkbox aria-label={`Seleccionar ${name}`} checked={selected} onChange={(e) => onSelect(c.id, e.target.checked)} />
+        <div className="check-cell">
+          <button type="button" className="row-grip" tabIndex={-1} aria-label={`Arrastrar ${name} a un grupo`} aria-describedby={DRAG_HELP_ID} onPointerDown={(e) => onGripPointerDown(e, c)}>
+            <Icon name="grip" size="sm" />
+          </button>
+          <Checkbox aria-label={`Seleccionar ${name}`} checked={selected} onChange={(e) => onSelect(c.id, e.target.checked)} />
+        </div>
       </td>
       <td className="cell-name">
         <div className="name-cell">
@@ -122,6 +133,7 @@ function ContainerRowImpl({ c, selected, locked, href, index, measure, groupHue,
           </Button>
         </div>
       </td>
+      <td className="col-fill" aria-hidden="true" />
     </tr>
   )
 }

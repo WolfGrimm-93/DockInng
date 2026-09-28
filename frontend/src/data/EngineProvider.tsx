@@ -1,13 +1,11 @@
 // Proveedor de la capa de datos. Crea (o recibe) el EngineApi y el store y lanza bootstrap().
 // Contrato: <EngineProvider api?={EngineApi} store?={EngineStore}>…</EngineProvider>; hooks en data/store/hooks.ts.
-import { createContext, useEffect, useMemo, type ReactNode } from 'react'
+import { useEffect, useMemo, type ReactNode } from 'react'
 import type { EngineApi } from './api'
 import { asSim, createEngineApi } from './createEngineApi'
+import { EngineContext, type EngineContextValue } from './EngineContext'
 import { createEngineStore, type EngineStore } from './store/engineStore'
 import { resetSubscriptions } from './adapters/tauri'
-
-export interface EngineContextValue { api: EngineApi; store: EngineStore }
-export const EngineContext = createContext<EngineContextValue | null>(null)
 
 export interface EngineProviderProps {
   api?: EngineApi

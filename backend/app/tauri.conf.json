@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "DockInng",
+  "productName": "dockinng",
   "version": "0.1.0",
   "identifier": "dev.dockinng.app",
   "build": {
@@ -16,7 +16,8 @@
         "width": 1200,
         "height": 780,
         "minWidth": 900,
-        "minHeight": 600
+        "minHeight": 600,
+        "visible": false
       }
     ],
     "security": {
@@ -26,12 +27,48 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["deb", "rpm"],
+    "category": "Development",
+    "shortDescription": "Docker manager for Linux",
+    "longDescription": "DockInng is a native desktop application to manage Docker containers, images, volumes, networks and Compose stacks, locally or over SSH/TLS. The companion command-line tool shares the same core.",
+    "publisher": "wolfgrimm",
+    "homepage": "https://github.com/WolfGrimm-93/DockInng",
+    "license": "MIT",
+    "licenseFile": "../../LICENSE",
     "icon": [
       "icons/32x32.png",
+      "icons/64x64.png",
       "icons/128x128.png",
-      "icons/128x128@2x.png",
-      "icons/icon.png"
-    ]
+      "icons/256x256.png",
+      "icons/512x512.png",
+      "icons/icon.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "linux": {
+      "deb": {
+        "section": "devel",
+        "priority": "optional",
+        "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0", "libayatana-appindicator3-1"],
+        "files": {
+          "/usr/share/doc/dockinng/LICENSE": "../../LICENSE",
+          "/usr/share/doc/dockinng/THIRD-PARTY-NOTICES.md": "../../THIRD-PARTY-NOTICES.md",
+          "/usr/share/doc/dockinng/Geist-OFL.txt": "../../frontend/src/assets/fonts/Geist-OFL.txt",
+          "/usr/share/doc/dockinng/JetBrainsMono-OFL.txt": "../../frontend/src/assets/fonts/JetBrainsMono-OFL.txt"
+        },
+        "desktopTemplate": "packaging/dockinng.desktop"
+      },
+      "rpm": {
+        "release": "1",
+        "files": {
+          "/usr/share/doc/dockinng/LICENSE": "../../LICENSE",
+          "/usr/share/doc/dockinng/THIRD-PARTY-NOTICES.md": "../../THIRD-PARTY-NOTICES.md",
+          "/usr/share/doc/dockinng/Geist-OFL.txt": "../../frontend/src/assets/fonts/Geist-OFL.txt",
+          "/usr/share/doc/dockinng/JetBrainsMono-OFL.txt": "../../frontend/src/assets/fonts/JetBrainsMono-OFL.txt"
+        },
+        "depends": ["webkit2gtk4.1", "gtk3", "libayatana-appindicator-gtk3"],
+        "desktopTemplate": "packaging/dockinng.desktop"
+      }
+    }
   }
 }

@@ -3,7 +3,7 @@
 import { safeText } from '@/lib/safeText'
 import { useEffect, useRef, useState } from 'react'
 import { usePreviewState } from '@/app/devFlags'
-import { useGuardedAction } from '@/components/shared/ConfirmDialog'
+import { useGuardedAction } from '@/components/shared/useGuardedAction'
 import { Icon } from '@/components/shared/Icon'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { EmptyState } from '@/components/shared/StateViews'

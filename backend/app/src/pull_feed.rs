@@ -70,6 +70,11 @@ impl PullGuards {
         self.active.lock().unwrap_or_else(|e| e.into_inner())
     }
 
+    /// Descargas en curso.
+    pub fn active_count(&self) -> usize {
+        self.lock().len()
+    }
+
     pub fn acquire(
         self: &Arc<Self>,
         window: &str,

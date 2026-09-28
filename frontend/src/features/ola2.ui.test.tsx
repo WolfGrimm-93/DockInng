@@ -450,7 +450,7 @@ describe('B-6: aviso de conexión remota solo en acciones remotas', () => {
     const api = makeApi()
     await api.connections.select('prod')
     api.sim.world.ownStacks.push({ name: 'mio', origin: 'managed', path: '/x', yaml: 'services: {}', env: '', revision: 1 })
-    const { useGuardedAction } = await import('@/components/shared/ConfirmDialog')
+    const { useGuardedAction } = await import('@/components/shared/useGuardedAction')
     let guard: ReturnType<typeof useGuardedAction> | null = null
     let st: ReturnType<typeof useEngineStoreApi> | null = null
     function Grab() { const g = useGuardedAction(); const e = useEngineStoreApi(); useEffect(() => { guard = g; st = e }); return null }

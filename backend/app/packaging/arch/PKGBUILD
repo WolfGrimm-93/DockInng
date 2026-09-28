@@ -1,0 +1,64 @@
+# Maintainer: wolfgrimm <mferrer_inf@hotmail.com>
+pkgname=dockinng
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Docker manager for Linux (desktop GUI + CLI)'
+arch=('x86_64')
+url='https://github.com/WolfGrimm-93/DockInng'
+license=('MIT')
+depends=('webkit2gtk-4.1' 'gtk3' 'libayatana-appindicator')
+makedepends=('cargo' 'nodejs' 'pnpm')
+optdepends=('docker: local engine'
+            'docker-compose: Compose stacks'
+            'openssh: SSH connections to remote engines'
+            'gnome-keyring: registry credentials keyring'
+            'kwallet: registry credentials keyring')
+# El perfil release ya define lto="thin"; se evita el LTO de makepkg para no duplicarlo.
+options=('!lto')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP') # Reemplazar con `updpkgsums` al publicar el tag
+
+prepare() {
+  cd "DockInng-$pkgver"
+  # Toda la descarga de red ocurre aquí, con los lockfiles como fuente de verdad.
+  cargo fetch --locked --manifest-path backend/Cargo.toml
+  pnpm --dir frontend install --frozen-lockfile
+}
+
+build() {
+  cd "DockInng-$pkgver"
+  export CARGO_TARGET_DIR="$PWD/backend/target"
+  pnpm --dir frontend build
+  # Binario de la GUI (sin generar deb/rpm: el paquete lo arma makepkg)
+  (cd backend/app && ../../frontend/node_modules/.bin/tauri build --no-bundle)
+  # CLI
+  cargo build --release --frozen --manifest-path backend/Cargo.toml -p dockinng-cli
+}
+
+package() {
+  cd "DockInng-$pkgver"
+  local target="backend/target/release"
+
+  install -Dm755 "$target/dockinng-app" "$pkgdir/usr/bin/dockinng-app"
+  install -Dm755 "$target/dockinng"     "$pkgdir/usr/bin/dockinng"
+
+  # .desktop: se rellenan las variables de la plantilla de Tauri
+  sed -e 's|{{exec}}|dockinng-app|' -e 's|{{icon}}|dockinng-app|' \
+    backend/app/packaging/dockinng.desktop > dockinng-app.desktop
+  install -Dm644 dockinng-app.desktop "$pkgdir/usr/share/applications/dockinng-app.desktop"
+
+  # Iconos hicolor
+  local size
+  for size in 16 24 32 48 64 128 256 512; do
+    install -Dm644 "backend/app/icons/${size}x${size}.png" \
+      "$pkgdir/usr/share/icons/hicolor/${size}x${size}/apps/dockinng-app.png"
+  done
+  install -Dm644 backend/app/icons/source/dockinng.svg \
+    "$pkgdir/usr/share/icons/hicolor/scalable/apps/dockinng-app.svg"
+
+  # Licencias: proyecto (MIT) y fuentes (OFL)
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 THIRD-PARTY-NOTICES.md "$pkgdir/usr/share/licenses/$pkgname/THIRD-PARTY-NOTICES.md"
+  install -Dm644 frontend/src/assets/fonts/Geist-OFL.txt "$pkgdir/usr/share/licenses/$pkgname/Geist-OFL.txt"
+  install -Dm644 frontend/src/assets/fonts/JetBrainsMono-OFL.txt "$pkgdir/usr/share/licenses/$pkgname/JetBrainsMono-OFL.txt"
+}

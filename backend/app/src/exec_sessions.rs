@@ -165,7 +165,7 @@ impl ExecSessions {
         self.lock().remove(id);
     }
 
-    #[cfg(test)]
+    /// Terminales abiertas.
     pub fn len(&self) -> usize {
         self.lock().len()
     }

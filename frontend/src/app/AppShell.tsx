@@ -5,14 +5,18 @@
 //   - parámetros de plantilla globales en modo simulado/DEV: ?dialog=blocked|palette, ?toast=1, ?policy=denied, ?menu=1.
 import { Suspense, useEffect, useRef, useState } from 'react'
 import { FloatingSidebar } from '@/components/shell/FloatingSidebar'
-import { useBlockedDialog } from '@/components/shared/ConfirmDialog'
+import { WindowChrome } from '@/components/shell/WindowChrome'
+import { useBlockedDialog } from '@/components/shared/confirmApi'
 import { policyDenied, toast } from '@/lib/toastStore'
-import { useEngineApi, useNavCounts } from '@/data/store/hooks'
+import { startNotifications } from '@/data/notifications'
+import { useShellPrefs } from '@/data/shellPrefs'
+import { useEngineApi, useEngineStoreApi, useNavCounts } from '@/data/store/hooks'
 import { getDevFlags, devFlagsEnabled, setPreviewState } from './devFlags'
 import { PageFallback } from './PageFallback'
 import { PAGES } from './pages'
 import { NAV, NAV_OF, TITLES } from './routes'
 import { useUiStore } from './uiStore'
+import { useQuitGuard } from './quitGuard'
 import { useHashRoute } from './useHashRoute'
 
 // StrictMode ejecuta los efectos dos veces en desarrollo: los parámetros de arranque se aplican una sola vez.
@@ -29,6 +33,7 @@ function FocusTitle() {
 export function AppShell() {
   const route = useHashRoute()
   const api = useEngineApi()
+  const engineStore = useEngineStoreApi()
   const counts = useNavCounts()
   const blocked = useBlockedDialog()
   const collapsed = useUiStore((s) => s.collapsed)
@@ -39,6 +44,10 @@ export function AppShell() {
   const prevId = useRef(route.id)
   const [focusFor, setFocusFor] = useState<string | null>(null)
   const Page = PAGES[route.id]
+  useQuitGuard()
+  // Ola 3: preferencias de ventana/bandeja/avisos y reglas de notificación (nativas; el backend decide si mostrarlas según el foco).
+  useEffect(() => { void useShellPrefs.getState().load(api) }, [api])
+  useEffect(() => startNotifications(api, engineStore), [api, engineStore])
 
   useEffect(() => {
     document.title = `${TITLES[route.id]} · DockInng`
@@ -66,6 +75,8 @@ export function AppShell() {
   }, [])
 
   return (
+    <>
+    <WindowChrome />
     <div className="shell" id="shell">
       <a className="skip" href="#main" onClick={(e) => { e.preventDefault(); mainRef.current?.focus() }}>Saltar al contenido</a>
       <FloatingSidebar
@@ -85,5 +96,6 @@ export function AppShell() {
         </div>
       </main>
     </div>
+    </>
   )
 }

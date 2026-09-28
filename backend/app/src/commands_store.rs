@@ -5,7 +5,8 @@
 //!   groups_load() -> GroupsSnapshot
 //!   groups_mutate(op: GroupOp) -> GroupsSnapshot            (atómico; devuelve el estado final)
 //!   groups_import_legacy(payload: LegacyGroups) -> LegacyImportReport   (una sola vez, idempotente)
-//!   prefs_get(key) -> Option<json>                           (lista blanca: polling, last_connection_id)
+//!   prefs_get(key) -> Option<json>                           (lista blanca: polling, last_connection_id, notify_enabled,
+//!                                                             notify_events, tray_enabled, close_to_tray, window_decorations, start_minimized)
 //!   prefs_set(key, value) -> ()
 //!   registry_list() -> RegistrySummary[]                     (nunca incluye el secreto)
 //!   registry_save(server, username, secret) -> RegistrySummary   (único canal que lleva un secreto)
@@ -25,7 +26,7 @@ use engine_core::{
 };
 use serde_json::Value;
 use store::{SecretStore, Store, StoreError};
-use tauri::State;
+use tauri::{AppHandle, Runtime, State};
 
 use crate::state::AppState;
 
@@ -109,8 +110,17 @@ pub async fn prefs_get(state: State<'_, AppState>, key: String) -> ApiResult<Opt
 }
 
 #[tauri::command]
-pub async fn prefs_set(state: State<'_, AppState>, key: String, value: Value) -> ApiResult<()> {
-    with_store(&state, move |s| s.prefs_set(&key, &value)).await
+pub async fn prefs_set<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+    key: String,
+    value: Value,
+) -> ApiResult<()> {
+    let (k, v) = (key.clone(), value.clone());
+    with_store(&state, move |s| s.prefs_set(&k, &v)).await?;
+    // Las preferencias de ventana/bandeja/notificaciones se aplican en caliente.
+    crate::window_ctl::on_pref_changed(&app, &key, &value);
+    Ok(())
 }
 
 #[tauri::command]

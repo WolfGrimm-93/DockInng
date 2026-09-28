@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=DockInng
+GenericName=Docker Manager
+Comment=Manage Docker containers, images, volumes and Compose stacks
+Categories=Development;System;
+Keywords=docker;containers;compose;images;volumes;
+Exec={{exec}}
+Icon={{icon}}
+Terminal=false
+StartupWMClass=dockinng-app

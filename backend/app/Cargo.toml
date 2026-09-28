@@ -2,6 +2,9 @@
 name = "dockinng-app"
 version.workspace = true
 edition.workspace = true
+authors.workspace = true
+description = "Shell de escritorio (Tauri) de DockInng: expone el núcleo a la interfaz por IPC"
+repository.workspace = true
 license.workspace = true
 publish.workspace = true
 
@@ -20,7 +23,9 @@ store = { path = "../crates/store" }
 transport = { path = "../crates/transport" }
 builder = { path = "../crates/builder" }
 base64.workspace = true
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+notify-rust = "4.18"
+tauri-runtime = "2"
 serde.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["process"] }

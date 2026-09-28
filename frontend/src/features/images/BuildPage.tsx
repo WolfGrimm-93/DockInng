@@ -5,7 +5,7 @@
 import { safeText } from '@/lib/safeText'
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useHashRoute } from '@/app/useHashRoute'
-import { useConfirm } from '@/components/shared/ConfirmDialog'
+import { useConfirm } from '@/components/shared/confirmApi'
 import { Icon } from '@/components/shared/Icon'
 import { LogViewer } from '@/components/shared/LogViewer'
 import { PageHeader } from '@/components/shared/PageHeader'

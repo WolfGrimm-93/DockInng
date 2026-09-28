@@ -1,4 +1,4 @@
-// ADAPTADOR TAURI: implementa EngineApi contra los 60 comandos IPC del backend (40 de la Ola 1 + 20 de la Ola 2). Todo es real: ya no hay
+// ADAPTADOR TAURI: implementa EngineApi contra los 72 comandos IPC del backend (40 de la Ola 1 + 20 de la Ola 2 + 12 de la Ola 3: abrir puerto, bandeja/avisos, ventana). Todo es real: ya no hay
 // delegación en el adaptador simulado. Args camelCase (Tauri v2); errores = ApiError{code,message,cause}
 // (un String antiguo se normaliza a code:'internal'). Lo de la Ola 2 vive en ./store.ts.
 //  Conexión/motor:  connection_status, reconnect, system_usage, gpu_status, reset_subscriptions, unsubscribe
@@ -15,6 +15,9 @@
 //                   connection_list, connection_probe_host_key{spec}, connection_trust_host_key{spec,fingerprint}, connection_test{spec}, connection_save{spec},
 //                   connection_delete{id,confirmed}, connection_select{id}, registry_list, registry_save{server,username,secret}, registry_delete{id,confirmed},
 //                   registry_test{id}, build_plan{spec}, subscribe_build{spec,ticket,onEvent}, cleanup_report{minAgeDays}, podman_detect
+//  Ola 3:           open_port_in_browser{id,port,scheme}, tray_status, busy_summary, notify_user{kind,title,body}, quit_app{confirmed},
+//                   window_set_decorations{enabled}, window_minimize, window_toggle_maximize, window_close, window_start_drag, window_start_resize{direction},
+//                   subscribe_app_events{onEvent} (quit_requested; ver ./window.ts)
 import { invoke } from '@tauri-apps/api/core'
 import type { EngineApi } from '../../api'
 import { toApiError } from '../../errors'
@@ -25,6 +28,7 @@ import type {
 } from '../../types'
 import { openExec } from './exec'
 import { subscribe, subscribeHandle } from './streams'
+import { createTauriWindow } from './window'
 import { createTauriStore, normalizeProfile, type RawProfile } from './store'
 
 async function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
@@ -37,6 +41,7 @@ async function call<T>(command: string, args?: Record<string, unknown>): Promise
 
 export function createTauriApi(): EngineApi {
   const store = createTauriStore()
+  const windowApi = createTauriWindow()
   let active = 'local'
   let lastEndpoint = 'unix:///var/run/docker.sock' // último destino visto (respaldo de un estado «failed» sin endpoint)
   let lastVersion = '' // versión del motor ACTIVO
@@ -95,6 +100,7 @@ export function createTauriApi(): EngineApi {
         }),
       planCreate: (spec) => call<CreatePlan>('plan_create_container', { spec }),
       create: (spec, start, ticket) => call<CreateResult>('create_container', { spec, start, ticket }),
+      openPort: (id, port, scheme) => call<void>('open_port_in_browser', { id, port, scheme }),
     },
     system: {
       usage: () => call<SystemUsage>('system_usage'),
@@ -166,6 +172,7 @@ export function createTauriApi(): EngineApi {
     registries: store.registries,
     groups: store.groups,
     prefs: store.prefs,
+    window: windowApi,
   }
 }
 

@@ -4,20 +4,31 @@
 mod build_feed;
 mod commands;
 mod commands_engine;
+mod commands_open;
 mod commands_remote;
+mod commands_shell;
 mod commands_stacks;
 mod commands_store;
 mod commands_tools;
+mod commands_window;
 mod exec_sessions;
 mod gpu;
+mod notify;
 mod pull_feed;
+mod shell;
 mod stack_ops;
 mod state;
 mod streams;
 mod switch;
+mod tray;
+mod window_ctl;
 
 #[cfg(test)]
+mod contract_fixtures;
+#[cfg(test)]
 mod tests_engine;
+#[cfg(test)]
+mod tests_shell;
 #[cfg(test)]
 mod tests_stacks;
 #[cfg(test)]
@@ -107,7 +118,24 @@ pub fn run() {
             commands_tools::subscribe_build,
             commands_tools::cleanup_report,
             commands_tools::podman_detect,
+            commands_open::open_port_in_browser,
+            commands_shell::tray_status,
+            commands_shell::notify_user,
+            commands_shell::busy_summary,
+            commands_shell::quit_app,
+            commands_shell::subscribe_app_events,
+            commands_window::window_set_decorations,
+            commands_window::window_minimize,
+            commands_window::window_toggle_maximize,
+            commands_window::window_close,
+            commands_window::window_start_drag,
+            commands_window::window_start_resize,
         ])
+        // Bandeja, preferencias de ventana y notificaciones (nada de esto es fatal si falla).
+        .setup(|app| {
+            window_ctl::init_shell(app.handle());
+            Ok(())
+        })
         // Cada carga/recarga de página aborta lo anterior de esa ventana ANTES de que corra su
         // JS: sus canales ya no existen y `reset_subscriptions` no puede pisar lo nuevo.
         .on_page_load(|webview, payload| {
@@ -120,13 +148,19 @@ pub fn run() {
             }
         })
         // Cierre de ventana: se cancelan sus streams y se invalidan los tickets pendientes.
-        .on_window_event(|window, event| {
-            if let WindowEvent::Destroyed = event {
+        .on_window_event(|window, event| match event {
+            // Cierre controlado desde el backend: bandeja, confirmación con operaciones en
+            // curso o cierre normal (nada de `beforeunload` en la webview).
+            WindowEvent::CloseRequested { api, .. } => {
+                window_ctl::on_close_requested(window, api);
+            }
+            WindowEvent::Destroyed => {
                 let state = window.state::<AppState>();
                 state.streams.abort_for_window(window.label());
                 state.actions.invalidate_all();
                 state.create.invalidate_all();
             }
+            _ => {}
         })
         .build(tauri::generate_context!());
 
@@ -135,20 +169,12 @@ pub fn run() {
             match event {
                 // Antes de salir se cierran las terminales (matan su shell dentro del
                 // contenedor); con tope de 3 s para no bloquear el cierre.
-                RunEvent::ExitRequested { .. } => {
-                    let state = handle.state::<AppState>();
-                    tauri::async_runtime::block_on(
-                        state
-                            .exec_sessions
-                            .close_all(std::time::Duration::from_secs(3)),
-                    );
-                    // Cierra el túnel SSH (mata sus `ssh` y borra el socket).
-                    tauri::async_runtime::block_on(state.remote.deactivate());
-                }
+                // Además cierra el túnel SSH (mata sus `ssh` y borra el socket).
+                RunEvent::ExitRequested { .. } => window_ctl::graceful_shutdown(handle),
                 RunEvent::Exit => {
                     let state = handle.state::<AppState>();
                     state.streams.abort_all();
-                    tauri::async_runtime::block_on(state.remote.deactivate());
+                    window_ctl::graceful_shutdown(handle);
                 }
                 _ => {}
             }

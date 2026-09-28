@@ -12,6 +12,7 @@ use transport::RemoteManager;
 use crate::build_feed::BuildGuards;
 use crate::exec_sessions::ExecSessions;
 use crate::pull_feed::PullGuards;
+use crate::shell::{BusySummary, ShellState};
 use crate::stack_ops::StackService;
 use crate::streams::StreamRegistry;
 
@@ -46,6 +47,8 @@ pub struct AppState {
     /// Escritura = cambio/edición de conexiones; lectura = acciones en vuelo (un cambio espera a
     /// que terminen y ninguna acción arranca sobre un motor a medio cambiar).
     pub switch_lock: tokio::sync::RwLock<()>,
+    /// Bandeja, notificaciones, preferencias de ventana y estado de cierre.
+    pub shell: ShellState,
 }
 
 impl AppState {
@@ -68,6 +71,17 @@ impl AppState {
             Err(crate::streams::switching_error())
         } else {
             Ok(())
+        }
+    }
+
+    /// Operaciones que un cierre de la app interrumpiría.
+    pub fn busy_summary(&self) -> BusySummary {
+        let n = |v: usize| u32::try_from(v).unwrap_or(u32::MAX);
+        BusySummary {
+            stacks: n(self.stacks.active_count()),
+            pulls: n(self.pulls.active_count()),
+            builds: n(self.builds.active_count()),
+            terminals: n(self.exec_sessions.len()),
         }
     }
 
@@ -140,6 +154,7 @@ impl AppState {
             local_target: None,
             secrets: Arc::new(KeyringSecrets::default()),
             switch_lock: tokio::sync::RwLock::new(()),
+            shell: ShellState::new(),
         }
     }
 }

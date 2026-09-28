@@ -10,7 +10,7 @@
 import { useContext, useEffect, useMemo } from 'react'
 import { useStore } from 'zustand'
 import type { EngineApi, Capability, Feature } from '../api'
-import { EngineContext } from '../EngineProvider'
+import { EngineContext } from '../EngineContext'
 import type { ComposeInfo, ConnectionIssue, ConnectionProfile, ConnectionState, Container, ContainerStats, GpuInfo, PullOp, StackOpState, SystemUsage } from '../types'
 import type { EngineStore, EngineStoreState, RowOp } from './engineStore'
 import { containerCounts, findContainer, listOf, navCounts, totalImageBytes } from './selectors'

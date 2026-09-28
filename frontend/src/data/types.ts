@@ -415,7 +415,26 @@ export interface LegacyGroupsPayload { v: 1; groups: StoredGroup[]; assign: Reco
 /** `LegacyImportReport` de engine-core: con `already_imported:true` no se escribió nada. */
 export interface GroupsImportResult { already_imported: boolean; imported_groups: number; imported_assignments: number; dropped_assignments: number; snapshot: GroupsSnapshot }
 /** Claves permitidas de `prefs_get/prefs_set` (lista blanca validada también en Rust). */
-export type PrefKey = 'polling' | 'last_connection_id'
+export type PrefKey =
+  | 'polling' | 'last_connection_id'
+  // Ola 3: notificaciones, bandeja y ventana.
+  | 'notify_enabled' | 'notify_events' | 'tray_enabled' | 'close_to_tray' | 'window_decorations' | 'start_minimized'
+
+// ---------------------------------------------------------------- Ola 3: abrir puerto, bandeja, notificaciones, ventana
+export type OpenPortScheme = 'http' | 'https'
+/** `tray_status`. */
+export interface TrayStatus { available: boolean; error: string | null }
+/** `busy_summary` y payload de `app://quit-requested`: operaciones en curso que se perderían al salir. */
+export interface BusySummary { stacks: number; pulls: number; builds: number; terminals: number }
+/** Mensajes del backend a la UI por el canal de `subscribe_app_events` (`AppFeed` de backend/app/src/shell.rs). */
+export type AppFeed = { type: 'quit_requested'; summary: BusySummary } | { type: 'window_visibility'; visible: boolean }
+/** Tipos de notificación que el backend acepta (lista blanca). */
+export type NotifyKind = 'die' | 'oom' | 'unhealthy' | 'op_done'
+export interface NotifyRequest { kind: NotifyKind; title: string; body: string }
+/** Qué eventos notifican (pref `notify_events`). */
+export interface NotifyEvents { die: boolean; oom: boolean; unhealthy: boolean; op_done: boolean }
+/** Borde/esquina para `window_start_resize {direction}` (snake_case, lista cerrada del backend). */
+export type WindowEdge = 'north' | 'south' | 'east' | 'west' | 'north_east' | 'north_west' | 'south_east' | 'south_west'
 
 // ---------------------------------------------------------------- Builds de imagen (Ola 2, `build_plan` / `subscribe_build`)
 export interface BuildSpec {

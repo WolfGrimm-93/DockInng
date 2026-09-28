@@ -1,12 +1,12 @@
 // Vista «Configuración» (siempre disponible, aun sin conexión al motor), dividida en pestañas (#settings?tab=…):
-//   Conexiones (Local + SSH/TLS guardadas, reales) · Registros (credenciales de registries) · Apariencia (<AppearanceSection/>) · Grupos (grupos propios y color
+//   Conexiones (Local + SSH/TLS guardadas, reales) · Registros (credenciales de registries) · Apariencia (<AppearanceSection/>) · Escritorio (Ola 3: avisos nativos, bandeja, ventana sin marco) · Grupos (grupos propios y color
 //   de los stacks) · Seguridad (niveles de política y acción prohibida) · Datos (sondeo de respaldo, apagado por defecto: real; vista previa de
 //   estados solo simulado/DEV). La pestaña activa se guarda en la URL sin añadir entradas al historial.
 import { useState } from 'react'
 import { devFlagsEnabled, setComposeMissing, setPreviewState } from '@/app/devFlags'
 import { buildHref } from '@/app/routes'
 import { useHashRoute } from '@/app/useHashRoute'
-import { useGuardedAction } from '@/components/shared/ConfirmDialog'
+import { useGuardedAction } from '@/components/shared/useGuardedAction'
 import { Icon } from '@/components/shared/Icon'
 import type { IconName } from '@/components/shared/iconNames'
 import { PageHeader } from '@/components/shared/PageHeader'
@@ -21,13 +21,16 @@ import { LinkButton } from '../common/LinkButton'
 import { GroupsManager } from '../groups/GroupsManager'
 import { AppearanceSection } from './AppearanceSection'
 import { ConnectionsSection } from './ConnectionsSection'
+import { NotificationsSection } from './NotificationsSection'
 import { RegistriesSection } from './RegistriesSection'
+import { WindowSection } from './WindowSection'
 
 const TABS = [
   { id: 'connections', label: 'Conexiones', icon: 'server' },
   { id: 'registries', label: 'Registros', icon: 'globe' },
   { id: 'appearance', label: 'Apariencia', icon: 'palette' },
   { id: 'groups', label: 'Grupos', icon: 'folder' },
+  { id: 'desktop', label: 'Escritorio', icon: 'panel' },
   { id: 'security', label: 'Seguridad', icon: 'lock' },
   { id: 'data', label: 'Datos', icon: 'database' },
 ] as const satisfies readonly { id: string; label: string; icon: IconName }[]
@@ -121,6 +124,12 @@ export default function SettingsPage() {
         <TabsPanel value="groups" className="view-body tabpanel">
           {banner}
           <GroupsManager />
+        </TabsPanel>
+
+        <TabsPanel value="desktop" className="view-body tabpanel">
+          {banner}
+          <NotificationsSection />
+          <WindowSection />
         </TabsPanel>
 
         <TabsPanel value="security" className="view-body tabpanel">

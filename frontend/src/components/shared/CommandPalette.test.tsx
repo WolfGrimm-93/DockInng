@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { Providers } from '@/app/providers'
 import { useUiStore } from '@/app/uiStore'
 import { createSimApi } from '@/data/adapters/sim'
-import { useBlockedDialog } from './ConfirmDialog'
+import { useBlockedDialog } from './confirmApi'
 
 function OpenBlocked() {
   const b = useBlockedDialog()

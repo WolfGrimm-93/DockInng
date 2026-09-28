@@ -7,7 +7,7 @@ import { useHashRoute } from '@/app/useHashRoute'
 import { describePlan } from '@/components/shared/planDescribe'
 import { formatBytes, formatBytesPrecise, formatBytesSI } from '@/lib/format'
 import { BulkBar } from '@/components/shared/BulkBar'
-import { useGuardedAction } from '@/components/shared/ConfirmDialog'
+import { useGuardedAction } from '@/components/shared/useGuardedAction'
 import { Icon } from '@/components/shared/Icon'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { SearchField } from '@/components/shared/SearchField'
@@ -29,8 +29,12 @@ import { useViewGate } from '../common/gate'
 import { LinkButton } from '../common/LinkButton'
 import { readRowHeight, useVirtualTable } from '../common/useVirtualTable'
 import { ContainerRow } from './ContainerRow'
+import { NameResizer } from './NameResizer'
+import { useNameColumnWidth } from './useNameColumnWidth'
 import { AssignGroupMenu } from '../groups/AssignGroupMenu'
+import { DragTray } from '../groups/DragTray'
 import { assignKey, useGroupsStore } from '../groups/groupsStore'
+import { useRowDrag } from '../groups/useRowDrag'
 import { ContainerInfoDialog, type InfoTarget } from './ContainerInfoDialog'
 import { GroupNetworksDialog } from './GroupNetworksDialog'
 import { ResourceStrip } from './ResourceStrip'
@@ -91,6 +95,9 @@ export default function ContainersPage() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const tableRef = useRef<HTMLTableElement>(null)
   const rowH = useMemo(() => readRowHeight(), [])
+  const nameTh = useRef<HTMLTableCellElement>(null)
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const nameW = useNameColumnWidth(wrapRef)
 
   const loading = preview === 'loading' || status === 'idle' || status === 'loading'
   const empty = preview === 'empty' || (status === 'ready' && list.length === 0)
@@ -164,6 +171,13 @@ export default function ContainersPage() {
   const selIds = useMemo(() => filtered.filter((c) => selected.has(c.id)).map((c) => c.id), [filtered, selected])
   const allSel = filtered.length > 0 && filtered.every((c) => selected.has(c.id))
   const someSel = filtered.some((c) => selected.has(c.id))
+
+  // Arrastrar a un grupo: si la fila arrastrada está seleccionada se mueve TODA la selección visible; si no, solo esa fila.
+  const onGripPointerDown = useRowDrag({
+    profileId,
+    scrollRef,
+    getDragged: (c) => (selected.has(c.id) ? filtered.filter((x) => selected.has(x.id)) : [c]),
+  })
 
   const focusTitle = () => document.getElementById('viewTitle')?.focus({ preventScroll: true })
   const onSelect = useCallback((id: string, on: boolean) => {
@@ -320,7 +334,7 @@ export default function ContainersPage() {
 
   const spacer = (h: number, k: string) => (
     <tr key={k} aria-hidden="true" style={{ background: 'transparent', pointerEvents: 'none' }}>
-      <td colSpan={COLS} style={{ height: h, padding: 0, border: 0 }} />
+      <td colSpan={COLS + 1} style={{ height: h, padding: 0, border: 0 }} />
     </tr>
   )
 
@@ -331,37 +345,41 @@ export default function ContainersPage() {
       {toolbar}
       <div className="view-body" ref={scrollRef}>
         {gate.lostBanner}
-        <div className="table-wrap">
+        <div className={`table-wrap${nameW.width !== null ? ' name-fixed' : ''}`} style={nameW.width !== null ? ({ '--name-w': `${nameW.width}px` } as CSSProperties) : undefined} ref={wrapRef}>
           <table ref={tableRef} aria-rowcount={items.length + 1}>
             <caption className="sr-only">Lista de contenedores</caption>
             <thead>
               <tr aria-rowindex={1}>
                 <th className="col-check">
-                  <Checkbox
-                    id="selAll"
-                    aria-label="Seleccionar todos"
-                    checked={allSel}
-                    indeterminate={someSel && !allSel}
-                    onChange={(e) => setSelected((prev) => {
-                      const n = new Set(prev)
-                      for (const c of filtered) { if (e.target.checked) n.add(c.id); else n.delete(c.id) }
-                      return n
-                    })}
-                  />
+                  <div className="check-cell">
+                    <span className="row-grip" aria-hidden="true" style={{ visibility: 'hidden' }} />
+                    <Checkbox
+                      id="selAll"
+                      aria-label="Seleccionar todos"
+                      checked={allSel}
+                      indeterminate={someSel && !allSel}
+                      onChange={(e) => setSelected((prev) => {
+                        const n = new Set(prev)
+                        for (const c of filtered) { if (e.target.checked) n.add(c.id); else n.delete(c.id) }
+                        return n
+                      })}
+                    />
+                  </div>
                 </th>
-                <th scope="col" className="cell-name">Nombre</th>
+                <th scope="col" className="cell-name" ref={nameTh}>Nombre<NameResizer th={nameTh} ctl={nameW} /></th>
                 <th scope="col">Estado</th>
                 <th scope="col" className="col-ports">Puertos</th>
                 <th scope="col" className="col-ports-more"><span className="sr-only">Ver todos los puertos</span></th>
                 <th scope="col" className="num col-cpu">CPU</th>
                 <th scope="col" className="num col-mem">Memoria</th>
                 <th scope="col" className="col-actions"><span className="sr-only">Acciones</span></th>
+                <th className="col-fill" aria-hidden="true" />
               </tr>
             </thead>
             <tbody>
               {!filtered.length ? (
                 <tr>
-                  <td colSpan={COLS} style={{ height: 'auto' }}>
+                  <td colSpan={COLS + 1} style={{ height: 'auto' }}>
                     <div className="state" style={{ padding: '36px 24px' }}>
                       <span className="state-ico"><Icon name="search" size="lg" /></span>
                       <h2>Ningún contenedor coincide</h2>
@@ -379,8 +397,8 @@ export default function ContainersPage() {
                     if (it.type === 'group') {
                       const open = !collapsed[it.key]
                       return (
-                        <tr key={`g-${it.key}`} ref={virt.measure} data-index={v.index} aria-rowindex={v.index + 2} className="group-row" style={{ '--grp-h': it.hue } as CSSProperties}>
-                          <td colSpan={COLS}>
+                        <tr key={`g-${it.key}`} ref={virt.measure} data-index={v.index} data-drop-key={it.key} data-group-kind={it.kind} aria-rowindex={v.index + 2} className="group-row" style={{ '--grp-h': it.hue } as CSSProperties}>
+                          <td colSpan={COLS + 1}>
                             <div className="group-head">
                               <button type="button" aria-expanded={open} onClick={() => setCollapsed((s) => ({ ...s, [it.key]: !s[it.key] }))}>
                                 <Icon name="chev-down" size="sm" className="chev" />
@@ -413,6 +431,7 @@ export default function ContainersPage() {
                         c={it.c}
                         groupHue={it.hue}
                         onShowInfo={showInfo}
+                        onGripPointerDown={onGripPointerDown}
                         index={v.index}
                         measure={virt.measure}
                         selected={selected.has(it.c.id)}
@@ -431,6 +450,7 @@ export default function ContainersPage() {
           </table>
         </div>
       </div>
+      <DragTray />
       <ContainerInfoDialog target={infoOf} onClose={() => setInfoOf(null)} />
       <GroupNetworksDialog
         group={netsOfKey ? { kind: metaOf(netsOfKey).kind, label: metaOf(netsOfKey).label, containers: list.filter((c) => groupKeyOf(c) === netsOfKey) } : null}

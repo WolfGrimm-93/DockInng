@@ -39,6 +39,14 @@ impl StackService {
         self.ops.lock().unwrap_or_else(|e| e.into_inner())
     }
 
+    /// Operaciones de stack en curso (las tareas terminadas no cuentan).
+    pub fn active_count(&self) -> usize {
+        self.ops()
+            .values()
+            .filter(|e| !e.cancel.is_closed())
+            .count()
+    }
+
     async fn containers(&self) -> Result<Vec<ComposeContainer>, ApiError> {
         Ok(self.discovery.list_compose_containers().await?)
     }
