@@ -10,6 +10,7 @@ import { useEffect, useImperativeHandle, useRef, type Ref } from 'react'
 import { toApiError } from '@/data/errors'
 import type { ApiError, ExecExit, ExecInfo, ExecOptions, ExecSession } from '@/data/types'
 import { toast } from '@/lib/toastStore'
+import { copyText } from '@/lib/clipboard'
 import { useThemeStore } from '@/theme/useTheme'
 import { readTerminalTheme } from './terminalTheme'
 
@@ -64,7 +65,8 @@ export default function XtermTerminal({ containerName, open, onState, onToggleTa
       const t = termRef.current
       const text = t?.getSelection() ?? ''
       if (!text) return false
-      try { await navigator.clipboard.writeText(text); return true } catch { toast.err('No se pudo copiar', { sub: 'El portapapeles no está disponible.' }); return false }
+      if (await copyText(text)) return true
+      toast.err('No se pudo copiar', { sub: 'El portapapeles no está disponible.' }); return false
     },
     async paste() {
       try { termRef.current?.paste(await navigator.clipboard.readText()); return true } catch { toast.err('No se pudo pegar', { sub: 'Usa Ctrl+Shift+V dentro de la terminal.' }); return false }
@@ -105,7 +107,7 @@ export default function XtermTerminal({ containerName, open, onState, onToggleTa
       const k = e.key.toLowerCase()
       if (e.ctrlKey && e.shiftKey && k === 'c') {
         const t = term.getSelection()
-        if (t) void navigator.clipboard?.writeText(t).catch(() => toast.err('No se pudo copiar', { sub: 'El portapapeles no está disponible.' }))
+        if (t) void copyText(t).then((ok) => { if (!ok) toast.err('No se pudo copiar', { sub: 'El portapapeles no está disponible.' }) })
         return false
       }
       if (e.ctrlKey && e.shiftKey && k === 'v') return false // el evento paste nativo lo gestiona xterm (bracketed paste)

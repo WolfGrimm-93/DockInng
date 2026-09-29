@@ -9,14 +9,14 @@ import { Skeleton } from '@/components/ui/skeleton'
 import type { ContainerDetail } from '@/data/types'
 import { tokenizeJson } from '@/lib/json'
 import { toast } from '@/lib/toastStore'
+import { copyText } from '@/lib/clipboard'
 
 export function InspectTab({ name, detail, error }: { name: string; detail: ContainerDetail | null; error: string | null }) {
   const tokens = useMemo(() => (detail ? tokenizeJson(detail.raw) : []), [detail])
   const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(JSON.stringify(detail?.raw ?? null, null, 2))
+    if (await copyText(JSON.stringify(detail?.raw ?? null, null, 2))) {
       toast.ok('Copiado al portapapeles')
-    } catch {
+    } else {
       toast.warn('No se pudo copiar', { sub: 'El navegador no permitió el acceso al portapapeles.' })
     }
   }

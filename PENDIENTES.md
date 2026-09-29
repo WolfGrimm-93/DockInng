@@ -5,9 +5,10 @@ Ver detalle y contexto en Obsidian: `Proyectos/DockInng/DockInng - Lista de trab
 ## Simulado en la UI
 - Nada queda simulado contra Docker. Podman solo se **detecta** (no se puede guardar una conexión Podman: el contrato solo admite `ssh` y `tls`).
 
-## Ola 3: empaquetado (sin verificar)
+## Ola 3: empaquetado (parcialmente verificado)
 
-- [ ] Instalar los `.deb` y `.rpm` en una distro real (no hay `dpkg`/`rpm` aquí); pasar `lintian`/`rpmlint`.
+- [x] Reconstruir el `.deb` con `tauri build --bundles deb` y validar su contenido, control, desktop entry e iconos; `dpkg-deb`, `lintian`, `rpm` y `rpmlint` no están instalados aquí.
+- [ ] Instalar los `.deb` y `.rpm` en una distro real y pasar `lintian`/`rpmlint`.
 - [ ] Confirmar los nombres de dependencias de Debian/Ubuntu (`libwebkit2gtk-4.1-0`, `libgtk-3-0`, `libayatana-appindicator3-1`) y de Fedora (`webkit2gtk4.1`, `gtk3`, `libayatana-appindicator-gtk3`): solo se comprobaron los de Arch.
 - [ ] Build completo del PKGBUILD con red (`pnpm install`, `cargo fetch`), con tag `v0.1.0` publicado y `updpkgsums`; `namcap` no está instalado.
 - [ ] El CLI `dockinng` no va en el deb/rpm (`externalBin` exige el binario precompilado y rompería `tauri dev`): solo en el PKGBUILD.
@@ -16,7 +17,8 @@ Ver detalle y contexto en Obsidian: `Proyectos/DockInng/DockInng - Lista de trab
 - [ ] `backend/app/Cargo.toml` no hereda `authors`/`description` del workspace (fuera de alcance).
 
 ## Ola 2: pendientes tras la auditoría (rama `feature/wave2-persistence-remote`)
-- [ ] **No verificado con servidores reales:** SSH/Docker remotos (PATH real, rootless, shells con banner, latencia, cortes de red), ProxyJump/alias complejos con TOFU (falla cerrado), llaves con passphrase sin agente (no soportado), dockerd con TLS real. Solo se probó contra un `sshd` local desechable y un fixture TLS en proceso.
+- [ ] **Parcialmente verificado con servidor real:** SSH/Docker remoto contra el alias LAN `debian-dev` (`10.0.0.17`): PATH no interactivo, banner, latencia, corte del cliente y reconexión pasaron en `live_real_ssh`; siguen pendientes rootless, ProxyJump/alias complejos con TOFU (falla cerrado), llaves con passphrase sin agente (no soportado), cortes largos de red y dockerd con TLS real. El resto solo se probó contra un `sshd` local desechable y un fixture TLS en proceso.
+- [x] Prueba live real `transport/tests/live_real_ssh.rs`: verificada el 29 de septiembre de 2026 contra `debian-dev`, solo lectura y con known_hosts temporal; no modifica servicios ni contenedores remotos.
 - [ ] Llavero real (Secret Service/KWallet) sin ejercitar (`live_llavero_real`, opt-in `DOCKINNG_LIVE_KEYRING=1`): puede abrir un diálogo de desbloqueo. Pull con registro autenticado sin probar (falta `registry:2`).
 - [ ] `--context`/`context add|use` de la CLI (solo `context ls|rm`); confirmación en TTY real de la CLI solo probada con un simulador; Ctrl-C real en `logs -f`/`pull`.
 - [ ] Builds: solo builder clásico (no hay `buildx`); el valor de un build-arg secreto queda visible en `docker history` con el builder clásico; el borrado de la caché de build por elemento no está implementado; el parser de progreso es frágil entre versiones (se muestran siempre las líneas crudas).
@@ -36,7 +38,7 @@ Ver detalle y contexto en Obsidian: `Proyectos/DockInng/DockInng - Lista de trab
 - [ ] El pre-escaneo de `include` remoto (git/oci/http/ssh) es de mejor esfuerzo por líneas: un YAML muy retorcido podría evadirlo. `include`/`extends`/`env_file` locales que salgan del directorio del stack no se restringen. Sin test del tope de 2 validaciones simultáneas.
 - [ ] Un fallo de un archivo linked/descubierto inválido puede filtrar un fragmento en el mensaje de error de Compose (truncado a 2 KiB y con los valores del `.env` ocultos).
 - [ ] Cerrar la terminal en un Docker REMOTO no mata el shell (el respaldo Ctrl-C + `exit` está sin probar; el `kill -HUP` por cgroup solo funciona con motor local).
-- [ ] Sin verificar: xterm y CodeMirror en WebKitGTK real (portapapeles, teclado, rendimiento con salida masiva, lectores de pantalla); pull contra Docker Hub o registros con credenciales; Compose distinto de 5.5.1 y v1; estado `Warning` de `--progress json`; contenedor sin `/bin/sh`.
+- [ ] Sin verificar de extremo a extremo: xterm y CodeMirror en WebKitGTK real (portapapeles, teclado, rendimiento con salida masiva, lectores de pantalla); en esta máquina sí se hizo arranque `tauri dev` + inspección visual nativa, pero no hubo automatización de entrada/lectura AT-SPI para completar esos flujos. También siguen pendientes pull contra Docker Hub o registros con credenciales; Compose distinto de 5.5.1 y v1; estado `Warning` de `--progress json`; contenedor sin `/bin/sh`.
 - [x] Pruebas live contra Docker local verificadas el 28 de septiembre de 2026: ciclo de vida, diagnóstico, endpoints, estadísticas, eventos, logs, planificación/ejecución, creación, `exec`, resize, pull por capas y cancelación, volúmenes, redes, Compose y TLS mTLS pasaron. El pull live utilizó el registro local en `127.0.0.1:54109`.
 - [ ] La validación simulada de YAML (`lib/yamlCheck.ts`) es heurística (p. ej. `services: [` sin cerrar pasa); solo importa en el modo simulado, el real usa `docker compose config`.
 - [ ] Los tests del editor y de la terminal usan CodeMirror/xterm simulados en jsdom; lo real solo se probó en Chromium con guiones fuera del repo.

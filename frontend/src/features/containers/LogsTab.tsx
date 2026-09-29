@@ -14,6 +14,7 @@ import { containerName } from '@/data/store/engineStore'
 import { parseLogLine, type LogLevel } from '@/lib/logLevel'
 import type { LogLine } from '@/data/types'
 import { toast } from '@/lib/toastStore'
+import { copyText } from '@/lib/clipboard'
 
 // Caché por objeto de línea: cada línea nueva se parsea una sola vez aunque el filtro cambie o lleguen ráfagas.
 const parsedCache = new WeakMap<LogLine, ReturnType<typeof parseLogLine>>()
@@ -43,10 +44,9 @@ export function LogsTab({ c }: { c: Container }) {
 
   const copy = async () => {
     const text = visible.map((l) => `${l.ts} ${l.level} ${l.body}`).join('\n')
-    try {
-      await navigator.clipboard.writeText(text)
+    if (await copyText(text)) {
       toast.ok('Copiado al portapapeles', { sub: `${visible.length} líneas` })
-    } catch {
+    } else {
       toast.warn('No se pudo copiar', { sub: 'El navegador no permitió el acceso al portapapeles.' })
     }
   }
