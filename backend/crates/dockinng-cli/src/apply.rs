@@ -169,6 +169,7 @@ pub mod tests {
             )),
             json: false,
             interactivity,
+            remote: transport::RemoteManager::new(),
         };
         let actions = ActionService::new(e.clone());
         (ctx, e, actions)

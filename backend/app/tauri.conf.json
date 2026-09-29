@@ -30,7 +30,7 @@
     "targets": ["deb", "rpm"],
     "category": "Development",
     "shortDescription": "Docker manager for Linux",
-    "longDescription": "DockInng is a native desktop application to manage Docker containers, images, volumes, networks and Compose stacks, locally or over SSH/TLS. The companion command-line tool shares the same core.",
+    "longDescription": "Native Docker manager for local and remote engines.",
     "publisher": "wolfgrimm",
     "homepage": "https://github.com/WolfGrimm-93/DockInng",
     "license": "MIT",
@@ -49,7 +49,11 @@
       "deb": {
         "section": "devel",
         "priority": "optional",
+        "depends": ["libc6"],
         "files": {
+          "/usr/share/doc/dockinng/changelog.gz": "packaging/changelog.gz",
+          "/usr/share/man/man1/dockinng-app.1.gz": "packaging/dockinng-app.1.gz",
+          "/usr/share/doc/dockinng/copyright": "packaging/copyright",
           "/usr/share/doc/dockinng/LICENSE": "../../LICENSE",
           "/usr/share/doc/dockinng/THIRD-PARTY-NOTICES.md": "../../THIRD-PARTY-NOTICES.md",
           "/usr/share/doc/dockinng/Geist-OFL.txt": "../../frontend/src/assets/fonts/Geist-OFL.txt",
@@ -60,10 +64,13 @@
       "rpm": {
         "release": "1",
         "files": {
+          "/usr/share/doc/dockinng/changelog.gz": "packaging/changelog.gz",
+          "/usr/share/doc/dockinng/copyright": "packaging/copyright",
           "/usr/share/doc/dockinng/LICENSE": "../../LICENSE",
           "/usr/share/doc/dockinng/THIRD-PARTY-NOTICES.md": "../../THIRD-PARTY-NOTICES.md",
           "/usr/share/doc/dockinng/Geist-OFL.txt": "../../frontend/src/assets/fonts/Geist-OFL.txt",
-          "/usr/share/doc/dockinng/JetBrainsMono-OFL.txt": "../../frontend/src/assets/fonts/JetBrainsMono-OFL.txt"
+          "/usr/share/doc/dockinng/JetBrainsMono-OFL.txt": "../../frontend/src/assets/fonts/JetBrainsMono-OFL.txt",
+          "/usr/share/man/man1/dockinng-app.1.gz": "packaging/dockinng-app.1.gz"
         },
         "desktopTemplate": "packaging/dockinng.desktop"
       }

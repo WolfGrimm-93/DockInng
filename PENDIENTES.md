@@ -8,21 +8,26 @@ Ver detalle y contexto en Obsidian: `Proyectos/DockInng/DockInng - Lista de trab
 ## Ola 3: empaquetado (parcialmente verificado)
 
 - [x] Reconstruir el `.deb` con `tauri build --bundles deb` y validar su contenido, control, desktop entry e iconos; `dpkg-deb`, `lintian`, `rpm` y `rpmlint` no están instalados aquí.
-- [ ] Instalar los `.deb` y `.rpm` en una distro real y pasar `lintian`/`rpmlint`.
-- [ ] Confirmar los nombres de dependencias de Debian/Ubuntu (`libwebkit2gtk-4.1-0`, `libgtk-3-0`, `libayatana-appindicator3-1`) y de Fedora (`webkit2gtk4.1`, `gtk3`, `libayatana-appindicator-gtk3`): solo se comprobaron los de Arch.
-- [ ] Build completo del PKGBUILD con red (`pnpm install`, `cargo fetch`), con tag `v0.1.0` publicado y `updpkgsums`; `namcap` no está instalado.
-- [ ] El CLI `dockinng` no va en el deb/rpm (`externalBin` exige el binario precompilado y rompería `tauri dev`): solo en el PKGBUILD.
-- [ ] AppImage descartado (descarga herramientas; WebKitGTK empaquetado da problemas en Wayland).
+- [x] Instalar el `.deb` en una imagen Debian 13 limpia, verificar instalación con `dpkg`, validar el desktop entry y ejecutar `lintian` sin errores.
+- [x] Construir el RPM real con `tauri bundle --bundles rpm` dentro de Fedora 44; instalarlo y desinstalarlo con `dnf` pasó correctamente.
+- [ ] Pasar `rpmlint` sin errores al RPM generado por Tauri: el paquete funciona, pero el bundler no emite etiquetas de changelog/buildhost ni marca los archivos como `%doc`.
+- [x] Confirmar las dependencias RPM detectadas en Fedora 44 (`webkit2gtk4.1`, `gtk3` y `libappindicator-gtk3`/`libappindicator3.so.1`).
+- [ ] Confirmar las equivalencias de dependencias en openSUSE.
+- [ ] Build completo del PKGBUILD con red (`pnpm install`, `cargo fetch`), con tag `v0.1.0` publicado y `updpkgsums`; `namcap` no reportó problemas, pero el tag todavía no existe en GitHub y `makepkg --verifysource` devuelve 404.
+- [x] Confirmar que el CLI `dockinng` no se incluye en el deb/rpm y queda reservado para el PKGBUILD.
+- [x] Mantener AppImage descartado: descarga herramientas y el WebKitGTK empaquetado da problemas en Wayland.
 - [ ] Bandeja en Plasma: comprobar `tray.png` sobre paneles claro y oscuro, y `StartupWMClass=dockinng-app` en Wayland.
-- [ ] `backend/app/Cargo.toml` no hereda `authors`/`description` del workspace (fuera de alcance).
+- [ ] Revisar si `backend/app/Cargo.toml` debe heredar `authors`/`description` del workspace; actualmente queda fuera de alcance.
 
 ## Ola 2: pendientes tras la auditoría (rama `feature/wave2-persistence-remote`)
-- [ ] **Parcialmente verificado con servidor real:** SSH/Docker remoto contra el alias LAN `debian-dev` (`10.0.0.17`): PATH no interactivo, banner, latencia, corte del cliente y reconexión pasaron en `live_real_ssh`; siguen pendientes rootless, ProxyJump/alias complejos con TOFU (falla cerrado), llaves con passphrase sin agente (no soportado), cortes largos de red y dockerd con TLS real. El resto solo se probó contra un `sshd` local desechable y un fixture TLS en proceso.
+- [ ] **Parcialmente verificado con servidor real:** SSH/Docker remoto contra el alias LAN `debian-dev` (`10.0.0.17`): PATH no interactivo, banner, latencia, corte del cliente y reconexión pasaron en `live_real_ssh`; también se redujo la detección de cortes a 5 s × 2 sondas, se clasifican passphrases sin agente como `auth_failed`, se endureció el borrado seguro de `known_hosts` y el parseo de alias con espacios/tabulaciones. Siguen pendientes rootless, ProxyJump/alias complejos con TOFU (falla cerrado), cortes físicos prolongados y dockerd con TLS real. Las llaves con passphrase sin agente siguen sin prompt por diseño.
 - [x] Prueba live real `transport/tests/live_real_ssh.rs`: verificada el 29 de septiembre de 2026 contra `debian-dev`, solo lectura y con known_hosts temporal; no modifica servicios ni contenedores remotos.
-- [ ] Llavero real (Secret Service/KWallet) sin ejercitar (`live_llavero_real`, opt-in `DOCKINNG_LIVE_KEYRING=1`): puede abrir un diálogo de desbloqueo. Pull con registro autenticado sin probar (falta `registry:2`).
-- [ ] `--context`/`context add|use` de la CLI (solo `context ls|rm`); confirmación en TTY real de la CLI solo probada con un simulador; Ctrl-C real en `logs -f`/`pull`.
+- [x] Llavero real Secret Service verificado el 29 de septiembre de 2026 en una sesión Debian 13 aislada con `dbus-run-session` + `gnome-keyring-daemon --unlock`; la entrada es desechable y se elimina aun si el test falla.
+- [x] Pull autenticado verificado el 29 de septiembre de 2026 contra un `registry:2` local aislado, con credenciales generadas por ejecución, Docker config temporal y limpieza posterior.
+- [x] `--context` global y `context add ssh|tls`, `context use`, `context ls` y `context rm` implementados; las pruebas cubren selección persistida, alias, JSON, no exposición de secretos y denegación sin TTY.
+- [ ] Confirmación en TTY real de la CLI solo probada con simulador; Ctrl-C real en `logs -f`/`pull` sigue pendiente.
 - [ ] Builds: solo builder clásico (no hay `buildx`); el valor de un build-arg secreto queda visible en `docker history` con el builder clásico; el borrado de la caché de build por elemento no está implementado; el parser de progreso es frágil entre versiones (se muestran siempre las líneas crudas).
-- [x] Conexiones: edición de conexiones guardadas desde la UI, conservando el `id` y usando `connection_save {id}`; verificado con test simulado de renombrado y suite frontend. Pendientes: no hay comando ni UI para **olvidar** una huella cambiada (hoy hay que editar el `known_hosts` propio de DockInng); reconexión automática del túnel tras un corte largo; ControlMaster para amortizar el handshake (hoy un `ssh` por conexión HTTP); avisar si una llave TLS tiene permisos abiertos.
+- [ ] Conexiones: edición de conexiones guardadas desde la UI, conservando el `id` y usando `connection_save {id}`; verificado con test simulado de renombrado y suite frontend. Pendientes: no hay comando ni UI para **olvidar** una huella cambiada (hoy hay que editar el `known_hosts` propio de DockInng); reconexión automática del túnel tras un corte largo; ControlMaster se mantiene desactivado deliberadamente para no compartir sockets; avisar si una llave TLS tiene permisos abiertos.
 - [ ] Cambiar de conexión espera a que terminen las acciones en vuelo (`RwLock`); un cambio puede tardar lo que dure una acción larga. Alternativa: generación con aborto inmediato (toca `ActionService`).
 - [x] Salir de la página Construir con un build en curso pide confirmación y cancela el canal al abandonar; verificado en `ola2.ui.test.tsx`. Pendiente separado: el build no persiste entre navegaciones.
 - [ ] Bundle de entrada 305,29 kB (+16 kB sobre la Ola 1) por la recolocación de chunks de Rollup; revisar `experimentalMinChunkSize`.

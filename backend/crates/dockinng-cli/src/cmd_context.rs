@@ -1,9 +1,9 @@
-//! `context ls|rm`: perfiles de conexión guardados (comparten el almacén con la app).
-//! Solo administra los perfiles; conectar a un remoto queda pendiente hasta que el transporte
-//! esté estable (ver PENDIENTES: `--context` y `context add|use`).
+//! `context add|use|ls|rm`: perfiles de conexión guardados (comparten el almacén con la app).
+//! `context add` solo guarda metadatos y rutas; la conexión remota se prepara al ejecutar otro
+//! comando con `--context` o con la selección predeterminada.
 
-use engine_core::connections::ConnSpec;
-use engine_core::{Action, PlanDecision, decide};
+use engine_core::connections::{SshIdentity, SshMode};
+use engine_core::{Action, ConnSpec, PlanDecision, decide};
 use store::Store;
 
 use crate::cli::Confirm;
@@ -13,6 +13,84 @@ use crate::output::{print_json, print_lines, table};
 
 fn open_store() -> Result<Store, String> {
     Store::open_default().map_err(|e| e.to_string())
+}
+
+fn find_profile<'a>(
+    profiles: &'a [engine_core::ConnectionProfile],
+    target: &str,
+) -> Result<&'a engine_core::ConnectionProfile, String> {
+    profiles
+        .iter()
+        .find(|p| p.id == target || p.spec.name().eq_ignore_ascii_case(target))
+        .ok_or_else(|| format!("no existe la conexión {target}"))
+}
+
+pub fn add(ctx: &Ctx, add: crate::cli::ContextAddCmd) -> Result<(), String> {
+    let spec = match add {
+        crate::cli::ContextAddCmd::Ssh {
+            name,
+            host,
+            port,
+            user,
+            identity,
+            agent: _,
+            alias,
+        } => ConnSpec::Ssh {
+            name,
+            host,
+            port: port.unwrap_or(if alias { 0 } else { 22 }),
+            user,
+            mode: if alias {
+                SshMode::Alias
+            } else {
+                SshMode::Explicit
+            },
+            identity: identity
+                .map(|path| SshIdentity::File { path })
+                .unwrap_or(SshIdentity::Agent),
+        },
+        crate::cli::ContextAddCmd::Tls {
+            name,
+            host,
+            port,
+            ca,
+            cert,
+            key,
+        } => ConnSpec::Tls {
+            name,
+            host,
+            port,
+            ca_path: ca,
+            cert_path: cert,
+            key_path: key,
+        },
+    };
+    let profile = open_store()?
+        .connection_save(&spec, None)
+        .map_err(|e| e.to_string())?;
+    if ctx.json {
+        print_json(&profile)
+    } else {
+        println!("{}", profile.spec.name());
+        Ok(())
+    }
+}
+
+pub fn use_context(ctx: &Ctx, target: &str) -> Result<(), String> {
+    let store = open_store()?;
+    let profiles = store.connection_list().map_err(|e| e.to_string())?;
+    let id = if target.eq_ignore_ascii_case("local") {
+        engine_core::LOCAL_CONNECTION_ID.to_string()
+    } else {
+        find_profile(&profiles, target)?.id.clone()
+    };
+    store
+        .prefs_set("last_connection_id", &serde_json::Value::String(id))
+        .map_err(|e| e.to_string())?;
+    if !ctx.json {
+        println!("{target}");
+    }
+    Ok(())
 }
 
 fn kind(spec: &ConnSpec) -> &'static str {

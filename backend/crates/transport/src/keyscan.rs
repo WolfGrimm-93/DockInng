@@ -90,10 +90,13 @@ pub fn parse_alias_resolution(stdout: &str) -> Result<(String, u16), EngineError
     let mut host = None;
     let mut port = None;
     for line in stdout.lines() {
-        match line.split_once(' ') {
-            Some(("hostname", v)) => host = Some(v.trim().to_string()),
-            Some(("port", v)) => port = v.trim().parse::<u16>().ok(),
-            Some(("proxyjump" | "proxycommand", v)) if !v.trim().eq_ignore_ascii_case("none") => {
+        let mut fields = line.split_whitespace();
+        let Some(key) = fields.next() else { continue };
+        let value = fields.collect::<Vec<_>>().join(" ");
+        match key {
+            "hostname" => host = Some(value),
+            "port" => port = value.parse::<u16>().ok(),
+            "proxyjump" | "proxycommand" if !value.eq_ignore_ascii_case("none") => {
                 return Err(EngineError::InvalidInput(
                     "el alias usa ProxyJump/ProxyCommand: no se puede verificar la huella del servidor final. Usa el modo agente o archivo con host, usuario y puerto explícitos".into(),
                 ));
@@ -270,6 +273,11 @@ mod tests {
         let ok = "user u\nhostname web.example\nport 2200\nproxyjump none\n";
         assert_eq!(
             parse_alias_resolution(ok).unwrap(),
+            ("web.example".to_string(), 2200)
+        );
+        assert_eq!(
+            parse_alias_resolution("hostname\tweb.example\nport   2200\nproxyjump\tnone\n")
+                .unwrap(),
             ("web.example".to_string(), 2200)
         );
         assert_eq!(

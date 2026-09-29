@@ -182,9 +182,18 @@ pub fn append(path: &Path, line: &str) -> Result<(), EngineError> {
 pub fn remove_name(path: &Path, name: &str) -> Result<usize, EngineError> {
     let name = name.to_ascii_lowercase();
     let _lock = FileLock::acquire(path)?;
+    match fs::symlink_metadata(path) {
+        Ok(m) if m.file_type().is_symlink() => {
+            return Err(EngineError::InvalidInput(
+                "el known_hosts de DockInng es un enlace simbólico".into(),
+            ));
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+        Err(e) => return Err(io_err("leer known_hosts", &e)),
+        Ok(_) => {}
+    }
     let content = match fs::read_to_string(path) {
         Ok(c) => c,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
         Err(e) => return Err(io_err("leer known_hosts", &e)),
     };
     let mut changed = 0;
@@ -370,6 +379,25 @@ mod tests {
         assert_eq!(e.len(), 1);
         assert_eq!(e[0].names, ["b"]);
         assert_eq!(remove_name(&d.join("no-existe"), "a").unwrap(), 0);
+        fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn remove_name_rechaza_symlink_sin_tocar_el_objetivo() {
+        let d = tmp("remove-symlink");
+        let real = d.join("real");
+        fs::write(&real, "a ssh-rsa AAAA1\n").unwrap();
+        let link = d.join("known_hosts");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+
+        assert!(remove_name(&link, "a").is_err());
+        assert_eq!(fs::read_to_string(&real).unwrap(), "a ssh-rsa AAAA1\n");
+        assert!(
+            fs::symlink_metadata(&link)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
         fs::remove_dir_all(&d).unwrap();
     }
 }

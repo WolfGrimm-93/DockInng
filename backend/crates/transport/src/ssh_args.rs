@@ -16,6 +16,10 @@ use engine_core::{ConnSpec, EngineError, SshIdentity, SshMode};
 
 /// Segundos de espera de conexión.
 pub const CONNECT_TIMEOUT_SECS: u32 = 10;
+/// Intervalo de sondas SSH para detectar antes un corte de red que dejó el socket TCP abierto.
+pub const SERVER_ALIVE_INTERVAL_SECS: u32 = 5;
+/// Número de sondas fallidas antes de abandonar el proceso `ssh`.
+pub const SERVER_ALIVE_COUNT_MAX: u32 = 2;
 
 /// Destino SSH ya validado y con el host sin corchetes (formato que espera `ssh`).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -107,8 +111,9 @@ fn hardening(known_hosts: &Path) -> Vec<OsString> {
     opt("ControlPath=none".into());
     opt("LogLevel=ERROR".into());
     opt(format!("ConnectTimeout={CONNECT_TIMEOUT_SECS}"));
-    opt("ServerAliveInterval=15".into());
-    opt("ServerAliveCountMax=3".into());
+    opt("TCPKeepAlive=yes".into());
+    opt(format!("ServerAliveInterval={SERVER_ALIVE_INTERVAL_SECS}"));
+    opt(format!("ServerAliveCountMax={SERVER_ALIVE_COUNT_MAX}"));
     a
 }
 
@@ -275,9 +280,11 @@ mod tests {
             "-o",
             "ConnectTimeout=10",
             "-o",
-            "ServerAliveInterval=15",
+            "TCPKeepAlive=yes",
             "-o",
-            "ServerAliveCountMax=3",
+            "ServerAliveInterval=5",
+            "-o",
+            "ServerAliveCountMax=2",
             "-T",
             "-F",
             "/dev/null",
@@ -353,6 +360,17 @@ mod tests {
                 assert_eq!(&a[pos + 2..], ["docker", "system", "dial-stdio"]);
             }
         }
+    }
+
+    #[test]
+    fn detecta_cortes_tcp_en_un_plazo_acotado_y_no_comparte_controlmaster() {
+        let t = explicit("h.example", 22, "u", SshIdentity::Agent);
+        let a = strings(ssh_dial_args(&t, &kh(), "docker").unwrap());
+        assert!(a.windows(2).any(|w| w == ["-o", "TCPKeepAlive=yes"]));
+        assert!(a.windows(2).any(|w| w == ["-o", "ServerAliveInterval=5"]));
+        assert!(a.windows(2).any(|w| w == ["-o", "ServerAliveCountMax=2"]));
+        assert!(a.windows(2).any(|w| w == ["-o", "ControlMaster=no"]));
+        assert!(a.windows(2).any(|w| w == ["-o", "ControlPath=none"]));
     }
 
     #[test]

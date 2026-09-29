@@ -5,10 +5,16 @@
 //! Reglas duras: solo se crean/tocan recursos `dockinng-test-<uuid>` con la label
 //! `dev.dockinng.test=1`; nunca prune; sin `pull` (se usa `alpine:latest` local);
 //! un test a la vez (cerrojo global).
+//!
+//! Setup opcional del registro autenticado: tener `registry:2` ya descargada, `htpasswd`
+//! instalado (`apache2-utils`/`httpd-tools`) y ejecutar
+//! `DOCKINNG_LIVE_TESTS=1 DOCKINNG_LIVE_REGISTRY=1 cargo test -p engine-docker --test live live_pull_autenticado_con_registro_local_aislado -- --ignored --nocapture`.
+//! La prueba nunca descarga `registry:2`; omite con un motivo explícito si falta algo.
 
 use std::collections::HashMap;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
+use std::process::{Command, Stdio};
 use std::sync::Mutex as StdMutex;
 use std::time::Duration;
 
@@ -22,10 +28,11 @@ use bollard::query_parameters::{
 };
 use engine_core::{
     ActionRequest, ActionService, ConnectionStatus, ContainerState, EngineClient, EngineError,
-    LogStream, LogsRequest, MountKind, PlanDecision, testing::MockEngine,
+    LogStream, LogsRequest, MountKind, PlanDecision, PullEngine, testing::MockEngine,
 };
 use engine_docker::DockerEngine;
 use futures_util::{FutureExt, StreamExt};
+use std::fs;
 
 const PREFIX: &str = "dockinng-test-";
 const LABEL: &str = "dev.dockinng.test";
@@ -201,6 +208,252 @@ async fn guarded<F: Future<Output = ()>>(env: &Env, body: F) {
     }
 }
 
+struct RegistryEnv {
+    name: String,
+    config_dir: std::path::PathBuf,
+    docker_config: std::path::PathBuf,
+    reference: String,
+    auth: engine_core::RegistryAuth,
+}
+
+impl RegistryEnv {
+    fn run(args: &[&str], envs: &[(&str, &str)], stdin: Option<&[u8]>) -> bool {
+        let mut command = Command::new("docker");
+        command.args(args).envs(envs.iter().copied());
+        if stdin.is_some() {
+            command.stdin(Stdio::piped());
+        }
+        let Ok(mut child) = command.stdout(Stdio::null()).stderr(Stdio::null()).spawn() else {
+            return false;
+        };
+        if let Some(input) = stdin {
+            use std::io::Write;
+            if child
+                .stdin
+                .take()
+                .and_then(|mut pipe| pipe.write_all(input).ok())
+                .is_none()
+            {
+                let _ = child.kill();
+                return false;
+            }
+        }
+        child.wait().map(|s| s.success()).unwrap_or(false)
+    }
+
+    fn cleanup(&self) {
+        let _ = Self::run(&["rm", "-f", &self.name], &[], None);
+        let _ = Self::run(&["image", "rm", "-f", &self.reference], &[], None);
+        let _ = fs::remove_dir_all(&self.config_dir);
+        let _ = fs::remove_dir_all(&self.docker_config);
+    }
+
+    /// Opt-in setup. Requires Docker, local `registry:2`, `htpasswd`, and a daemon that permits
+    /// loopback registries. All names, mounts, and the temporary Docker config are disposable.
+    async fn new() -> Option<Self> {
+        if std::env::var("DOCKINNG_LIVE_TESTS").ok().as_deref() != Some("1")
+            || std::env::var("DOCKINNG_LIVE_REGISTRY").ok().as_deref() != Some("1")
+        {
+            eprintln!(
+                "SKIP live_authenticated_registry_pull: define DOCKINNG_LIVE_TESTS=1 and DOCKINNG_LIVE_REGISTRY=1"
+            );
+            return None;
+        }
+        if !Self::run(&["image", "inspect", "registry:2"], &[], None) {
+            eprintln!(
+                "SKIP live_authenticated_registry_pull: local image registry:2 is unavailable (no pull is attempted)"
+            );
+            return None;
+        }
+        if Command::new("htpasswd").arg("-h").output().is_err() {
+            eprintln!(
+                "SKIP live_authenticated_registry_pull: host command htpasswd is unavailable (install apache2-utils or httpd-tools)"
+            );
+            return None;
+        }
+        let id = short();
+        let name = format!("{PREFIX}{id}-registry");
+        let config_dir = std::env::temp_dir().join(format!("{PREFIX}{id}-auth"));
+        let docker_config = std::env::temp_dir().join(format!("{PREFIX}{id}-docker-config"));
+        if fs::create_dir_all(&config_dir).is_err() || fs::create_dir_all(&docker_config).is_err() {
+            let _ = fs::remove_dir_all(&config_dir);
+            let _ = fs::remove_dir_all(&docker_config);
+            eprintln!(
+                "SKIP live_authenticated_registry_pull: could not create temporary auth directories"
+            );
+            return None;
+        }
+        let username = format!("live-{id}");
+        let password = format!("disposable-{id}");
+        let htpasswd = match Command::new("htpasswd")
+            .args(["-Bbn", &username, &password])
+            .output()
+        {
+            Ok(output) => output,
+            Err(_) => {
+                let _ = fs::remove_dir_all(&config_dir);
+                let _ = fs::remove_dir_all(&docker_config);
+                eprintln!("SKIP live_authenticated_registry_pull: could not run htpasswd");
+                return None;
+            }
+        };
+        if !htpasswd.status.success()
+            || fs::write(config_dir.join("htpasswd"), htpasswd.stdout).is_err()
+        {
+            let _ = fs::remove_dir_all(&config_dir);
+            let _ = fs::remove_dir_all(&docker_config);
+            eprintln!(
+                "SKIP live_authenticated_registry_pull: could not create disposable htpasswd file"
+            );
+            return None;
+        }
+        let mount = format!("{}:/auth:ro", config_dir.display());
+        let started = Self::run(
+            &[
+                "run",
+                "-d",
+                "--name",
+                &name,
+                "--label",
+                "dev.dockinng.test=1",
+                "-p",
+                "127.0.0.1::5000",
+                "-v",
+                &mount,
+                "-e",
+                "REGISTRY_AUTH=htpasswd",
+                "-e",
+                "REGISTRY_AUTH_HTPASSWD_REALM=DockInng Test",
+                "-e",
+                "REGISTRY_AUTH_HTPASSWD_PATH=/auth/htpasswd",
+                "registry:2",
+            ],
+            &[],
+            None,
+        );
+        if !started {
+            let _ = fs::remove_dir_all(&config_dir);
+            let _ = fs::remove_dir_all(&docker_config);
+            eprintln!(
+                "SKIP live_authenticated_registry_pull: could not start disposable registry container"
+            );
+            return None;
+        }
+        let port_output = match Command::new("docker")
+            .args(["port", &name, "5000/tcp"])
+            .output()
+        {
+            Ok(output) => output,
+            Err(_) => {
+                let env = Self {
+                    name,
+                    config_dir,
+                    docker_config,
+                    reference: String::new(),
+                    auth: engine_core::RegistryAuth {
+                        server: String::new(),
+                        username,
+                        secret: engine_core::Secret::new(password),
+                    },
+                };
+                env.cleanup();
+                eprintln!("SKIP live_authenticated_registry_pull: could not inspect registry port");
+                return None;
+            }
+        };
+        let Some(port) = String::from_utf8_lossy(&port_output.stdout)
+            .trim()
+            .rsplit_once(':')
+            .map(|(_, p)| p.to_string())
+        else {
+            let env = Self {
+                name,
+                config_dir,
+                docker_config,
+                reference: String::new(),
+                auth: engine_core::RegistryAuth {
+                    server: String::new(),
+                    username,
+                    secret: engine_core::Secret::new(password),
+                },
+            };
+            env.cleanup();
+            eprintln!("SKIP live_authenticated_registry_pull: registry did not publish a port");
+            return None;
+        };
+        let server = format!("localhost:{port}");
+        let reference = format!("{server}/{PREFIX}{id}:latest");
+        let Some(config_path) = docker_config.to_str() else {
+            let env = Self {
+                name,
+                config_dir,
+                docker_config,
+                reference,
+                auth: engine_core::RegistryAuth {
+                    server,
+                    username,
+                    secret: engine_core::Secret::new(password),
+                },
+            };
+            env.cleanup();
+            eprintln!(
+                "SKIP live_authenticated_registry_pull: temporary Docker config path is invalid"
+            );
+            return None;
+        };
+        let login_env = [("DOCKER_CONFIG", config_path)];
+        let logged_in = (0..20).any(|_| {
+            let ok = Self::run(
+                &[
+                    "login",
+                    &server,
+                    "--username",
+                    &username,
+                    "--password-stdin",
+                ],
+                &login_env,
+                Some(password.as_bytes()),
+            );
+            if !ok {
+                std::thread::sleep(Duration::from_millis(250));
+            }
+            ok
+        });
+        let tagged = logged_in && Self::run(&["tag", BASE_IMAGE, &reference], &[], None);
+        let pushed = tagged && Self::run(&["push", &reference], &login_env, None);
+        if !pushed {
+            let env = Self {
+                name,
+                config_dir,
+                docker_config,
+                reference,
+                auth: engine_core::RegistryAuth {
+                    server,
+                    username,
+                    secret: engine_core::Secret::new(password),
+                },
+            };
+            env.cleanup();
+            eprintln!(
+                "SKIP live_authenticated_registry_pull: registry did not become ready or push failed"
+            );
+            return None;
+        }
+        let _ = Self::run(&["image", "rm", "-f", &reference], &[], None);
+        Some(Self {
+            name,
+            config_dir,
+            docker_config,
+            reference,
+            auth: engine_core::RegistryAuth {
+                server,
+                username,
+                secret: engine_core::Secret::new(password),
+            },
+        })
+    }
+}
+
 /// Elimina restos de ejecuciones anteriores: solo label de prueba Y prefijo en el nombre.
 async fn cleanup_leftovers(env: &Env) {
     let filters = HashMap::from([("label".to_string(), vec![format!("{LABEL}=1")])]);
@@ -236,6 +489,43 @@ macro_rules! live {
         cleanup_leftovers(&$env).await;
         guarded(&$env, async { $body }).await;
     }};
+}
+
+#[tokio::test]
+#[ignore = "requiere DOCKINNG_LIVE_TESTS=1, DOCKINNG_LIVE_REGISTRY=1, registry:2 y htpasswd"]
+async fn live_pull_autenticado_con_registro_local_aislado() {
+    let _g = LOCK.lock().await;
+    let Some(registry) = RegistryEnv::new().await else {
+        return;
+    };
+    let engine = DockerEngine::new();
+    let reference = registry.reference.clone();
+    let result = AssertUnwindSafe(async {
+        engine
+            .check_registry_auth(&registry.auth)
+            .await
+            .expect("comprobar credenciales del registro");
+        let pull_auth = engine_core::RegistryAuth {
+            server: registry.auth.server.clone(),
+            username: registry.auth.username.clone(),
+            secret: engine_core::Secret::new(registry.auth.secret.expose().to_string()),
+        };
+        let events: Vec<_> = engine
+            .pull_image_with_auth(&reference, Some(pull_auth))
+            .collect()
+            .await;
+        assert!(!events.is_empty(), "el pull autenticado no produjo eventos");
+        assert!(
+            events.iter().all(Result::is_ok),
+            "el pull autenticado falló"
+        );
+    })
+    .catch_unwind()
+    .await;
+    registry.cleanup();
+    if let Err(panic) = result {
+        std::panic::resume_unwind(panic);
+    }
 }
 
 #[tokio::test]

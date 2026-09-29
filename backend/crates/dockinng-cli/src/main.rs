@@ -38,7 +38,31 @@ async fn run(cli: Cli) -> Result<(), String> {
         clap_complete::generate(*shell, &mut cmd, "dockinng", &mut std::io::stdout());
         return Ok(());
     }
+    let is_context_admin = matches!(cli.command, Command::Context(_));
+    let selected = cli.context.clone();
     let ctx = Ctx::new(cli.json);
+    if !is_context_admin {
+        let store = store::Store::open_default().map_err(|e| e.to_string())?;
+        let target = match selected {
+            Some(target) => Some(target),
+            None => store
+                .prefs_get("last_connection_id")
+                .map_err(|e| e.to_string())?
+                .and_then(|v| v.as_str().map(str::to_owned)),
+        };
+        if let Some(target) = target {
+            if target.eq_ignore_ascii_case("local") {
+                ctx.select_local();
+            } else {
+                let profiles = store.connection_list().map_err(|e| e.to_string())?;
+                let profile = profiles
+                    .iter()
+                    .find(|p| p.id == target || p.spec.name().eq_ignore_ascii_case(&target))
+                    .ok_or_else(|| format!("no existe la conexión {target}"))?;
+                ctx.select_remote(&store, profile).await?;
+            }
+        }
+    }
     dispatch(&ctx, cli.command).await
 }
 
@@ -136,6 +160,8 @@ async fn dispatch(ctx: &Ctx, command: Command) -> Result<(), String> {
             }
         },
         Command::Context(c) => match c {
+            ContextCmd::Add(add) => cmd_context::add(ctx, add),
+            ContextCmd::Use { target } => cmd_context::use_context(ctx, &target),
             ContextCmd::Ls => cmd_context::ls(ctx),
             ContextCmd::Rm { target, confirm } => cmd_context::rm(ctx, &target, confirm),
         },
@@ -180,6 +206,32 @@ mod tests {
             &["cleanup", "apply", "--defaults", "--volume", "v", "--yes"],
             &["completions", "fish"],
             &["context", "ls", "--json"],
+            &[
+                "context",
+                "add",
+                "ssh",
+                "prod",
+                "example.com",
+                "--user",
+                "deploy",
+                "--identity",
+                "/k/id",
+            ],
+            &[
+                "context",
+                "add",
+                "tls",
+                "tls1",
+                "example.com",
+                "--ca",
+                "/c/ca",
+                "--cert",
+                "/c/cert",
+                "--key",
+                "/c/key",
+            ],
+            &["context", "use", "prod"],
+            &["--context", "prod", "context", "ls"],
             &["context", "rm", "x", "--yes"],
         ] {
             assert!(parse(args).is_ok(), "{args:?}");

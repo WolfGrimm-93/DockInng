@@ -6,13 +6,16 @@ use compose::ComposeRunner;
 use compose::files::StackStore;
 use compose::proc::TokioSpawn;
 use compose::runner::Limits;
-use engine_core::{ActionService, Interactivity, StackControl};
-use engine_docker::DockerEngine;
+use engine_core::{ActionService, ConnectionProfile, Interactivity, StackControl};
+use engine_docker::{DockerEngine, Endpoint, Target};
+use store::Store;
+use transport::{Prepared, RemoteManager};
 
 pub struct Ctx {
     pub engine: Arc<DockerEngine>,
     pub json: bool,
     pub interactivity: Interactivity,
+    pub(crate) remote: RemoteManager,
 }
 
 impl Ctx {
@@ -22,7 +25,47 @@ impl Ctx {
             engine: Arc::new(DockerEngine::new()),
             json,
             interactivity: crate::confirm::interactivity(),
+            remote: RemoteManager::new(),
         }
+    }
+
+    /// Activa un perfil remoto para esta ejecución y mantiene vivo su transporte.
+    pub async fn select_remote(
+        &self,
+        store: &Store,
+        profile: &ConnectionProfile,
+    ) -> Result<(), String> {
+        let prepared = self
+            .remote
+            .prepare(&profile.spec, &store.known_hosts_path())
+            .await
+            .map_err(|e| e.to_string())?;
+        let target = match &prepared {
+            Prepared::Ssh { tunnel, label } => Target::tunnel(
+                &tunnel.socket_path().to_string_lossy(),
+                label,
+                Some(tunnel.failure_hint()),
+            ),
+            Prepared::Tls { target, certs } => Target::tls(Endpoint::Tls {
+                addr: target.addr(),
+                ca: target.ca.to_string_lossy().into_owned(),
+                cert: target.cert.to_string_lossy().into_owned(),
+                key: target.key.to_string_lossy().into_owned(),
+                cert_dir: certs.path().to_string_lossy().into_owned(),
+                label: target.label(),
+            }),
+        };
+        self.remote.activate(&profile.id, prepared).await;
+        self.engine.set_target(target);
+        store
+            .connection_touch(&profile.id)
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Fuerza el motor local para una selección explícita de `local`.
+    pub fn select_local(&self) {
+        self.engine.set_target(Target::local());
     }
 
     /// Acciones sin control de stacks (contenedores, imágenes, volúmenes, redes, limpieza).

@@ -301,7 +301,13 @@ mod tests {
     #[ignore = "requiere DOCKINNG_LIVE_KEYRING=1 (puede pedir desbloqueo del llavero)"]
     fn live_llavero_real() {
         if std::env::var("DOCKINNG_LIVE_KEYRING").as_deref() != Ok("1") {
-            eprintln!("saltado: DOCKINNG_LIVE_KEYRING!=1");
+            eprintln!("SKIP live_llavero_real: define DOCKINNG_LIVE_KEYRING=1");
+            return;
+        }
+        if std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_none() {
+            eprintln!(
+                "SKIP live_llavero_real: DBUS_SESSION_BUS_ADDRESS is unavailable (no Secret Service session)"
+            );
             return;
         }
         let rt = tokio::runtime::Builder::new_multi_thread()
@@ -312,11 +318,34 @@ mod tests {
             tokio::task::spawn_blocking(|| {
                 let ks = KeyringSecrets::new("dockinng-test");
                 let id = crate::new_id();
-                ks.save(&id, "bob", &Secret::new("pw-live")).unwrap();
-                let (u, p) = ks.load(&id).unwrap().unwrap();
-                assert_eq!((u.as_str(), p.expose()), ("bob", "pw-live"));
-                ks.delete(&id).unwrap();
-                assert!(ks.load(&id).unwrap().is_none());
+                // El valor es único por ejecución y nunca aparece en mensajes de error/log.
+                let username = format!("live-{}", &id[24..]);
+                let password = format!("disposable-{}", &id[24..]);
+                struct Cleanup<'a> {
+                    store: &'a KeyringSecrets,
+                    id: String,
+                }
+                impl Drop for Cleanup<'_> {
+                    fn drop(&mut self) {
+                        let _ = self.store.delete(&self.id);
+                    }
+                }
+                let _cleanup = Cleanup {
+                    store: &ks,
+                    id: id.clone(),
+                };
+                ks.save(&id, &username, &Secret::new(password.clone()))
+                    .expect("guardar secreto live");
+                let (u, p) = ks
+                    .load(&id)
+                    .expect("leer secreto live")
+                    .expect("entrada live");
+                assert_eq!(
+                    (u.as_str(), p.expose()),
+                    (username.as_str(), password.as_str())
+                );
+                ks.delete(&id).expect("borrar secreto live");
+                assert!(ks.load(&id).expect("comprobar borrado").is_none());
             })
             .await
             .unwrap();

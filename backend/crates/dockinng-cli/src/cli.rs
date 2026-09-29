@@ -16,6 +16,9 @@ pub struct Cli {
     /// Salida en JSON (listados, planes y progreso en NDJSON)
     #[arg(long, global = true)]
     pub json: bool,
+    /// Selecciona una conexión guardada por nombre o id (no cambia la selección guardada)
+    #[arg(long, global = true, value_name = "NOMBRE|ID")]
+    pub context: Option<String>,
     #[command(subcommand)]
     pub command: Command,
 }
@@ -227,6 +230,11 @@ pub enum CleanupCmd {
 
 #[derive(Subcommand)]
 pub enum ContextCmd {
+    /// Guarda una conexión SSH o TLS (solo metadatos y rutas, nunca secretos)
+    #[command(subcommand)]
+    Add(ContextAddCmd),
+    /// Marca una conexión como la selección predeterminada para futuras ejecuciones
+    Use { target: String },
     /// Lista las conexiones guardadas
     Ls,
     /// Elimina una conexión guardada por nombre o id (no toca el servidor)
@@ -234,5 +242,46 @@ pub enum ContextCmd {
         target: String,
         #[command(flatten)]
         confirm: Confirm,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum ContextAddCmd {
+    /// Guarda un destino SSH
+    Ssh {
+        name: String,
+        host: String,
+        /// Puerto SSH; omitido = 22 en modo explícito y lo resuelve el alias de ~/.ssh/config
+        #[arg(long)]
+        port: Option<u32>,
+        /// Usuario SSH (vacío solo es válido con --alias)
+        #[arg(long, default_value = "")]
+        user: String,
+        /// Ruta de la llave privada; nunca se lee ni se guarda su contenido
+        #[arg(long, conflicts_with = "agent")]
+        identity: Option<String>,
+        /// Usa el agente SSH y no una llave por ruta
+        #[arg(long, conflicts_with = "identity")]
+        agent: bool,
+        /// Resuelve host, usuario y puerto desde ~/.ssh/config
+        #[arg(long)]
+        alias: bool,
+    },
+    /// Guarda un destino TLS mutuo
+    Tls {
+        name: String,
+        host: String,
+        /// Puerto Docker TLS
+        #[arg(long, default_value_t = 2376)]
+        port: u32,
+        /// Ruta de la CA (no se copia)
+        #[arg(long)]
+        ca: String,
+        /// Ruta del certificado de cliente (no se copia)
+        #[arg(long)]
+        cert: String,
+        /// Ruta de la llave privada de cliente (no se copia)
+        #[arg(long)]
+        key: String,
     },
 }

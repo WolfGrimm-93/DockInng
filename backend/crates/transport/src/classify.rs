@@ -59,7 +59,11 @@ pub fn classify_ssh_stderr(stderr: &str) -> Option<Failure> {
             "la llave privada tiene permisos demasiado abiertos (usa chmod 600)",
         );
     }
-    if has("Permission denied (") {
+    if has("Permission denied (")
+        || has("Enter passphrase for key")
+        || has("incorrect passphrase")
+        || has("Load key") && has("incorrect passphrase")
+    {
         return f(
             ConnectionCause::AuthFailed,
             "el servidor rechazó la autenticación (si la llave tiene passphrase, cárgala con ssh-add)",
@@ -150,6 +154,16 @@ mod tests {
         );
         assert_eq!(
             cause("@         WARNING: UNPROTECTED PRIVATE KEY FILE!          @\nBad permissions"),
+            Some(AuthFailed)
+        );
+        assert_eq!(
+            cause("Enter passphrase for key '/home/u/.ssh/id_ed25519':\n"),
+            Some(AuthFailed)
+        );
+        assert_eq!(
+            cause(
+                "Load key \"/home/u/.ssh/id_ed25519\": incorrect passphrase supplied to decrypt private key"
+            ),
             Some(AuthFailed)
         );
     }
