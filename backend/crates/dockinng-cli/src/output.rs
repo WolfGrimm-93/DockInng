@@ -197,7 +197,7 @@ mod tests {
         let lines = format_containers(&[
             c(
                 "8d8ab4a11854aaaa",
-                "filemeshy-clamav-1",
+                "proyecto-clamav-1",
                 largo,
                 "Up 5 hours",
             ),
