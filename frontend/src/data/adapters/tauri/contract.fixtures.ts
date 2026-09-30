@@ -178,7 +178,7 @@ export const testFail: ConnTestResult = { ok: false, error: { code: 'connection'
 /** Forma REAL de `connection_list`/`connection_save` (engine-core `ConnectionProfile`: spec aplanado, sin target/icono/versión). */
 export const profileSshRaw = { id: '01935f00-0000-7000-8000-0000000000aa', kind: 'ssh', name: 'prod', host: '203.0.113.10', port: 22, user: 'deploy', mode: 'explicit', identity: { type: 'agent' }, remote: true, host_key_fp: probeUnknown.fingerprint_sha256, simulated: false }
 export const profileTlsRaw = { id: '01935f00-0000-7000-8000-0000000000ab', kind: 'tls', name: 'ci', host: '10.0.0.5', port: 2376, ca_path: '/c/ca.pem', cert_path: '/c/cert.pem', key_path: '/c/key.pem', remote: true, host_key_fp: null, simulated: false }
-export const profileSsh: ConnectionProfile = { id: '01935f00-0000-7000-8000-0000000000aa', name: 'prod', target: 'ssh://deploy@203.0.113.10', kind: 'ssh', icon: 'server', remote: true, version: '', simulated: false, host_key_fp: probeUnknown.fingerprint_sha256 }
+export const profileSsh: ConnectionProfile = { id: '01935f00-0000-7000-8000-0000000000aa', name: 'prod', target: 'ssh://deploy@203.0.113.10', kind: 'ssh', icon: 'server', remote: true, version: '', simulated: false, host_key_fp: probeUnknown.fingerprint_sha256, spec: sshSpec }
 export const importReport: GroupsImportResult = { already_imported: false, imported_groups: 1, imported_assignments: 1, dropped_assignments: 0, snapshot: groupsSnapshotEarly() }
 function groupsSnapshotEarly(): GroupsSnapshot { return { groups: [], assignments: [], stack_hues: {}, legacy_imported: true } }
 export const registry: RegistrySummary = { id: '01935f00-0000-7000-8000-0000000000bb', server: 'ghcr.io', username: 'casaluna' }

@@ -50,7 +50,9 @@ export default function ConnNewPage() {
   const [errors, setErrors] = useState<Errors>({})
   const [phase, setPhase] = useState<Phase>('idle')
   const [probe, setProbe] = useState<HostKeyProbe | null>(null)
-  const [result, setResult] = useState<ConnTestResult | null>(preset === 'ok' ? { ok: true, server: { version: '26.1.4', api_version: '1.45', os: 'linux', arch: 'x86_64' } } : preset === 'fail' ? { ok: false, cause: 'auth_failed', error: { code: 'connection', message: 'Permission denied (publickey).', cause: 'auth_failed' } } : null)
+  const editId = route.params.get('id')
+  const editing = !!editId
+  const [result, setResult] = useState<ConnTestResult | null>(editing ? null : preset === 'ok' ? { ok: true, server: { version: '26.1.4', api_version: '1.45', os: 'linux', arch: 'x86_64' } } : preset === 'fail' ? { ok: false, cause: 'auth_failed', error: { code: 'connection', message: 'Permission denied (publickey).', cause: 'auth_failed' } } : null)
   const [okFor, setOkFor] = useState<string | null>(null) // huella JSON del spec probado con éxito
   const [podman, setPodman] = useState<PodmanCandidate[]>([])
   const seq = useRef(0)
@@ -63,6 +65,25 @@ export default function ConnNewPage() {
   const ssh = kind === 'ssh'
   const busy = phase !== 'idle'
 
+  // La lista ya contiene el spec completo y nunca contiene secretos; hidrata el formulario solo al editar.
+  useEffect(() => {
+    if (!editId) return
+    const spec = existing.find((p) => p.id === editId)?.spec
+    if (!spec) return
+    setKind(spec.kind)
+    setName(spec.name)
+    setHost(spec.host)
+    setPort(String(spec.port || (spec.kind === 'tls' ? 2376 : 22)))
+    if (spec.kind === 'ssh') {
+      setUser(spec.user)
+      setMode(spec.mode)
+      setIdent(spec.identity.type)
+      setIdentPath(spec.identity.type === 'file' ? spec.identity.path : '')
+    } else {
+      setCa(spec.ca_path); setCert(spec.cert_path); setKeyPath(spec.key_path)
+    }
+  }, [editId, existing])
+
   const cancelPending = useCallback(() => { seq.current++ }, [])
   useEffect(() => { void api.system.podmanDetect().then(setPodman).catch(() => setPodman([])); return cancelPending }, [api, cancelPending])
 
@@ -72,7 +93,7 @@ export default function ConnNewPage() {
     const p = Number(port)
     if (!name.trim() || name.trim().length > 40) e.name = 'Escribe un nombre (1–40 caracteres).'
     else if (name.trim().toLowerCase() === 'local') e.name = 'El nombre «Local» está reservado.'
-    else if (existing.some((p) => p.name.trim().toLowerCase() === name.trim().toLowerCase())) e.name = 'Ya existe una conexión con ese nombre: elige otro (o elimínala antes desde Configuración).'
+    else if (existing.some((p) => p.id !== editId && p.name.trim().toLowerCase() === name.trim().toLowerCase())) e.name = 'Ya existe una conexión con ese nombre: elige otro (o elimínala antes desde Configuración).'
     if (!HOST_RE.test(host.trim()) || host.trim().startsWith('-')) e.host = ssh && mode === 'alias' ? 'Alias no válido (letras, números, punto, guion).' : 'Host no válido (nombre, IPv4 o [IPv6]).'
     if (!Number.isInteger(p) || p < 1 || p > 65535) e.port = 'Puerto entre 1 y 65535.'
     if (ssh) {
@@ -161,7 +182,7 @@ export default function ConnNewPage() {
     if (!b.spec || okFor !== JSON.stringify(b.spec)) return
     setPhase('saving')
     try {
-      const p = await api.connections.save(b.spec)
+      const p = await api.connections.save(b.spec, editId ?? undefined)
       await store.getState().refreshProfiles()
       toast.ok('Conexión guardada', { sub: safeText(p.name, { singleLine: true }) })
       route.go('settings')
@@ -188,7 +209,7 @@ export default function ConnNewPage() {
 
   return (
     <>
-      <PageHeader title="Nueva conexión" back={{ href: route.href('settings'), label: 'Configuración' }} simulated={cap !== 'live' || browserWorld} />
+      <PageHeader title={editing ? 'Editar conexión' : 'Nueva conexión'} back={{ href: route.href('settings'), label: 'Configuración' }} simulated={cap !== 'live' || browserWorld} />
       <div className="view-body">
         <form className="form" id="connForm" noValidate onSubmit={(e) => void save(e)} onChange={() => { if (okFor || result) dirty() }}>
           <section className="card form-section">

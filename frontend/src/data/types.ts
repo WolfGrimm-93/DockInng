@@ -139,6 +139,8 @@ export interface ConnectionProfile {
   host_key_fp?: string | null
   /** Solo perfiles simulados: si «Conectar» falla a propósito (staging-lab). */
   failsToConnect?: boolean
+  /** Especificación editable, sin secretos: solo rutas de archivos para SSH/TLS. */
+  spec?: ConnSpec
 }
 
 /** Motivo visible del error de conexión (los 3 paneles de la plantilla + 'lost'). */
