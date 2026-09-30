@@ -16,7 +16,7 @@ Ver detalle y contexto en Obsidian: `Proyectos/DockInng/DockInng - Lista de trab
 - [ ] `backend/app/Cargo.toml` no hereda `authors`/`description` del workspace (fuera de alcance).
 
 ## Ola 2: pendientes tras la auditoría (rama `feature/wave2-persistence-remote`)
-- [ ] **No verificado con servidores reales:** SSH/Docker remotos (PATH real, rootless, shells con banner, latencia, cortes de red), ProxyJump/alias complejos con TOFU (falla cerrado), llaves con passphrase sin agente (no soportado), dockerd con TLS real. Solo se probó contra un `sshd` local desechable y un fixture TLS en proceso.
+- [ ] **Parcialmente verificado con servidor real:** SSH/Docker remoto contra el alias LAN `debian-dev` (`10.0.0.17`): PATH no interactivo, banner, latencia, corte del cliente y reconexión pasaron en `live_real_ssh`; siguen pendientes rootless, ProxyJump/alias complejos con TOFU (falla cerrado), llaves con passphrase sin agente (no soportado), cortes largos de red y dockerd con TLS real. El resto solo se probó contra un `sshd` local desechable y un fixture TLS en proceso.
 - [ ] Llavero real (Secret Service/KWallet) sin ejercitar (`live_llavero_real`, opt-in `DOCKINNG_LIVE_KEYRING=1`): puede abrir un diálogo de desbloqueo. Pull con registro autenticado sin probar (falta `registry:2`).
 - [ ] `--context`/`context add|use` de la CLI (solo `context ls|rm`); confirmación en TTY real de la CLI solo probada con un simulador; Ctrl-C real en `logs -f`/`pull`.
 - [ ] Builds: solo builder clásico (no hay `buildx`); el valor de un build-arg secreto queda visible en `docker history` con el builder clásico; el borrado de la caché de build por elemento no está implementado; el parser de progreso es frágil entre versiones (se muestran siempre las líneas crudas).
