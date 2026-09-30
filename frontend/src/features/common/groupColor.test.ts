@@ -9,8 +9,8 @@ describe('assignGroupHues', () => {
   })
 
   it('es estable: no depende del orden de entrada ni de duplicados', () => {
-    const a = assignGroupHues(['filemeshy', 'arya-market', 'arya-signer-project'])
-    const b = assignGroupHues(['arya-signer-project', 'filemeshy', 'filemeshy', 'arya-market'])
+    const a = assignGroupHues(['proyecto-uno', 'proyecto-dos', 'proyecto-tres'])
+    const b = assignGroupHues(['proyecto-tres', 'proyecto-uno', 'proyecto-uno', 'proyecto-dos'])
     expect([...a].sort()).toEqual([...b].sort())
   })
 
