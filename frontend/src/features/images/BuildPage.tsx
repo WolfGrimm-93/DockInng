@@ -58,10 +58,13 @@ export default function BuildPage() {
   const [focusTick, setFocusTick] = useState(0)
   useEffect(() => { if (focusTick > 0) document.querySelector<HTMLElement>('form [aria-invalid="true"]')?.focus() }, [focusTick])
   const running = run?.state === 'running'
+  // El plan también puede estar esperando al motor (y a la confirmación de seguridad).
+  // No permitimos que una navegación durante ese intervalo desmonte la vista sin aviso.
+  const buildActive = planning || running
   const conn = useConnection()
   const remoteName = conn.profile.remote ? safeText(conn.profile.name, { singleLine: true }) : null
   // M-5: salir de la vista cancela la construcción: se avisa antes (navegación por hash y cierre de ventana).
-  useUnsavedGuard(running, { title: 'Hay una construcción en curso', description: 'Si sales ahora, la construcción se cancelará y se perderá su progreso.', okLabel: 'Cancelar y salir', cancelLabel: 'Seguir construyendo', note: 'Puedes quedarte en esta página hasta que termine.' })
+  useUnsavedGuard(buildActive, { title: 'Hay una construcción en curso', description: 'Si sales ahora, la construcción se cancelará y se perderá su progreso.', okLabel: 'Cancelar y salir', cancelLabel: 'Seguir construyendo', note: 'Puedes quedarte en esta página hasta que termine.' })
 
   // Al salir de la vista se cancela la construcción (el canal del backend muere con ella).
   useEffect(() => () => { stop.current?.(); if (timer.current) clearTimeout(timer.current) }, [])

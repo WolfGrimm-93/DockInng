@@ -551,7 +551,11 @@ describe('revisión fase 4: Construir imagen', () => {
     const u = userEvent.setup()
     const api = makeApi()
     let cancelled = 0
-    api.images.build = () => () => { cancelled++ } // una construcción que no termina
+    api.images.build = (_spec, _ticket, on) => {
+      on({ type: 'step', n: 2, total: 6 })
+      on({ type: 'line', text: 'RUN paso-en-curso', stream: 'stdout' })
+      return () => { cancelled++ }
+    } // una construcción que no termina
     renderView(<BuildPage />, { api, hash: '#build' })
     await u.type(await screen.findByLabelText('Directorio de contexto'), '/home/u/app')
     await u.click(screen.getByRole('button', { name: 'Construir' }))
@@ -562,6 +566,7 @@ describe('revisión fase 4: Construir imagen', () => {
     await u.click(within(dlg).getByRole('button', { name: 'Seguir construyendo' }))
     await waitFor(() => expect(window.location.hash).toBe('#build'))
     expect(cancelled).toBe(0)
+    expect(await screen.findByText('RUN paso-en-curso')).toBeInTheDocument()
     act(() => { window.location.hash = '#images' })
     await u.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Cancelar y salir' }))
     await waitFor(() => expect(window.location.hash).toBe('#images'))
