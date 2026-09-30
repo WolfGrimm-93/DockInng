@@ -34,7 +34,7 @@ Rust (stable), Node.js, `pnpm`, Docker, and the Tauri Linux dependencies (WebKit
 
 ## Installation
 
-Packages are built from source; no prebuilt releases yet.
+Packages are built from source; no tagged public release yet. The RPM intended for openSUSE Leap 15.6 must be built from the Debian 12 compatibility environment so its glibc floor remains compatible with Leap.
 
 ```bash
 # Debian / Ubuntu (.deb) and Fedora / openSUSE (.rpm)
@@ -46,6 +46,8 @@ sudo apt install ./backend/target/release/bundle/deb/dockinng_0.1.0_amd64.deb   
 # Arch Linux
 (cd backend/app/packaging/arch && makepkg -si)
 ```
+
+On Arch-derived systems such as CachyOS, a local per-user installation can use the compiled `dockinng-app` binary and desktop entry without installing a system package. The Arch `PKGBUILD` remains blocked until the `v0.1.0` source tag exists.
 
 The `.deb`/`.rpm` contain the desktop app (`dockinng-app`). The `dockinng` CLI is installed by the Arch package; on other distributions build it with `cd backend && cargo install --path crates/dockinng-cli`. Runtime dependencies: WebKitGTK 4.1 and GTK 3; the Debian bundle declares `libappindicator3-1` for the system tray (Arch uses `libayatana-appindicator`). Licenses: [LICENSE](LICENSE) and [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 

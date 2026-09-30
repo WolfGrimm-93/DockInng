@@ -10,9 +10,11 @@ Ver detalle y contexto en Obsidian: `Proyectos/DockInng/DockInng - Lista de trab
 - [x] Reconstruir el `.deb` con `tauri build --bundles deb` y validar su contenido, control, desktop entry e iconos; `dpkg-deb`, `lintian`, `rpm` y `rpmlint` no están instalados aquí.
 - [x] Instalar el `.deb` en una imagen Debian 13 limpia, verificar instalación con `dpkg`, validar el desktop entry y ejecutar `lintian` sin errores.
 - [x] Construir el RPM real con `tauri bundle --bundles rpm` dentro de Fedora 44; instalarlo y desinstalarlo con `dnf` pasó correctamente.
-- [ ] Pasar `rpmlint` sin errores al RPM generado por Tauri: el paquete funciona, pero el bundler no emite etiquetas de changelog/buildhost ni marca los archivos como `%doc`.
+- [ ] Pasar `rpmlint` sin errores al RPM generado por Tauri: verificado en Fedora 44 con `rpmlint 2.8.0`; quedan 9 errores y 2 advertencias por documentación no marcada como `%doc`, `no-documentation`, `no-changelogname-tag`, `no-buildhost-tag` y nombre de archivo no coherente. El paquete instala/desinstala correctamente; documentar o corregir según lo que controle Tauri.
 - [x] Confirmar las dependencias RPM detectadas en Fedora 44 (`webkit2gtk4.1`, `gtk3` y `libappindicator-gtk3`/`libappindicator3.so.1`).
-- [ ] Confirmar las equivalencias de dependencias en openSUSE.
+- [x] Confirmar las equivalencias de dependencias en openSUSE: el RPM original instaló en Leap 15.6 pero falló al arrancar por requerir `GLIBC_2.39`; se recompiló en Debian 12 con glibc 2.36 y el RPM compatible instaló y arrancó en Leap 15.6 durante 25 segundos mediante X11. Tumbleweed también quedó validado. Las advertencias observadas fueron no bloqueantes y los contenedores fueron eliminados.
+- [x] Recompilar el RPM con una base de glibc compatible con Leap 15.6: artefacto verificado en `backend/target-leap/release/bundle/rpm/dockinng-0.1.0-1.x86_64.rpm`; el binario requiere como máximo `GLIBC_2.34`.
+- [x] Compilar e instalar la aplicación para uso local en CachyOS: `/home/wolfgrimm/.local/bin/dockinng-app`, entrada `dev.dockinng.app.desktop` e iconos bajo `~/.local/share/icons`; el proceso abrió una ventana DockInng y no reportó dependencias faltantes.
 - [ ] Build completo del PKGBUILD con red (`pnpm install`, `cargo fetch`), con tag `v0.1.0` publicado y `updpkgsums`; `namcap` no reportó problemas, pero el tag todavía no existe en GitHub y `makepkg --verifysource` devuelve 404.
 - [x] Confirmar que el CLI `dockinng` no se incluye en el deb/rpm y queda reservado para el PKGBUILD.
 - [x] Mantener AppImage descartado: descarga herramientas y el WebKitGTK empaquetado da problemas en Wayland.
@@ -25,7 +27,7 @@ Ver detalle y contexto en Obsidian: `Proyectos/DockInng/DockInng - Lista de trab
 - [x] Llavero real Secret Service verificado el 29 de septiembre de 2026 en una sesión Debian 13 aislada con `dbus-run-session` + `gnome-keyring-daemon --unlock`; la entrada es desechable y se elimina aun si el test falla.
 - [x] Pull autenticado verificado el 29 de septiembre de 2026 contra un `registry:2` local aislado, con credenciales generadas por ejecución, Docker config temporal y limpieza posterior.
 - [x] `--context` global y `context add ssh|tls`, `context use`, `context ls` y `context rm` implementados; las pruebas cubren selección persistida, alias, JSON, no exposición de secretos y denegación sin TTY.
-- [ ] Confirmación en TTY real de la CLI solo probada con simulador; Ctrl-C real en `logs -f`/`pull` sigue pendiente.
+- [ ] **Parcialmente verificado:** confirmación escrita real en TTY pasó con un volumen temporal (`ELIMINAR`) y `Ctrl-C` real en `logs -f` terminó limpiamente con código 0; `Ctrl-C` en `pull` no quedó demostrado porque las imágenes de prueba terminaron antes de poder interrumpirlas. No quedaron recursos de prueba.
 - [ ] Builds: solo builder clásico (no hay `buildx`); el valor de un build-arg secreto queda visible en `docker history` con el builder clásico; el borrado de la caché de build por elemento no está implementado; el parser de progreso es frágil entre versiones (se muestran siempre las líneas crudas).
 - [ ] Conexiones: edición de conexiones guardadas desde la UI, conservando el `id` y usando `connection_save {id}`; verificado con test simulado de renombrado y suite frontend. Pendientes: no hay comando ni UI para **olvidar** una huella cambiada (hoy hay que editar el `known_hosts` propio de DockInng); reconexión automática del túnel tras un corte largo; ControlMaster se mantiene desactivado deliberadamente para no compartir sockets; avisar si una llave TLS tiene permisos abiertos.
 - [ ] Cambiar de conexión espera a que terminen las acciones en vuelo (`RwLock`); un cambio puede tardar lo que dure una acción larga. Alternativa: generación con aborto inmediato (toca `ActionService`).
@@ -65,7 +67,7 @@ Ver detalle y contexto en Obsidian: `Proyectos/DockInng/DockInng - Lista de trab
 - [ ] Riesgo del nombre "DockInng": colisión con otros productos sin verificar.
 
 ## Calidad y verificación
-- [ ] Verificar la app real con `tauri dev` (IPC, permisos sin `core:default`, CSP) y con `tauri build` (hash del script inline de prepaint).
+- [ ] **Parcialmente verificado:** la app real arrancó con `tauri dev` y con el binario extraído del `.deb`; IPC, permisos básicos, WebKitGTK y la UI cargaron. Se añadió y verificó el hash CSP del script inline de prepaint (`sha256-zzqPO6wHiFcSKASDEO2IYB2DgNUWWtnkCT1qnY/v3m8=`) y `tauri build --bundles deb` terminó correctamente. Falta conservar evidencia de navegación remota usando exactamente el binario empaquetado.
 - [ ] Probar en WebKitGTK real: `color-mix`/`oklch`, foco e `inert`, lectores de pantalla.
 - [ ] Test de contrato IPC generado desde Rust (hoy los fixtures TS son manuales y solo `tsc` detecta deriva).
 - [x] Prunes reales de imágenes/volúmenes/redes verificados contra Docker local mediante `live_cleanup` el 28 de septiembre de 2026.
