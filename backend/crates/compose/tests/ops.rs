@@ -1151,3 +1151,37 @@ async fn sin_directorio_de_datos_los_stacks_propios_fallan_claro_y_lo_demas_sigu
         }
     ));
 }
+
+#[tokio::test]
+async fn restart_sin_servicios_con_include_que_escapa_falla_antes_de_compose() {
+    let tmp = Tmp::new();
+    let fake = FakeSpawn::new().with_compose_5();
+    let r = runner_with(&fake, fast_limits(), &tmp);
+    let yaml =
+        "include:\n  - ../../secreto.yaml\nservices:\n  sleeper:\n    image: alpine:latest\n";
+    r.stack_create("web", yaml, "").await.unwrap();
+    let (sink, store) = feeds();
+    r.prepare_op("web", StackOp::Restart { services: None })
+        .await
+        .unwrap()
+        .run(sink, never())
+        .await;
+    let StackOpFeed::Ended {
+        outcome,
+        issues,
+        error,
+        ..
+    } = ended(&store)
+    else {
+        panic!("Ended esperado")
+    };
+    assert_eq!(outcome, StackOutcome::Failed);
+    assert_eq!(issues.first().and_then(|i| i.line), Some(2), "{issues:?}");
+    assert!(error.is_some());
+    // Ni `config` ni `restart` llegan a ejecutarse con el YAML inseguro.
+    assert!(
+        !fake.displays().iter().any(|d| d.contains(" restart")),
+        "{:?}",
+        fake.displays()
+    );
+}
