@@ -278,7 +278,7 @@ export type StackRiskType = 'privileged' | 'host_network' | 'docker_sock' | 'sen
 export interface StackRisk { type: StackRiskType; path?: string }  // remote_bind: `path` = ruta LOCAL ya resuelta que el daemon remoto interpretaría en su propio disco
 export interface StackValidation { ok: boolean; issues: ValidationIssue[]; services: string[]; risks: StackRisk[] }
 export type StackOpKind = 'up' | 'restart' | 'stop' | 'start' | 'pull'
-export interface StackOpRequest { type: StackOpKind; services?: string[] }
+export interface StackOpRequest { type: StackOpKind; services?: string[] | null }
 export type ProgressKind = 'network' | 'container' | 'volume' | 'image' | 'service' | 'other'
 export type ProgressStatus = 'working' | 'done' | 'warning' | 'error'
 export interface ProgressItem {

@@ -37,7 +37,7 @@ const TYPE_NAME_MAP = {
   IssueKind: 'ValidationKind',
   SizeEstimate: 'CleanupEstimate',
   RestartPolicy: 'Restart',
-  StackOp: 'StackOpKind',
+  StackOp: 'StackOpRequest',
 }
 
 const KNOWN_GLOBALS = new Set(['Record', 'Array', 'Promise', 'Partial', 'Omit', 'Pick', 'RawProfile'])

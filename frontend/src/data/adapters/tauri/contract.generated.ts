@@ -1,6 +1,6 @@
 // GENERADO por scripts/contract-gen.mjs desde backend/app/contract/fixtures.json. NO EDITAR A MANO: `pnpm contract:gen`.
 // Literales anotados con los tipos de data/types.ts: si Rust y TypeScript divergen, `tsc -b` falla aquí.
-import type { ActionOutcome, ActionPlan, ActionRequest, AffectedKind, ApiError, ApiErrorCode, AppFeed, BuildFeed, BuildOutcome, BuildPlan, BuildStream, BuildWarning, BusySummary, CleanupCategoryId, CleanupEstimate, CleanupReport, CleanupRisk, ComposeFlavor, ComposeInfo, ConnSpec, ConnTestResult, ConnectionCause, ConnectionStatus, Container, ContainerDetail, ContainerState, CreatePlan, CreateResult, CreateWarning, DenyReason, DiagStepId, EndReason, EngineEventKind, EngineFeed, ExecEndReason, ExecFeed, GpuInfo, GroupOp, GroupsImportResult, GroupsSnapshot, HostKeyProbe, HostKeyState, Image, LayerPhase, LogFeed, LogStream, MountKind, Network, PlanDecision, PlanWarning, PodmanCandidate, PortProtocol, ProgressKind, ProgressStatus, PullFeed, PullOutcome, RegistrySummary, Restart, ServicePhase, SshIdentity, SshMode, StackFiles, StackOpFeed, StackOpKind, StackOrigin, StackOutcome, StackRisk, StackStatus, StackSummary, StackValidation, StatsFeed, StatsSnapshotItem, StepStatus, SystemUsage, TrayStatus, ValidationKind, Volume } from '../../types'
+import type { ActionOutcome, ActionPlan, ActionRequest, AffectedKind, ApiError, ApiErrorCode, AppFeed, BuildFeed, BuildOutcome, BuildPlan, BuildStream, BuildWarning, BusySummary, CleanupCategoryId, CleanupEstimate, CleanupReport, CleanupRisk, ComposeFlavor, ComposeInfo, ConnSpec, ConnTestResult, ConnectionCause, ConnectionStatus, Container, ContainerDetail, ContainerState, CreatePlan, CreateResult, CreateWarning, DenyReason, DiagStepId, EndReason, EngineEventKind, EngineFeed, ExecEndReason, ExecFeed, GpuInfo, GroupOp, GroupsImportResult, GroupsSnapshot, HostKeyProbe, HostKeyState, Image, LayerPhase, LogFeed, LogStream, MountKind, Network, PlanDecision, PlanWarning, PodmanCandidate, PortProtocol, ProgressKind, ProgressStatus, PullFeed, PullOutcome, RegistrySummary, Restart, ServicePhase, SshIdentity, SshMode, StackFiles, StackOpFeed, StackOpRequest, StackOrigin, StackOutcome, StackRisk, StackStatus, StackSummary, StackValidation, StatsFeed, StatsSnapshotItem, StepStatus, SystemUsage, TrayStatus, ValidationKind, Volume } from '../../types'
 import type { RawProfile } from './store'
 
 /** Resultado de cada comando IPC, anotado con su tipo TS (`result_type` de Rust traducido). */
@@ -2197,8 +2197,8 @@ export const TYPE_SshIdentity: SshIdentity[] = [
   }
 ]
 
-/** Una instancia por variante de StackOpKind. */
-export const TYPE_StackOp: StackOpKind[] = [
+/** Una instancia por variante de StackOpRequest. */
+export const TYPE_StackOp: StackOpRequest[] = [
   {
     "services": null,
     "type": "up"
