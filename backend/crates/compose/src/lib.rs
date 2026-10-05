@@ -11,6 +11,7 @@ pub mod proc;
 pub mod progress;
 pub mod risks;
 pub mod runner;
+pub mod sandbox;
 pub mod summary;
 pub mod types;
 pub mod validate;
