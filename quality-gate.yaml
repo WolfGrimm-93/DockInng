@@ -1,0 +1,100 @@
+{
+  "contract_version": 1,
+  "project": "DockInng",
+  "notes": [
+    "JSON is valid YAML and keeps the runner dependency-free.",
+    "Manual checks remain visible and must be completed in Kanban before acceptance."
+  ],
+  "checks": [
+    {
+      "id": "git_scope",
+      "name": "Git branch, scope and worktree",
+      "required": true,
+      "command": "git status --short --branch"
+    },
+    {
+      "id": "git_diff_check",
+      "name": "Git diff check",
+      "required": true,
+      "command": "git diff --check"
+    },
+    {
+      "id": "docker_config",
+      "name": "Docker Compose config",
+      "required": true,
+      "command": "docker compose -f \"docker-compose.yml\" config --quiet"
+    },
+    {
+      "id": "resource_inventory",
+      "name": "Docker resource inventory",
+      "required": false,
+      "command": "docker ps --format \"table {{.Names}}\\t{{.Status}}\\t{{.Ports}}\""
+    },
+    {
+      "id": "backend_fmt",
+      "name": "Backend format",
+      "required": true,
+      "command": "cargo fmt --manifest-path backend/Cargo.toml --all -- --check"
+    },
+    {
+      "id": "backend_check",
+      "name": "Backend check",
+      "required": true,
+      "command": "cargo check --manifest-path backend/Cargo.toml --workspace"
+    },
+    {
+      "id": "backend_tests",
+      "name": "Backend tests",
+      "required": true,
+      "command": "cargo test --manifest-path backend/Cargo.toml --workspace"
+    },
+    {
+      "id": "frontend_lint",
+      "name": "Frontend lint",
+      "required": true,
+      "command": "pnpm --dir frontend run lint"
+    },
+    {
+      "id": "frontend_typecheck",
+      "name": "Frontend typecheck",
+      "required": true,
+      "command": "pnpm --dir frontend run typecheck"
+    },
+    {
+      "id": "frontend_tests",
+      "name": "Frontend tests",
+      "required": true,
+      "command": "pnpm --dir frontend run test"
+    },
+    {
+      "id": "frontend_build",
+      "name": "Frontend build",
+      "required": true,
+      "command": "pnpm --dir frontend run build"
+    },
+    {
+      "id": "contract_check",
+      "name": "Frontend contract check",
+      "required": true,
+      "command": "pnpm --dir frontend run contract:check"
+    },
+    {
+      "id": "security_review",
+      "name": "Security review",
+      "required": false,
+      "command": null
+    },
+    {
+      "id": "documentation_review",
+      "name": "Documentation review",
+      "required": false,
+      "command": null
+    },
+    {
+      "id": "independent_review",
+      "name": "Independent review",
+      "required": false,
+      "command": null
+    }
+  ]
+}
