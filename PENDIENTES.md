@@ -34,8 +34,8 @@ Ver detalle y contexto en Obsidian: `Proyectos/DockInng/DockInng - Lista de trab
 - [x] Salir de la página Construir con un build en curso pide confirmación y cancela el canal al abandonar; verificado en `ola2.ui.test.tsx`. Pendiente separado: el build no persiste entre navegaciones.
 - [ ] Bundle de entrada 305,29 kB (+16 kB sobre la Ola 1) por la recolocación de chunks de Rollup; revisar `experimentalMinChunkSize`.
 - [ ] Optimización: la mejora medida es la CPU en reposo (≈13 % → ≈0,3 % del hilo gráfico) y el binario (−8,4 %); la RAM (RSS/Pss) **no** bajó de forma demostrable. Sin medir: ventana sin foco, `stats` como stream único, features de tokio/bollard/tauri.
-- [ ] Desborde interno a 420 px en las páginas nuevas (la ventana tiene `minWidth` 900, no es alcanzable); Base UI puede dejar pasar el foco con Tab muy rápido (~10 ms) en el diálogo de confirmación tipeada.
-- [ ] Menores: `reserved_arg_name` no cubre `SSL_CERT_FILE`/`TMPDIR`/`GODEBUG`; dos procesos DockInng simultáneos podrían importar el legado dos veces (inocuo por dedupe); en modo `Trusted`, si un servidor rota solo su clave ed25519 la UI puede decir «trusted» aunque `ssh` falle cerrado; `ConnectionStatus.failed.quiesced` existe en TS y Rust nunca lo envía.
+- [x] Desborde interno a 420 px en las páginas nuevas corregido con reflujo responsive de cabeceras, acciones, filtros y tablas (la ventana nativa tiene `minWidth` 900, pero también se cubren vistas embebidas/redimensionadas); Base UI puede dejar pasar el foco con Tab muy rápido (~10 ms) en el diálogo de confirmación tipeada.
+- [ ] Menores: `reserved_arg_name` no cubre `SSL_CERT_FILE`/`TMPDIR`/`GODEBUG`; dos procesos DockInng simultáneos podrían importar el legado dos veces (inocuo por dedupe); en modo `Trusted`, si un servidor rota solo su clave ed25519 la UI puede decir «trusted» aunque `ssh` falle cerrado. El indicador `quiesced` pertenece a `ApiError` de `connection_select` (no a la respuesta `ConnectionStatus`); el backend solo lo envía cuando ya abortó el contexto anterior.
 - [ ] La clave heredada `dockinng.groups.v1.migrated` (localStorage) no se borra hasta la Ola 3.
 
 ## Ola 1: pendientes tras la auditoría (rama `feature/wave1-stacks-terminal-images`)
@@ -69,7 +69,7 @@ Ver detalle y contexto en Obsidian: `Proyectos/DockInng/DockInng - Lista de trab
 ## Calidad y verificación
 - [ ] **Parcialmente verificado:** la app real arrancó con `tauri dev` y con el binario extraído del `.deb`; IPC, permisos básicos, WebKitGTK y la UI cargaron. Se añadió y verificó el hash CSP del script inline de prepaint (`sha256-zzqPO6wHiFcSKASDEO2IYB2DgNUWWtnkCT1qnY/v3m8=`) y `tauri build --bundles deb` terminó correctamente. Falta conservar evidencia de navegación remota usando exactamente el binario empaquetado.
 - [ ] Probar en WebKitGTK real: `color-mix`/`oklch`, foco e `inert`, lectores de pantalla.
-- [ ] Test de contrato IPC generado desde Rust (hoy los fixtures TS son manuales y solo `tsc` detecta deriva).
+- [x] Test de contrato IPC generado desde Rust: `contract_fixtures` serializa los tipos y argumentos reales de Rust, `contract-gen.mjs --check` mantiene el fixture TypeScript y `tsc -b` comprueba la compatibilidad en ambos sentidos.
 - [x] Prunes reales de imágenes/volúmenes/redes verificados contra Docker local mediante `live_cleanup` el 28 de septiembre de 2026.
 - [x] Reconexión con el daemon real verificada en el ciclo live local; la reconexión SSH tras cortes prolongados sigue pendiente.
 - [ ] Heurística TTY de bollard falla si la salida empieza con un byte de control ≤2 (caso raro).
@@ -90,3 +90,15 @@ Ver detalle y contexto en Obsidian: `Proyectos/DockInng/DockInng - Lista de trab
 - [x] Imágenes, volúmenes y redes reales: listar y eliminar.
 - [x] `ConfirmationPolicy` ampliada con tickets, confirmación escrita y aplicación en el backend.
 - [x] Diagnóstico de conexión (socket ausente, permisos, daemon apagado) y reconexión.
+
+## Entrega wave4 (pendiente de validación)
+Detalle, matriz de hallazgos y evidencia en `docs/ENTREGA-WAVE4.md`.
+- [ ] Live tests del backend (`DOCKINNG_LIVE_TESTS=1` y variables asociadas) no ejecutados; los tests ignorados siguen sin correr.
+- [ ] Smoke test con Docker real sobre recursos `dockinng-dev-*` (puertos 54100-54110) no ejecutado.
+- [ ] Tauri/WebKitGTK/AT-SPI y flujos interactivos o diálogos no ejecutados: tag accesible «No conectado aún», cierre con operación en curso, foco con Tab.
+- [ ] Desborde a 420 px verificado solo en containers y stacks; revisar el resto de páginas nuevas.
+- [ ] `engineStore.ts`: se eliminó `resumePrevious` al fallar la conexión; confirmar que ninguna operación previa debía reanudarse.
+- [ ] `runner.rs`: las líneas con `${` se omiten del chequeo de rutas locales; decidir si se rechazan o se resuelven antes.
+- [ ] Reejecutar `pnpm test`, `lint`, `typecheck` y `build` en `wave4` con EXIT registrado; la evidencia de test actual procede de `wave4-contracts`.
+- [ ] Origen del error del wrapper glob citado en el handoff: no aparece en ningún log disponible.
+- [ ] Contrastar el rango 54100-54110 con la nota de Obsidian de nomenclatura y puertos (no localizada en esta sesión).

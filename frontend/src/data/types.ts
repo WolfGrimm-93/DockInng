@@ -123,7 +123,7 @@ export interface DiagStepRaw { id: DiagStepId; status: StepStatus; detail: strin
 /** Respuesta de `connection_status` / `reconnect` (nunca es un error IPC). */
 export type ConnectionStatus =
   | { state: 'connected'; endpoint: string; server: EngineInfo }
-  | { state: 'failed'; endpoint: string; cause: ConnectionCause; message: string; steps: DiagStepRaw[]; quiesced?: boolean }
+  | { state: 'failed'; endpoint: string; cause: ConnectionCause; message: string; steps: DiagStepRaw[] }
 
 /** Perfil de conexión. Ola 2: «Local» y las conexiones guardadas (`connection_list`) son reales; en el navegador (mundo simulado) son de ejemplo (`simulated:true`). */
 export interface ConnectionProfile {

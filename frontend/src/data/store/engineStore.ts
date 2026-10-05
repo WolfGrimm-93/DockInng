@@ -396,7 +396,6 @@ export function createEngineStore(api: EngineApi, opts: EngineStoreOptions = {})
         const status = await api.connections.select(id)
         if (status.state === 'failed' && api.mode === 'tauri' && id !== 'local') {
           toast.err(`No se pudo conectar con ${target.name}`, { sub: connectionFailText(status.cause, status.message) })
-          await resumePrevious(status.quiesced)
           return
         }
         generation++
