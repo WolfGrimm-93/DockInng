@@ -290,7 +290,8 @@ td.cell-name, th.cell-name { width: 100%; max-width: 0; }
 .bar i { display: block; height: 100%; background: var(--chart-1); border-radius: var(--radius-sm); }
 
 /* Vista estrecha (riel de iconos a 900 px o sidebar expandido): datos secundarios pasan bajo el nombre */
-@container vb (max-width: 760px) {
+/* 860 px (no 760): entre 760 y 860 el nombre quedaba con ~80 px y se cortaba a «monitore…». */
+@container vb (max-width: 860px) {
   .col-ports, .col-mem, .col-id, .col-subnet { display: none; }
   .name-cell .sub-extra { display: block; }
 }

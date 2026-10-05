@@ -104,6 +104,8 @@ export interface EngineStoreOptions {
   statsIntervalMs?: number
   /** ms de debounce de eventos (por defecto 150 contenedores / 300 resto). */
   debounce?: { containers?: number; others?: number }
+  /** ms mínimos entre dos listados del mismo tipo (por defecto 400). Acota los refrescos durante una acción masiva. */
+  minRefreshGapMs?: number
   storage?: Pick<Storage, 'getItem' | 'setItem'> | null
   /** ms mínimos entre muestreos con la ventana sin foco (por defecto 8000). */
   slowStatsMs?: number
@@ -188,6 +190,8 @@ export function createEngineStore(api: EngineApi, opts: EngineStoreOptions = {})
   const due = (last: number) => !isIdle() || Date.now() - last >= slowMs
   let pollTimer: ReturnType<typeof setInterval> | null = null
   const timers: Partial<Record<EntityKind, ReturnType<typeof setTimeout>>> = {}
+  const minGap = opts.minRefreshGapMs ?? 400
+  const lastFetchAt: Partial<Record<EntityKind, number>> = {}
   const opHandles = new Map<string, { cancel(): void; dispose(): void }>()
   const pullHandles = new Map<string, Unsubscribe>()
   let generation = 0 // invalida respuestas tardías tras dispose()/cambio de conexión
@@ -202,6 +206,7 @@ export function createEngineStore(api: EngineApi, opts: EngineStoreOptions = {})
 
     const fetchKind = async (kind: EntityKind): Promise<void> => {
       const gen = generation
+      lastFetchAt[kind] = Date.now()
       const cur = get()[kind]
       if (cur.status === 'idle') set({ [kind]: { ...cur, status: 'loading' } } as Partial<EngineStoreState>)
       try {
@@ -221,12 +226,16 @@ export function createEngineStore(api: EngineApi, opts: EngineStoreOptions = {})
     const fetchAll = async () => {
       await Promise.all((['containers', 'images', 'volumes', 'networks', 'stacks'] as const).map(fetchKind))
     }
+    // Un evento que llega con el temporizador ya armado se ignora (una sola pasada pendiente). Además, dos listados del
+    // mismo tipo nunca quedan a menos de `minGap` ms: una acción masiva emite ráfagas largas y, sin este límite, cada
+    // 150 ms dispararía un listado completo de todos los contenedores.
     const schedule = (kind: EntityKind, ms: number) => {
       if (timers[kind]) return
+      const wait = Math.max(ms, (lastFetchAt[kind] ?? 0) + minGap - Date.now())
       timers[kind] = setTimeout(() => {
         timers[kind] = undefined
         void fetchKind(kind)
-      }, ms)
+      }, wait)
     }
 
     const applyFeed = (feed: EngineFeed) => {
