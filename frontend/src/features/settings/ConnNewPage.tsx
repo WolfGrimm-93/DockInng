@@ -66,23 +66,25 @@ export default function ConnNewPage() {
   const busy = phase !== 'idle'
 
   // La lista ya contiene el spec completo y nunca contiene secretos; hidrata el formulario solo al editar.
-  useEffect(() => {
-    if (!editId) return
-    const spec = existing.find((p) => p.id === editId)?.spec
-    if (!spec) return
-    setKind(spec.kind)
-    setName(spec.name)
-    setHost(spec.host)
-    setPort(String(spec.port || (spec.kind === 'tls' ? 2376 : 22)))
-    if (spec.kind === 'ssh') {
-      setUser(spec.user)
-      setMode(spec.mode)
-      setIdent(spec.identity.type)
-      setIdentPath(spec.identity.type === 'file' ? spec.identity.path : '')
+  // Se hace durante el render (patrón de React para ajustar estado ante cambios de props) y una sola vez por id:
+  // así un refresco de la lista no pisa lo que el usuario ya está escribiendo.
+  const [hydratedId, setHydratedId] = useState<string | null>(null)
+  const editSpec = editId ? existing.find((p) => p.id === editId)?.spec : undefined
+  if (editSpec && hydratedId !== editId) {
+    setHydratedId(editId)
+    setKind(editSpec.kind)
+    setName(editSpec.name)
+    setHost(editSpec.host)
+    setPort(String(editSpec.port || (editSpec.kind === 'tls' ? 2376 : 22)))
+    if (editSpec.kind === 'ssh') {
+      setUser(editSpec.user)
+      setMode(editSpec.mode)
+      setIdent(editSpec.identity.type)
+      setIdentPath(editSpec.identity.type === 'file' ? editSpec.identity.path : '')
     } else {
-      setCa(spec.ca_path); setCert(spec.cert_path); setKeyPath(spec.key_path)
+      setCa(editSpec.ca_path); setCert(editSpec.cert_path); setKeyPath(editSpec.key_path)
     }
-  }, [editId, existing])
+  }
 
   const cancelPending = useCallback(() => { seq.current++ }, [])
   useEffect(() => { void api.system.podmanDetect().then(setPodman).catch(() => setPodman([])); return cancelPending }, [api, cancelPending])
