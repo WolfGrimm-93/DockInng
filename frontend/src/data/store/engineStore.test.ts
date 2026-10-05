@@ -11,7 +11,8 @@ const settle = () => new Promise((r) => setTimeout(r, 30))
 beforeEach(() => {
   toast.clear()
   api = createSimApi({ latency: 0, tick: 1 })
-  store = createEngineStore(api, { statsIntervalMs: 0, storage: null, debounce: { containers: 5, others: 5 } })
+  // minRefreshGapMs: 0 → los tests de semántica de eventos no esperan el límite de ritmo (se prueba aparte).
+  store = createEngineStore(api, { statsIntervalMs: 0, storage: null, debounce: { containers: 5, others: 5 }, minRefreshGapMs: 0 })
 })
 afterEach(() => store.getState().dispose())
 
@@ -61,6 +62,23 @@ describe('engineStore', () => {
     api.sim.emit({ type: 'events', resync: false, items: [{ kind: 'container', action: 'start', id: w.id, name: null, time_nano: 0, attributes: {} }] })
     await settle()
     expect(store.getState().containers.byId[w.id].state).toBe('running')
+  })
+  it('ráfagas de eventos: dos listados del mismo tipo nunca quedan a menos de minRefreshGapMs', async () => {
+    store.getState().dispose()
+    store = createEngineStore(api, { statsIntervalMs: 0, storage: null, debounce: { containers: 1, others: 1 }, minRefreshGapMs: 120 })
+    await store.getState().bootstrap()
+    const stamps: number[] = []
+    const orig = api.containers.list.bind(api.containers)
+    api.containers.list = (a) => { stamps.push(Date.now()); return orig(a) }
+    // 8 ráfagas separadas 20 ms: sin límite de ritmo, cada una provocaría un listado.
+    for (let i = 0; i < 8; i++) {
+      api.sim.emit({ type: 'events', resync: false, items: [{ kind: 'container', action: 'start', id: api.sim.world.containers[0].id, name: null, time_nano: 0, attributes: {} }] })
+      await new Promise((r) => setTimeout(r, 20))
+    }
+    await new Promise((r) => setTimeout(r, 300))
+    expect(stamps.length).toBeGreaterThan(0)
+    expect(stamps.length).toBeLessThan(8)
+    for (let i = 1; i < stamps.length; i++) expect(stamps[i] - stamps[i - 1]).toBeGreaterThanOrEqual(110)
   })
   it('conexión perdida: se conservan los datos y se puede recuperar con reconectar', async () => {
     await store.getState().bootstrap()
