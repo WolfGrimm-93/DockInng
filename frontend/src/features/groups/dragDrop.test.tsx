@@ -16,7 +16,8 @@ beforeEach(() => {
 afterEach(() => { resetGlobals(); resetDragStore(); document.body.classList.remove('is-row-dragging') })
 
 const rowOf = (name: string) => screen.getByRole('link', { name }).closest('tr') as HTMLElement
-const grip = (name: string) => screen.getByRole('button', { name: `Arrastrar ${name} a un grupo` })
+// El asa es decorativa (no es un botón accesible): el puntero la localiza por su atributo de datos.
+const grip = (name: string) => document.querySelector<HTMLElement>(`[data-grip="${name}"]`) as HTMLElement
 const move = (x: number, y: number) => fireEvent(window, new MouseEvent('pointermove', { clientX: x, clientY: y, bubbles: true }))
 const up = (x = 100, y = 100) => fireEvent(window, new MouseEvent('pointerup', { clientX: x, clientY: y, bubbles: true }))
 const down = (el: Element, x = 10, y = 10) => fireEvent(el, Object.assign(new MouseEvent('pointerdown', { clientX: x, clientY: y, button: 0, bubbles: true }), { isPrimary: true }))
@@ -33,13 +34,26 @@ async function setup() {
 }
 
 describe('arrastrar filas a un grupo', () => {
-  it('el asa tiene nombre accesible y describedby con la alternativa; no es una parada de tabulación', async () => {
+  it('el asa es decorativa: no aparece como botón que no hace nada al activarse; la alternativa es el menú de la fila', async () => {
     await setup()
-    const g = grip('minio-dev')
-    expect(g).toHaveAttribute('tabindex', '-1')
-    expect(document.getElementById(g.getAttribute('aria-describedby') as string)?.textContent).toMatch(/Mover a un grupo/)
-    // La alternativa por menú sigue en cada fila.
-    expect(screen.getByRole('button', { name: 'Mover minio-dev a un grupo' })).toBeInTheDocument()
+    expect(grip('minio-dev')).toHaveAttribute('aria-hidden', 'true')
+    expect(screen.queryByRole('button', { name: 'Arrastrar minio-dev a un grupo' })).toBeNull()
+    // La alternativa por menú sigue en cada fila y es alcanzable con Tab.
+    const trigger = screen.getByRole('button', { name: 'Mover minio-dev a un grupo' })
+    expect(trigger).not.toHaveAttribute('tabindex', '-1')
+  })
+
+  it('alternativa por teclado: el menú de la fila mueve el contenedor sin puntero (Enter, elegir grupo)', async () => {
+    const u = userEvent.setup()
+    const { gid } = await setup()
+    const trigger = screen.getByRole('button', { name: 'Mover minio-dev a un grupo' })
+    trigger.focus()
+    await u.keyboard('{Enter}')
+    const item = await screen.findByRole('menuitem', { name: 'Favoritos' })
+    item.focus()
+    await u.keyboard('{Enter}')
+    expect(at('minio-dev')).toBe(gid)
+    expect(useDragStore.getState().ids).toHaveLength(0)
   })
 
   it('una fila: umbral de 5 px, bandeja con «Sin grupo» y cada grupo (también los vacíos), soltar sobre un chip mueve', async () => {

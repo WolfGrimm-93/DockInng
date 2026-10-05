@@ -1,6 +1,6 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { setPreviewState } from '@/app/devFlags'
 import type { Container } from '@/data/types'
 import { fullId } from '@/data/adapters/sim/fixtures'
@@ -128,6 +128,26 @@ describe('ContainersPage', () => {
     expect(await within(rowOf('mailpit-pruebas')).findByText(/El puerto 8025 ya lo usa/)).toBeInTheDocument()
     await u.click(within(rowOf('mailpit-pruebas')).getByRole('button', { name: 'Reintentar' }))
     await waitFor(() => expect(within(rowOf('mailpit-pruebas')).getByText('En ejecución')).toBeInTheDocument())
+  })
+
+  it('error de una fila: se anuncia (role=alert) y «Reintentar» repite la operación que falló, no arranca el contenedor', async () => {
+    const u = userEvent.setup()
+    const api = makeApi()
+    const realStop = api.containers.stop
+    let failOnce = true
+    api.containers.stop = async (id) => {
+      if (failOnce) { failOnce = false; throw { code: 'engine', message: 'Docker no respondió' } }
+      return realStop(id)
+    }
+    const start = vi.spyOn(api.containers, 'start')
+    renderView(<ContainersPage />, { api })
+    await loaded()
+    await u.click(screen.getByRole('button', { name: 'Detener tienda-web-1' }))
+    const msg = await within(rowOf('tienda-web-1')).findByText(/Docker no respondió/)
+    expect(msg.closest('[role="alert"]')).not.toBeNull()
+    await u.click(within(rowOf('tienda-web-1')).getByRole('button', { name: 'Reintentar' }))
+    await waitFor(() => expect(within(rowOf('tienda-web-1')).getByText('Detenido')).toBeInTheDocument())
+    expect(start).not.toHaveBeenCalled()
   })
 
   it('detener y reiniciar pasan por el motor y actualizan el estado', async () => {
