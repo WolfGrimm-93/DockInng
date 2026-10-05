@@ -169,8 +169,10 @@ impl Target {
     }
 }
 
-/// Resuelve el endpoint: `DOCKER_HOST` -> `/var/run/docker.sock` -> socket rootless
-/// `$XDG_RUNTIME_DIR/docker.sock`. Función pura (el entorno entra como parámetros).
+/// Resuelve el endpoint: sockets Unix explícitos son válidos; `tcp://` solo se acepta cuando
+/// llega por una conexión TLS explícita (`Target::tls`). Un `DOCKER_HOST=tcp://...` heredado no
+/// puede demostrar cifrado/autenticación y se ignora para evitar una conexión en texto claro.
+/// Después se prueban `/var/run/docker.sock` y el socket rootless.
 pub fn resolve_endpoint(
     docker_host: Option<&str>,
     xdg_runtime_dir: Option<&str>,
@@ -179,9 +181,14 @@ pub fn resolve_endpoint(
     if let Some(h) = docker_host.filter(|h| !h.is_empty()) {
         return match h.strip_prefix("unix://") {
             Some(p) => Endpoint::Unix(p.to_string()),
+            None if h.starts_with("tcp://") => fallback_endpoint(xdg_runtime_dir, exists),
             None => Endpoint::Host(h.to_string()),
         };
     }
+    fallback_endpoint(xdg_runtime_dir, exists)
+}
+
+fn fallback_endpoint(xdg_runtime_dir: Option<&str>, exists: impl Fn(&str) -> bool) -> Endpoint {
     if exists(DEFAULT_SOCKET) {
         return Endpoint::Unix(DEFAULT_SOCKET.into());
     }
@@ -897,7 +904,7 @@ mod tests {
         );
         assert_eq!(
             resolve_endpoint(Some("tcp://h:2375"), None, |_| true),
-            Endpoint::Host("tcp://h:2375".into())
+            Endpoint::Unix(DEFAULT_SOCKET.into())
         );
         assert_eq!(
             resolve_endpoint(None, Some("/run/user/1000"), |p| p == DEFAULT_SOCKET),
