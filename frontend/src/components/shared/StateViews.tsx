@@ -185,7 +185,7 @@ export function ComposeMissing({ onRecheck, compact, detail }: { onRecheck(): vo
 
 export function SimulatedTag() {
   return (
-    <span className="tag" title="Esta sección usa datos de ejemplo: todavía no está conectada al motor.">
+    <span className="tag" role="status" aria-label="Esta sección usa datos de ejemplo: todavía no está conectada al motor." title="Esta sección usa datos de ejemplo: todavía no está conectada al motor.">
       <Icon name="flask" size="sm" />
       No conectado aún
     </span>

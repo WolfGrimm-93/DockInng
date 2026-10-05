@@ -516,6 +516,21 @@ a.crumb { text-decoration: underline; } /* en la plantilla los <a> conservan el 
 @media (max-width: 1000px) { .sidebar { width: 216px; } }
 @media (max-height: 640px) { .view-head { padding-bottom: 8px; } .toolbar { padding-bottom: 8px; } :root { --row-h: 44px !important; --head-h: 30px !important; } /* !important: los tokens de index.css no están en capa y ganarían a @layer components */ }
 
+/* Las vistas también pueden renderizarse en ventanas embebidas o durante un
+   cambio de tamaño por debajo del mínimo nativo. No dejamos que las acciones
+   ni las tablas creen un desborde horizontal de toda la aplicación. */
+@media (max-width: 640px) {
+  .view { padding-left: 4px; padding-right: 4px; }
+  .view-head { align-items: flex-start; gap: 8px; }
+  .view-title { flex: 1 1 100%; width: 100%; margin-right: 0; }
+  .view-actions { width: 100%; flex-wrap: wrap; }
+  .view-actions > * { flex: 1 1 auto; min-width: max-content; }
+  .toolbar { align-items: stretch; }
+  .field-search { flex-basis: 100%; max-width: none; min-width: 0; }
+  .toolbar > .segmented { max-width: 100%; overflow-x: auto; }
+  .table-wrap { max-width: 100%; overflow-x: auto; }
+}
+
 /* prefers-reduced-motion: se elimina el movimiento, NO la actualización de datos en vivo */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
