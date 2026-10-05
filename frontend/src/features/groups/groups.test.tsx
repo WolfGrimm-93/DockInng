@@ -87,6 +87,24 @@ describe('grupos propios en la tabla', () => {
     expect(screen.getByRole('button', { name: /Grupo Reverse proxy/ })).toBeInTheDocument()
   })
 
+  it('«Nuevo grupo…» cancelado: el foco vuelve al disparador del menú de la fila (no se pierde en el body) y no se roba al abrir', async () => {
+    const u = userEvent.setup()
+    renderView(<ContainersPage />)
+    await loaded()
+    const trigger = screen.getByRole('button', { name: 'Mover traefik-proxy a un grupo' })
+    await u.click(trigger)
+    await u.click(await screen.findByRole('menuitem', { name: /Nuevo grupo/ }))
+    const dlg = await screen.findByRole('alertdialog')
+    await waitFor(() => expect(within(dlg).getByLabelText('Nombre')).toHaveFocus())
+    // El menú que se cierra al elegir «Nuevo grupo…» no debe devolver el foco después de abrir el diálogo.
+    await new Promise((r) => setTimeout(r, 50))
+    expect(within(dlg).getByLabelText('Nombre')).toHaveFocus()
+    await u.click(within(dlg).getByRole('button', { name: 'Cancelar' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    await waitFor(() => expect(trigger).toHaveFocus())
+    expect(s().groups).toHaveLength(0)
+  })
+
   it('menú de una fila: mover a un grupo existente y «Quitar de su grupo»', async () => {
     const u = userEvent.setup()
     const id = s().createGroup('Existente')!

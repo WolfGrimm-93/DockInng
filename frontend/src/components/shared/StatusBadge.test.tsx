@@ -52,6 +52,7 @@ describe('PageHeader', () => {
     expect(screen.getByText('7 · 11 GB')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Contenedores' })).toHaveAttribute('href', '#containers')
     expect(screen.getByText('No conectado aún')).toBeInTheDocument()
+    expect(screen.getByRole('status', { name: 'Esta sección usa datos de ejemplo: todavía no está conectada al motor.' })).toBeInTheDocument()
   })
 })
 

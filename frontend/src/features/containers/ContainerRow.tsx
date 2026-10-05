@@ -15,7 +15,6 @@ import { isOn } from '../common/containerUtils'
 import { mainPortsText, portEntries } from '../common/ports'
 import { AssignGroupMenu } from '../groups/AssignGroupMenu'
 import { useDragStore } from '../groups/dragStore'
-import { DRAG_HELP_ID } from '../groups/DragTray'
 
 export interface ContainerRowProps {
   c: Container
@@ -65,9 +64,10 @@ function ContainerRowImpl({ c, selected, locked, href, index, measure, groupHue,
     >
       <td className="col-check">
         <div className="check-cell">
-          <button type="button" className="row-grip" tabIndex={-1} aria-label={`Arrastrar ${name} a un grupo`} aria-describedby={DRAG_HELP_ID} onPointerDown={(e) => onGripPointerDown(e, c)}>
+          {/* Asa solo de puntero y decorativa: no es un botón (activarla con teclado no haría nada). La alternativa por teclado es el menú de la fila. */}
+          <span className="row-grip" aria-hidden="true" data-grip={name} onPointerDown={(e) => onGripPointerDown(e, c)}>
             <Icon name="grip" size="sm" />
-          </button>
+          </span>
           <Checkbox aria-label={`Seleccionar ${name}`} checked={selected} onChange={(e) => onSelect(c.id, e.target.checked)} />
         </div>
       </td>
@@ -82,9 +82,9 @@ function ContainerRowImpl({ c, selected, locked, href, index, measure, groupHue,
         <div className="status-cell">
           <StatusBadge state={c.state} busy={busy} />
           {op.error ? (
-            <small className="row-error">
+            <small className="row-error" role="alert">
               <Icon name="alert" size="sm" /> {safeText(op.error)}{' '}
-              <button type="button" className="link" style={{ color: 'var(--foreground)', textDecoration: 'underline' }} onClick={() => onOp(c, 'start')}>Reintentar</button>
+              <button type="button" className="link" style={{ color: 'var(--foreground)', textDecoration: 'underline' }} onClick={() => onOp(c, op.failedOp ?? 'start')}>Reintentar</button>
             </small>
           ) : (
             <small>{statusTextEs(c.status, c.state)}</small>

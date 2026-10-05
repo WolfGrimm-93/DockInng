@@ -393,6 +393,35 @@ impl Core {
         Ok(())
     }
 
+    /// Sandbox de `include`, `extends.file` y `env_file`: ninguna ruta local (ni en los archivos
+    /// incluidos) puede salir del directorio del proyecto. Ver `crate::sandbox`.
+    fn reject_local_escape(
+        &self,
+        project: &ProjectSpec,
+        stdin: Option<&[u8]>,
+    ) -> Result<(), ComposeError> {
+        let dir = project.project_dir.as_deref();
+        let escape = match (stdin, &project.files) {
+            (Some(b), _) => crate::sandbox::find_local_escape(&String::from_utf8_lossy(b), dir),
+            (None, ConfigFiles::Paths(paths)) => paths
+                .iter()
+                .find_map(|p| crate::sandbox::find_local_escape_in_file(p, dir)),
+            _ => None,
+        };
+        let Some(e) = escape else { return Ok(()) };
+        let message = if e.in_included {
+            "referencia local de un archivo incluido fuera del directorio del proyecto no permitida"
+        } else {
+            "referencia local fuera del directorio del proyecto no permitida"
+        };
+        Err(ComposeError::Invalid(vec![ValidationIssue {
+            line: Some(e.line),
+            column: None,
+            kind: engine_core::IssueKind::Schema,
+            message: message.into(),
+        }]))
+    }
+
     pub(crate) async fn config(
         &self,
         flavor: ComposeFlavor,
@@ -402,6 +431,7 @@ impl Core {
         secrets: &[String],
     ) -> Result<ConfigInfo, ComposeError> {
         self.reject_remote_includes(project, stdin.as_deref())?;
+        self.reject_local_escape(project, stdin.as_deref())?;
         let spec = args::build(flavor, project, &ComposeCmd::ConfigJson, ProgressMode::None);
         let c = self
             .capture(&spec, cwd, stdin, self.limits.read_timeout)
@@ -542,6 +572,19 @@ impl PreparedOp {
             stack: self.stack.clone(),
             compose_version: self.info.version.clone().unwrap_or_default(),
         });
+
+        // 0) Pre-escaneo común a todas las operaciones: `restart`, `stop`, `pull`… también cargan
+        // el modelo de Compose (con sus `include`/`env_file`), aunque no se ejecute `config`.
+        if let Err(e) = core
+            .reject_remote_includes(&self.project, None)
+            .and_then(|()| core.reject_local_escape(&self.project, None))
+        {
+            let issues = match &e {
+                ComposeError::Invalid(i) => i.clone(),
+                _ => vec![],
+            };
+            return ended(StackOutcome::Failed, None, Some(ApiError::from(&e)), issues);
+        }
 
         // 1) `config`: falla rápido con líneas y da los servicios (y valida los pedidos).
         let track = matches!(self.kind, OpKind::Lifecycle(StackOpKind::Up));
@@ -918,6 +961,33 @@ mod tests_remote {
         assert!(!r.is_remote());
         flag.store(true, std::sync::atomic::Ordering::Relaxed);
         assert!(r.is_remote());
+    }
+
+    #[test]
+    fn rutas_locales_que_escapan_se_rechazan_antes_de_compose() {
+        let dir =
+            std::env::temp_dir().join(format!("dockinng-runner-sandbox-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let root = std::fs::canonicalize(&dir).unwrap();
+        let project = ProjectSpec {
+            name: "p".into(),
+            project_dir: Some(root),
+            files: ConfigFiles::Stdin,
+            env_file: None,
+        };
+        let core = &runner().core;
+        let err = core
+            .reject_local_escape(&project, Some(b"include:\n  - ../x.yaml\n"))
+            .unwrap_err();
+        assert!(
+            matches!(&err, ComposeError::Invalid(v) if v[0].line == Some(2)),
+            "{err:?}"
+        );
+        assert!(
+            core.reject_local_escape(&project, Some(b"include:\n  - ./x.yaml\n"))
+                .is_ok()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

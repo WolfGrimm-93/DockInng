@@ -3,7 +3,7 @@
 //! servidor está SIEMPRE activa (no existe opción «inseguro»).
 
 use std::fs;
-use std::os::unix::fs::symlink;
+use std::os::unix::fs::{MetadataExt, symlink};
 use std::path::{Path, PathBuf};
 
 use engine_core::{ConnSpec, ConnectionCause, EngineError};
@@ -22,13 +22,36 @@ pub struct TlsTarget {
     pub key: PathBuf,
 }
 
-fn check_file(path: &Path, what: &str) -> Result<(), EngineError> {
+fn check_file(path: &Path, what: &str, private: bool) -> Result<(), EngineError> {
+    let link = fs::symlink_metadata(path).map_err(|e| {
+        EngineError::InvalidInput(format!("{what}: no se puede leer {} ({e})", path.display()))
+    })?;
+    if link.file_type().is_symlink() {
+        return Err(EngineError::InvalidInput(format!(
+            "{what}: no se permiten enlaces simbólicos ({})",
+            path.display()
+        )));
+    }
     let meta = fs::metadata(path).map_err(|e| {
         EngineError::InvalidInput(format!("{what}: no se puede leer {} ({e})", path.display()))
     })?;
     if !meta.is_file() {
         return Err(EngineError::InvalidInput(format!(
             "{what}: {} no es un archivo",
+            path.display()
+        )));
+    }
+    let euid = unsafe { libc::geteuid() };
+    if meta.uid() != euid && meta.uid() != 0 {
+        return Err(EngineError::InvalidInput(format!(
+            "{what}: {} pertenece a otro usuario",
+            path.display()
+        )));
+    }
+    let forbidden = if private { 0o077 } else { 0o022 };
+    if meta.mode() & forbidden != 0 {
+        return Err(EngineError::InvalidInput(format!(
+            "{what}: permisos demasiado abiertos en {}",
             path.display()
         )));
     }
@@ -59,9 +82,9 @@ impl TlsTarget {
             cert: PathBuf::from(cert_path),
             key: PathBuf::from(key_path),
         };
-        check_file(&t.ca, "CA")?;
-        check_file(&t.cert, "certificado de cliente")?;
-        check_file(&t.key, "llave de cliente")?;
+        check_file(&t.ca, "CA", false)?;
+        check_file(&t.cert, "certificado de cliente", false)?;
+        check_file(&t.key, "llave de cliente", true)?;
         Ok(t)
     }
 
@@ -155,6 +178,7 @@ pub fn tls_failure(detail: &str) -> Failure {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::PermissionsExt;
 
     fn tmp() -> PathBuf {
         let d = PathBuf::from("/tmp").join(format!(
@@ -185,6 +209,7 @@ mod tests {
         }
         assert!(TlsTarget::from_spec(&spec(&d)).is_err());
         fs::write(d.join("key.pem"), "x").unwrap();
+        fs::set_permissions(d.join("key.pem"), fs::Permissions::from_mode(0o600)).unwrap();
         let t = TlsTarget::from_spec(&spec(&d)).unwrap();
         assert_eq!(t.addr(), "tcp://127.0.0.1:2376");
         assert_eq!(t.label(), "tls://127.0.0.1:2376");
@@ -193,11 +218,11 @@ mod tests {
 
     #[test]
     fn cert_dir_usa_enlaces_privados_y_se_borra() {
-        use std::os::unix::fs::MetadataExt;
         let d = tmp();
         for f in ["ca.pem", "cert.pem", "key.pem"] {
             fs::write(d.join(f), "x").unwrap();
         }
+        fs::set_permissions(d.join("key.pem"), fs::Permissions::from_mode(0o600)).unwrap();
         let t = TlsTarget::from_spec(&spec(&d)).unwrap();
         let cd = CertDir::create(&d.join("certs"), &t).unwrap();
         let p = cd.path().to_path_buf();
@@ -211,6 +236,23 @@ mod tests {
         }
         drop(cd);
         assert!(!p.exists());
+        fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn rechaza_llave_abierta_y_enlaces() {
+        let d = tmp();
+        for f in ["ca.pem", "cert.pem", "key.pem"] {
+            fs::write(d.join(f), "x").unwrap();
+        }
+        fs::set_permissions(d.join("key.pem"), fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(TlsTarget::from_spec(&spec(&d)).is_err());
+        fs::set_permissions(d.join("key.pem"), fs::Permissions::from_mode(0o600)).unwrap();
+        let real = d.join("real-ca.pem");
+        fs::write(&real, "x").unwrap();
+        fs::remove_file(d.join("ca.pem")).unwrap();
+        symlink(&real, d.join("ca.pem")).unwrap();
+        assert!(TlsTarget::from_spec(&spec(&d)).is_err());
         fs::remove_dir_all(&d).unwrap();
     }
 
