@@ -30,7 +30,8 @@ export interface Entity<T> {
   error?: ApiError
   updatedAt?: number
 }
-export interface RowOp { busy?: ContainerBusy; error?: string; tried?: boolean }
+/** `failedOp`: la operación que falló, para que «Reintentar» repita esa misma (no un arranque). */
+export interface RowOp { busy?: ContainerBusy; error?: string; tried?: boolean; failedOp?: 'start' | 'stop' | 'restart' }
 export type EntityKind = 'containers' | 'images' | 'volumes' | 'networks' | 'stacks'
 /** Máximo de líneas de la salida de docker compose que se conservan por operación. */
 export const STACK_LOG_LIMIT = 300
@@ -527,7 +528,7 @@ export function createEngineStore(api: EngineApi, opts: EngineStoreOptions = {})
           return true
         } catch (e) {
           const a = toApiError(e)
-          set({ rowOps: { ...get().rowOps, [id]: { error: a.message, tried: true } } })
+          set({ rowOps: { ...get().rowOps, [id]: { error: a.message, tried: true, failedOp: op } } })
           toast.err(`No se pudo ${op === 'start' ? 'iniciar' : op === 'stop' ? 'detener' : 'reiniciar'} ${name}`, { sub: a.message })
           return false
         }

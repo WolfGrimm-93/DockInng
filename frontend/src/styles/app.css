@@ -277,9 +277,10 @@ td.cell-name, th.cell-name { width: 100%; max-width: 0; }
 .name-cell small { color: var(--muted-foreground); font-size: var(--text-xs); }
 .name-cell small.mono { font-family: var(--font-mono); }
 .name-cell .sub-extra { display: none; }
-.status-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1.2; }
+/* El mensaje de error de Docker puede ser largo: la celda de estado tiene ancho máximo y el texto se parte en vez de ensanchar la tabla. */
+.status-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1.2; max-width: 240px; min-width: 0; }
 .status-cell small { color: var(--muted-foreground); font-size: var(--text-xs); }
-.row-error { color: var(--status-dead); }
+.row-error { color: var(--status-dead); overflow-wrap: anywhere; }
 .row-actions { display: inline-flex; gap: 4px; align-items: center; }
 .row-actions .btn { color: var(--muted-foreground); }
 .row-actions .btn:hover { color: var(--foreground); }

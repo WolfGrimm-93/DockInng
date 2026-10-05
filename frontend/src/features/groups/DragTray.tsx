@@ -8,16 +8,12 @@ import { useDragStore } from './dragStore'
 import { useGroupsStore } from './groupsStore'
 import { hueStyle } from './hueStyle'
 
-export const DRAG_HELP_ID = 'row-grip-help'
-
 export function DragTray() {
   const count = useDragStore((s) => s.ids.length)
   const message = useDragStore((s) => s.message)
   const groups = useGroupsStore((s) => s.groups)
   return (
     <>
-      {/* Texto al que apuntan las asas (aria-describedby): la alternativa sin arrastre. */}
-      <p id={DRAG_HELP_ID} className="sr-only">Arrastra a un grupo, o usa el botón Mover a un grupo.</p>
       <div role="status" aria-live="polite" className="sr-only">{message}</div>
       {count > 0 ? createPortal(
         <>
