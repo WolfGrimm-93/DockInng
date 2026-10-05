@@ -90,3 +90,15 @@ Ver detalle y contexto en Obsidian: `Proyectos/DockInng/DockInng - Lista de trab
 - [x] Imágenes, volúmenes y redes reales: listar y eliminar.
 - [x] `ConfirmationPolicy` ampliada con tickets, confirmación escrita y aplicación en el backend.
 - [x] Diagnóstico de conexión (socket ausente, permisos, daemon apagado) y reconexión.
+
+## Entrega wave4 (pendiente de validación)
+Detalle, matriz de hallazgos y evidencia en `docs/ENTREGA-WAVE4.md`.
+- [ ] Live tests del backend (`DOCKINNG_LIVE_TESTS=1` y variables asociadas) no ejecutados; los tests ignorados siguen sin correr.
+- [ ] Smoke test con Docker real sobre recursos `dockinng-dev-*` (puertos 54100-54110) no ejecutado.
+- [ ] Tauri/WebKitGTK/AT-SPI y flujos interactivos o diálogos no ejecutados: tag accesible «No conectado aún», cierre con operación en curso, foco con Tab.
+- [ ] Desborde a 420 px verificado solo en containers y stacks; revisar el resto de páginas nuevas.
+- [ ] `engineStore.ts`: se eliminó `resumePrevious` al fallar la conexión; confirmar que ninguna operación previa debía reanudarse.
+- [ ] `runner.rs`: las líneas con `${` se omiten del chequeo de rutas locales; decidir si se rechazan o se resuelven antes.
+- [ ] Reejecutar `pnpm test`, `lint`, `typecheck` y `build` en `wave4` con EXIT registrado; la evidencia de test actual procede de `wave4-contracts`.
+- [ ] Origen del error del wrapper glob citado en el handoff: no aparece en ningún log disponible.
+- [ ] Contrastar el rango 54100-54110 con la nota de Obsidian de nomenclatura y puertos (no localizada en esta sesión).
