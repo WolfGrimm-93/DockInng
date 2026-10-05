@@ -389,6 +389,15 @@ impl Core {
                             .into(),
                 }]));
             }
+            if let Some(line) = reject_local_path_escape(t, project.project_dir.as_deref()) {
+                return Err(ComposeError::Invalid(vec![ValidationIssue {
+                    line: Some(line),
+                    column: None,
+                    kind: engine_core::IssueKind::Schema,
+                    message: "referencia local fuera del directorio del proyecto no permitida"
+                        .into(),
+                }]));
+            }
         }
         Ok(())
     }
@@ -437,6 +446,80 @@ impl Core {
             name: name.to_string(),
         })
     }
+}
+
+/// Compose `include`, `extends.file` and `env_file` can make `config` read files that are not
+/// the selected project. Reject those escapes before invoking Compose.
+fn reject_local_path_escape(text: &str, project_dir: Option<&Path>) -> Option<u32> {
+    let cwd = project_dir?;
+    let mut watched_indent = None;
+    for (idx, raw) in text.lines().enumerate() {
+        let trimmed = raw.trim();
+        let indent = raw.len() - raw.trim_start().len();
+        let key = trimmed
+            .split_once(':')
+            .map(|(k, _)| k.trim().trim_matches(['"', '\'']))
+            .unwrap_or_default();
+        if let Some(base) = watched_indent
+            && indent <= base
+            && !trimmed.starts_with('-')
+        {
+            watched_indent = None;
+        }
+        let watched_key = matches!(key, "include" | "env_file" | "file")
+            || trimmed.starts_with("include:")
+            || trimmed.starts_with("env_file:")
+            || trimmed.starts_with("extends:");
+        if watched_key {
+            watched_indent = Some(indent);
+        }
+        let watched = watched_key || watched_indent.is_some();
+        if !watched || trimmed.contains("${") {
+            continue;
+        }
+        let value = if key == "extends" {
+            trimmed
+                .split_once("file:")
+                .map(|(_, value)| value)
+                .or_else(|| trimmed.split_once(':').map(|(_, value)| value))
+                .unwrap_or_default()
+        } else {
+            trimmed
+                .split_once(':')
+                .map(|(_, value)| value)
+                .or_else(|| trimmed.strip_prefix('-'))
+                .unwrap_or_default()
+        };
+        for token in value
+            .trim()
+            .trim_matches(['[', ']', '"', '\''])
+            .split(',')
+            .flat_map(|s| s.split_whitespace())
+        {
+            let token = token.trim_matches(['"', '\'', '-']);
+            if token.is_empty() || token.starts_with("http:") || token.starts_with("https:") {
+                continue;
+            }
+            let candidate = Path::new(token);
+            let resolved = if candidate.is_absolute() {
+                candidate.to_path_buf()
+            } else {
+                cwd.join(candidate)
+            };
+            let inside = std::fs::canonicalize(&resolved)
+                .map(|p| p.starts_with(cwd))
+                .unwrap_or_else(|_| {
+                    !candidate.is_absolute()
+                        && !resolved
+                            .components()
+                            .any(|c| matches!(c, std::path::Component::ParentDir))
+                });
+            if !inside {
+                return u32::try_from(idx + 1).ok();
+            }
+        }
+    }
+    None
 }
 
 /// SIGTERM, espera `grace` y SIGKILL; no vuelve hasta que el proceso terminó (sin huérfanos).
@@ -918,6 +1001,30 @@ mod tests_remote {
         assert!(!r.is_remote());
         flag.store(true, std::sync::atomic::Ordering::Relaxed);
         assert!(r.is_remote());
+    }
+
+    #[test]
+    fn rutas_compose_locales_no_escapan_del_proyecto() {
+        let root = PathBuf::from("/tmp/proyecto");
+        assert_eq!(
+            reject_local_path_escape("include:\n  - ../secreto.yaml\n", Some(&root)),
+            Some(2)
+        );
+        assert_eq!(
+            reject_local_path_escape(
+                "services:\n  web:\n    env_file:\n      - ../secreto.env\n",
+                Some(&root)
+            ),
+            Some(4)
+        );
+        assert_eq!(
+            reject_local_path_escape("include:\n  - ./local.yaml\n", Some(&root)),
+            None
+        );
+        assert_eq!(
+            reject_local_path_escape("include:\n  - /etc/passwd\n", Some(&root)),
+            Some(2)
+        );
     }
 
     #[test]

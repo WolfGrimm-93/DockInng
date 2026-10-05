@@ -1,6 +1,6 @@
 // GENERADO por scripts/contract-gen.mjs desde backend/app/contract/fixtures.json. NO EDITAR A MANO: `pnpm contract:gen`.
 // Literales anotados con los tipos de data/types.ts: si Rust y TypeScript divergen, `tsc -b` falla aquí.
-import type { ActionOutcome, ActionPlan, ActionRequest, ApiError, ApiErrorCode, AppFeed, BuildFeed, BuildOutcome, BuildPlan, BuildWarning, BusySummary, CleanupCategoryId, CleanupReport, CleanupRisk, ComposeInfo, ConnSpec, ConnTestResult, ConnectionCause, ConnectionStatus, Container, ContainerDetail, ContainerState, CreatePlan, CreateResult, CreateWarning, DiagStepId, EndReason, EngineEventKind, EngineFeed, ExecEndReason, ExecFeed, GpuInfo, GroupOp, GroupsImportResult, GroupsSnapshot, HostKeyProbe, HostKeyState, Image, LayerPhase, LogFeed, LogStream, Network, PlanDecision, PlanWarning, PodmanCandidate, ProgressKind, PullFeed, RegistrySummary, ServicePhase, SshIdentity, StackFiles, StackOpFeed, StackOrigin, StackOutcome, StackRisk, StackStatus, StackSummary, StackValidation, StatsFeed, StatsSnapshotItem, StepStatus, SystemUsage, TrayStatus, Volume } from '../../types'
+import type { ActionOutcome, ActionPlan, ActionRequest, AffectedKind, ApiError, ApiErrorCode, AppFeed, BuildFeed, BuildOutcome, BuildPlan, BuildStream, BuildWarning, BusySummary, CleanupCategoryId, CleanupEstimate, CleanupReport, CleanupRisk, ComposeFlavor, ComposeInfo, ConnSpec, ConnTestResult, ConnectionCause, ConnectionStatus, Container, ContainerDetail, ContainerState, CreatePlan, CreateResult, CreateWarning, DenyReason, DiagStepId, EndReason, EngineEventKind, EngineFeed, ExecEndReason, ExecFeed, GpuInfo, GroupOp, GroupsImportResult, GroupsSnapshot, HostKeyProbe, HostKeyState, Image, LayerPhase, LogFeed, LogStream, MountKind, Network, PlanDecision, PlanWarning, PodmanCandidate, PortProtocol, ProgressKind, ProgressStatus, PullFeed, PullOutcome, RegistrySummary, Restart, ServicePhase, SshIdentity, SshMode, StackFiles, StackOpFeed, StackOpKind, StackOrigin, StackOutcome, StackRisk, StackStatus, StackSummary, StackValidation, StatsFeed, StatsSnapshotItem, StepStatus, SystemUsage, TrayStatus, ValidationKind, Volume } from '../../types'
 import type { RawProfile } from './store'
 
 /** Resultado de cada comando IPC, anotado con su tipo TS (`result_type` de Rust traducido). */
@@ -1878,11 +1878,17 @@ export const ENUM_ApiErrorCode: Record<ApiErrorCode, true> = { "connection": tru
 /** Variantes de BuildOutcome en Rust (exhaustivo en ambos sentidos). */
 export const ENUM_BuildOutcome: Record<BuildOutcome, true> = { "ok": true, "failed": true, "canceled": true }
 
+/** Variantes de BuildStream en Rust (exhaustivo en ambos sentidos). */
+export const ENUM_BuildStream: Record<BuildStream, true> = { "stdout": true, "stderr": true }
+
 /** Variantes de CleanupCategoryId en Rust (exhaustivo en ambos sentidos). */
 export const ENUM_CleanupCategoryId: Record<CleanupCategoryId, true> = { "stopped_containers": true, "dangling_images": true, "unused_images": true, "unused_volumes": true, "unused_networks": true, "build_cache": true }
 
 /** Variantes de CleanupRisk en Rust (exhaustivo en ambos sentidos). */
 export const ENUM_CleanupRisk: Record<CleanupRisk, true> = { "low": true, "medium": true, "high": true }
+
+/** Variantes de ComposeFlavor en Rust (exhaustivo en ambos sentidos). */
+export const ENUM_ComposeFlavor: Record<ComposeFlavor, true> = { "plugin": true, "standalone": true, "missing": true }
 
 /** Variantes de ConnectionCause en Rust (exhaustivo en ambos sentidos). */
 export const ENUM_ConnectionCause: Record<ConnectionCause, true> = { "socket_missing": true, "permission_denied": true, "daemon_down": true, "other": true, "host_key_unknown": true, "host_key_changed": true, "auth_failed": true, "unreachable": true, "remote_docker_missing": true, "tls_invalid": true }
@@ -1905,17 +1911,47 @@ export const ENUM_ExecEndReason: Record<ExecEndReason, true> = { "process_exited
 /** Variantes de HostKeyState en Rust (exhaustivo en ambos sentidos). */
 export const ENUM_HostKeyState: Record<HostKeyState, true> = { "unknown": true, "trusted": true, "changed": true }
 
+/** Variantes de ValidationKind en Rust (exhaustivo en ambos sentidos). */
+export const ENUM_IssueKind: Record<ValidationKind, true> = { "syntax": true, "schema": true, "interpolation": true, "other": true }
+
+/** Variantes de AffectedKind en Rust (exhaustivo en ambos sentidos). */
+export const ENUM_ItemKind: Record<AffectedKind, true> = { "container": true, "image": true, "volume": true, "network": true, "stack": true }
+
 /** Variantes de LayerPhase en Rust (exhaustivo en ambos sentidos). */
 export const ENUM_LayerPhase: Record<LayerPhase, true> = { "waiting": true, "downloading": true, "downloaded": true, "extracting": true, "complete": true }
 
 /** Variantes de LogStream en Rust (exhaustivo en ambos sentidos). */
 export const ENUM_LogStream: Record<LogStream, true> = { "stdout": true, "stderr": true, "console": true }
 
+/** Variantes de MountKind en Rust (exhaustivo en ambos sentidos). */
+export const ENUM_MountKind: Record<MountKind, true> = { "volume": true, "bind": true, "tmpfs": true, "other": true }
+
+/** Variantes de DenyReason en Rust (exhaustivo en ambos sentidos). */
+export const ENUM_PlanDenyReason: Record<DenyReason, true> = { "forbidden": true, "needs_confirmation_non_interactive": true }
+
+/** Variantes de PortProtocol en Rust (exhaustivo en ambos sentidos). */
+export const ENUM_PortProtocol: Record<PortProtocol, true> = { "tcp": true, "udp": true }
+
 /** Variantes de ProgressKind en Rust (exhaustivo en ambos sentidos). */
 export const ENUM_ProgressKind: Record<ProgressKind, true> = { "network": true, "container": true, "volume": true, "image": true, "service": true, "other": true }
 
+/** Variantes de ProgressStatus en Rust (exhaustivo en ambos sentidos). */
+export const ENUM_ProgressStatus: Record<ProgressStatus, true> = { "working": true, "done": true, "warning": true, "error": true }
+
+/** Variantes de PullOutcome en Rust (exhaustivo en ambos sentidos). */
+export const ENUM_PullOutcome: Record<PullOutcome, true> = { "done": true, "error": true }
+
+/** Variantes de Restart en Rust (exhaustivo en ambos sentidos). */
+export const ENUM_RestartPolicy: Record<Restart, true> = { "no": true, "always": true, "unless-stopped": true, "on-failure": true }
+
 /** Variantes de ServicePhase en Rust (exhaustivo en ambos sentidos). */
 export const ENUM_ServicePhase: Record<ServicePhase, true> = { "waiting": true, "pulling": true, "creating": true, "started": true }
+
+/** Variantes de CleanupEstimate en Rust (exhaustivo en ambos sentidos). */
+export const ENUM_SizeEstimate: Record<CleanupEstimate, true> = { "exact": true, "upper_bound": true, "unknown": true }
+
+/** Variantes de SshMode en Rust (exhaustivo en ambos sentidos). */
+export const ENUM_SshMode: Record<SshMode, true> = { "explicit": true, "alias": true }
 
 /** Variantes de StackOrigin en Rust (exhaustivo en ambos sentidos). */
 export const ENUM_StackOrigin: Record<StackOrigin, true> = { "managed": true, "linked": true, "discovered": true }
@@ -2161,6 +2197,35 @@ export const TYPE_SshIdentity: SshIdentity[] = [
   }
 ]
 
+/** Una instancia por variante de StackOpKind. */
+export const TYPE_StackOp: StackOpKind[] = [
+  {
+    "services": null,
+    "type": "up"
+  },
+  {
+    "services": [
+      "web"
+    ],
+    "type": "restart"
+  },
+  {
+    "services": null,
+    "type": "stop"
+  },
+  {
+    "services": null,
+    "type": "start"
+  },
+  {
+    "services": [
+      "web",
+      "db"
+    ],
+    "type": "pull"
+  }
+]
+
 /** Una instancia por variante de StackRisk. */
 export const TYPE_StackRisk: StackRisk[] = [
   {
@@ -2187,5 +2252,3 @@ export const TYPE_StackRisk: StackRisk[] = [
     "type": "remote_bind"
   }
 ]
-
-// Sin tipo TS equivalente en types.ts (no se anotan): BuildStream, ComposeFlavor, IssueKind, ItemKind, MountKind, PlanDenyReason, PortProtocol, ProgressStatus, PullOutcome, RestartPolicy, SizeEstimate, SshMode, StackOp

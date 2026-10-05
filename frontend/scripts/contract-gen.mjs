@@ -30,8 +30,15 @@ const RESULT_TYPE_MAP = {
   ConnectionProfile: '{ import: RawProfile }',
   LegacyImportReport: 'GroupsImportResult', // `groups_import_legacy` devuelve el informe de importación (nombre TS distinto)
 }
-/** Tipos de fixtures (types/enums) cuyo nombre TS es otro. */
-const TYPE_NAME_MAP = {}
+/** Tipos de fixtures (types/enums) cuyo nombre TS es otro (alias ya existentes en types.ts). */
+const TYPE_NAME_MAP = {
+  ItemKind: 'AffectedKind',
+  PlanDenyReason: 'DenyReason',
+  IssueKind: 'ValidationKind',
+  SizeEstimate: 'CleanupEstimate',
+  RestartPolicy: 'Restart',
+  StackOp: 'StackOpKind',
+}
 
 const KNOWN_GLOBALS = new Set(['Record', 'Array', 'Promise', 'Partial', 'Omit', 'Pick', 'RawProfile'])
 const lit = (v, pad = '') => JSON.stringify(v, null, 2).replace(/\n/g, `\n${pad}`)
@@ -111,7 +118,8 @@ export function generate(fixturesPath = FIXTURES) {
     need(t)
     body.push('', `/** Una instancia por variante de ${t}. */`, `export const TYPE_${ident(name)}: ${t}[] = ${lit(variants)}`)
   }
-  if (unmapped.length) body.push('', `// Sin tipo TS equivalente en types.ts (no se anotan): ${unmapped.join(', ')}`)
+  // Sin tipo TS equivalente NO se omite en silencio: el fixture de Rust tiene un enum/tipo que la UI no declara (deriva).
+  if (unmapped.length) throw new Error(`Enums/tipos del fixture de Rust sin tipo en src/data/types.ts: ${unmapped.join(', ')}. Declara el alias en types.ts o mapéalo en TYPE_NAME_MAP (scripts/contract-gen.mjs).`)
 
   const head = [
     '// GENERADO por scripts/contract-gen.mjs desde backend/app/contract/fixtures.json. NO EDITAR A MANO: `pnpm contract:gen`.',

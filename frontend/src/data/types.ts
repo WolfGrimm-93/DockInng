@@ -11,7 +11,8 @@ export type UiStatus = 'running' | 'paused' | 'restarting' | 'exited' | 'dead' |
 export type ContainerBusy = 'start' | 'stop' | 'restart' | 'remove'
 
 export interface PortMapping { ip: string | null; private_port: number; public_port: number | null; protocol: string }
-export interface MountInfo { kind: 'volume' | 'bind' | 'tmpfs' | 'other'; name: string | null; source: string; destination: string; read_write: boolean }
+export type MountKind = 'volume' | 'bind' | 'tmpfs' | 'other'
+export interface MountInfo { kind: MountKind; name: string | null; source: string; destination: string; read_write: boolean }
 
 export interface Container {
   id: string // id completo (64 hex)
@@ -123,7 +124,7 @@ export interface DiagStepRaw { id: DiagStepId; status: StepStatus; detail: strin
 /** Respuesta de `connection_status` / `reconnect` (nunca es un error IPC). */
 export type ConnectionStatus =
   | { state: 'connected'; endpoint: string; server: EngineInfo }
-  | { state: 'failed'; endpoint: string; cause: ConnectionCause; message: string; steps: DiagStepRaw[]; quiesced?: boolean }
+  | { state: 'failed'; endpoint: string; cause: ConnectionCause; message: string; steps: DiagStepRaw[] }
 
 /** Perfil de conexión. Ola 2: «Local» y las conexiones guardadas (`connection_list`) son reales; en el navegador (mundo simulado) son de ejemplo (`simulated:true`). */
 export interface ConnectionProfile {
@@ -249,7 +250,8 @@ export interface Unsubscribe { (): void }
 
 // ---------------------------------------------------------------- Compose / Stacks (contrato backend Ola 1, snake_case)
 /** `compose_info`. `flavor: 'standalone'` con `supported:false` = Compose v1 (no se usa). */
-export interface ComposeInfo { available: boolean; flavor: 'plugin' | 'standalone' | 'missing'; version: string | null; supported: boolean; docker_cli: boolean }
+export type ComposeFlavor = 'plugin' | 'standalone' | 'missing'
+export interface ComposeInfo { available: boolean; flavor: ComposeFlavor; version: string | null; supported: boolean; docker_cli: boolean }
 /** managed = creado en la app (~/.local/share/dockinng/stacks/<n>) · linked = archivo compose externo vinculado · discovered = solo por etiquetas. */
 export type StackOrigin = 'managed' | 'linked' | 'discovered'
 export type StackStatus = 'running' | 'partial' | 'stopped' | 'declared'
@@ -278,8 +280,9 @@ export interface StackValidation { ok: boolean; issues: ValidationIssue[]; servi
 export type StackOpKind = 'up' | 'restart' | 'stop' | 'start' | 'pull'
 export interface StackOpRequest { type: StackOpKind; services?: string[] }
 export type ProgressKind = 'network' | 'container' | 'volume' | 'image' | 'service' | 'other'
+export type ProgressStatus = 'working' | 'done' | 'warning' | 'error'
 export interface ProgressItem {
-  id: string; kind: ProgressKind; name: string; status: 'working' | 'done' | 'warning' | 'error'; text: string
+  id: string; kind: ProgressKind; name: string; status: ProgressStatus; text: string
   details: string | null; current: number | null; total: number | null; percent: number | null; parent_id: string | null
 }
 export type ServicePhase = 'waiting' | 'pulling' | 'creating' | 'started'
@@ -327,10 +330,11 @@ export interface ExecSession {
 // ---------------------------------------------------------------- Pull
 export type LayerPhase = 'waiting' | 'downloading' | 'downloaded' | 'extracting' | 'complete'
 export interface PullLayer { id: string; phase: LayerPhase; total: number; done: number }
+export type PullOutcome = 'done' | 'error'
 export type PullFeed =
   | { type: 'started'; reference: string }
   | { type: 'progress'; layers: PullLayer[]; done_bytes: number; total_bytes: number }
-  | { type: 'ended'; outcome: 'done' | 'error'; up_to_date: boolean; digest: string | null; error: ApiError | null }
+  | { type: 'ended'; outcome: PullOutcome; up_to_date: boolean; digest: string | null; error: ApiError | null }
 /** Estado de una descarga en el store (por referencia; sobrevive a la navegación). */
 export interface PullOp {
   reference: string
@@ -345,7 +349,8 @@ export interface PullOp {
 
 // ---------------------------------------------------------------- Crear contenedor / volumen / red
 export type Restart = 'no' | 'always' | 'unless-stopped' | 'on-failure'
-export interface CreatePort { host_ip: string | null; host_port: number | null; container_port: number; protocol: 'tcp' | 'udp' }
+export type PortProtocol = 'tcp' | 'udp'
+export interface CreatePort { host_ip: string | null; host_port: number | null; container_port: number; protocol: PortProtocol }
 export interface CreateVolumeMount { source: string; target: string; read_only: boolean }
 export interface CreateContainerSpec {
   image: string
@@ -385,7 +390,8 @@ export interface CreateNetworkSpec { name: string; internal: boolean; subnet: st
 // ---------------------------------------------------------------- Conexiones remotas (Ola 2). Espejo de engine-core/src/connections.rs (serde snake_case).
 export type SshIdentity = { type: 'agent' } | { type: 'file'; path: string }
 /** SSH: solo RUTAS de llave (nunca su contenido). `mode:'alias'` = `host` es un alias de ~/.ssh/config. */
-export interface SshConnSpec { kind: 'ssh'; name: string; host: string; port: number; user: string; mode: 'explicit' | 'alias'; identity: SshIdentity }
+export type SshMode = 'explicit' | 'alias'
+export interface SshConnSpec { kind: 'ssh'; name: string; host: string; port: number; user: string; mode: SshMode; identity: SshIdentity }
 /** TLS mutuo: 3 rutas a PEM. No existe opción «insecure». */
 export interface TlsConnSpec { kind: 'tls'; name: string; host: string; port: number; ca_path: string; cert_path: string; key_path: string }
 export type ConnSpec = SshConnSpec | TlsConnSpec
@@ -455,9 +461,10 @@ export type BuildWarning =
   | { type: string; [k: string]: unknown }
 export interface BuildPlan { warnings: BuildWarning[]; decision: PlanDecision; ticket: string | null; expires_in_secs?: number }
 export type BuildOutcome = 'ok' | 'failed' | 'canceled'
+export type BuildStream = 'stdout' | 'stderr'
 export type BuildFeed =
-  | { type: 'line'; text: string; stream?: 'stdout' | 'stderr' }
-  | { type: 'lines'; lines: { text: string; stream?: 'stdout' | 'stderr' }[] }
+  | { type: 'line'; text: string; stream?: BuildStream }
+  | { type: 'lines'; lines: { text: string; stream?: BuildStream }[] }
   | { type: 'step'; n: number; total: number }
   | { type: 'ended'; outcome: BuildOutcome; image_id: string | null; error: ApiError | null }
 /** Estado de la construcción en la página. */
