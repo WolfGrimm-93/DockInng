@@ -27,14 +27,14 @@ export function InspectTab({ name, detail, error }: { name: string; detail: Cont
         <span className="muted">
           JSON del modelo tipado del motor de <b>{safeText(name, { singleLine: true })}</b>. Puede diferir de la salida de <code>docker inspect</code>.
         </span>
-        <Button variant="secondary" size="sm" style={{ marginLeft: 'auto' }} disabled={!detail} onClick={() => void copy()}><Icon name="copy" size="sm" />Copiar JSON</Button>
+        <Button variant="secondary" size="sm" className="ml-auto" disabled={!detail} onClick={() => void copy()}><Icon name="copy" size="sm" />Copiar JSON</Button>
       </div>
       {detail ? (
         <div className="json" tabIndex={0} role="region" aria-label={`JSON de inspección de ${safeText(name, { singleLine: true })}`}>
           {tokens.map((t, i) => (t.kind === 'p' ? t.text : <span key={i} className={t.kind}>{safeText(t.text)}</span>))}
         </div>
       ) : (
-        <div className="json" aria-busy="true" role="status" aria-label="Cargando inspección"><Skeleton style={{ width: 240 }} /></div>
+        <div className="json" aria-busy="true" role="status" aria-label="Cargando inspección"><Skeleton className="w-60" /></div>
       )}
     </>
   )

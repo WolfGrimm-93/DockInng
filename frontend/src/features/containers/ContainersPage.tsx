@@ -281,7 +281,7 @@ export default function ContainersPage() {
         }
       />
       {bulkBusy ? (
-        <span className="muted" role="status" aria-live="polite" style={{ alignSelf: 'center' }}>
+        <span className="muted self-center" role="status" aria-live="polite">
           <Icon name="loader" size="sm" spin /> {bulkBusy.op === 'start' ? 'Iniciando' : 'Deteniendo'} {bulkBusy.total} contenedores…
         </span>
       ) : null}
@@ -333,8 +333,8 @@ export default function ContainersPage() {
   }
 
   const spacer = (h: number, k: string) => (
-    <tr key={k} aria-hidden="true" style={{ background: 'transparent', pointerEvents: 'none' }}>
-      <td colSpan={COLS + 1} style={{ height: h, padding: 0, border: 0 }} />
+    <tr key={k} aria-hidden="true" className="pointer-events-none bg-transparent">
+      <td colSpan={COLS + 1} className="border-0 p-0" style={{ height: h }} />
     </tr>
   )
 
@@ -352,7 +352,7 @@ export default function ContainersPage() {
               <tr aria-rowindex={1}>
                 <th className="col-check">
                   <div className="check-cell">
-                    <span className="row-grip" aria-hidden="true" style={{ visibility: 'hidden' }} />
+                    <span className="row-grip invisible" aria-hidden="true" />
                     <Checkbox
                       id="selAll"
                       aria-label="Seleccionar todos"
@@ -379,8 +379,8 @@ export default function ContainersPage() {
             <tbody>
               {!filtered.length ? (
                 <tr>
-                  <td colSpan={COLS + 1} style={{ height: 'auto' }}>
-                    <div className="state" style={{ padding: '36px 24px' }}>
+                  <td colSpan={COLS + 1} className="h-auto">
+                    <div className="state px-6 py-9">
                       <span className="state-ico"><Icon name="search" size="lg" /></span>
                       <h2>Ningún contenedor coincide</h2>
                       <p>Prueba con otro nombre o quita el filtro de estado.</p>
@@ -404,7 +404,7 @@ export default function ContainersPage() {
                                 <Icon name="chev-down" size="sm" className="chev" />
                                 <span className="grp-dot" aria-hidden="true" />
                                 {it.kind === 'custom' ? <Icon name="folder" size="sm" /> : null}
-                                {it.kind === 'custom' ? 'Grupo' : 'Stack'} {safeText(it.label)}{it.running > 0 ? <span className="live-dot" aria-hidden="true" /> : null} <span className="muted" style={{ fontWeight: 400 }}>· {it.count}{it.running ? ` · ${it.running} en ejecución` : ''}</span>
+                                {it.kind === 'custom' ? 'Grupo' : 'Stack'} {safeText(it.label)}{it.running > 0 ? <span className="live-dot" aria-hidden="true" /> : null} <span className="muted font-normal">· {it.count}{it.running ? ` · ${it.running} en ejecución` : ''}</span>
                               </button>
                               {it.nets.length > 0 ? (
                                 <button
