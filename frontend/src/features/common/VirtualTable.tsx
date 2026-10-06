@@ -18,8 +18,8 @@ export function VirtualTable<T>({ caption, cols, head, rows, rowKey, renderRow, 
   const rowH = useMemo(() => readRowHeight(), [])
   const virt = useVirtualTable({ count: rows.length, scrollRef, tableRef, estimate: () => rowH })
   const spacer = (h: number, k: string) => (
-    <tr key={k} aria-hidden="true" style={{ background: 'transparent', pointerEvents: 'none' }}>
-      <td colSpan={cols} style={{ height: h, padding: 0, border: 0 }} />
+    <tr key={k} aria-hidden="true" className="bg-transparent pointer-events-none">
+      <td colSpan={cols} className="p-0 border-0" style={{ height: h }} />
     </tr>
   )
   return (
@@ -29,7 +29,7 @@ export function VirtualTable<T>({ caption, cols, head, rows, rowKey, renderRow, 
         <thead>{head}</thead>
         <tbody>
           {!rows.length ? (
-            <tr><td colSpan={cols} style={{ height: 'auto' }}>{empty}</td></tr>
+            <tr><td colSpan={cols} className="h-auto">{empty}</td></tr>
           ) : (
             <>
               {virt.padTop > 0 ? spacer(virt.padTop, 'top') : null}

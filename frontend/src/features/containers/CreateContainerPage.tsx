@@ -274,9 +274,9 @@ export default function CreateContainerPage() {
                     <Select id={`pP${i}`} value={p.protocol} onChange={(e) => upd(setPorts, p.id, { protocol: e.target.value as 'tcp' | 'udp' })}><option value="tcp">tcp</option><option value="udp">udp</option></Select>
                   </div>
                   <Button type="button" variant="ghost" size="icon" aria-label={`Quitar puerto ${i + 1}`} onClick={() => rm(setPorts, p.id)}><Icon name="x" /></Button>
-                  {fe(`ports.${p.id}.host`) ? <span className="f-error" id={`ePH${i}`} style={{ gridColumn: '1/-1' }}><Icon name="alert" size="sm" />{fe(`ports.${p.id}.host`)}</span> : null}
-                  {fe(`ports.${p.id}.container`) ? <span className="f-error" id={`ePC${i}`} style={{ gridColumn: '1/-1' }}><Icon name="alert" size="sm" />{fe(`ports.${p.id}.container`)}</span> : null}
-                  {p.hostIp === 'all' && p.host.trim() ? <span className="f-hint" style={{ gridColumn: '1/-1' }}>Publicado en todas las interfaces: accesible desde tu red.</span> : null}
+                  {fe(`ports.${p.id}.host`) ? <span className="f-error col-[1/-1]" id={`ePH${i}`} ><Icon name="alert" size="sm" />{fe(`ports.${p.id}.host`)}</span> : null}
+                  {fe(`ports.${p.id}.container`) ? <span className="f-error col-[1/-1]" id={`ePC${i}`} ><Icon name="alert" size="sm" />{fe(`ports.${p.id}.container`)}</span> : null}
+                  {p.hostIp === 'all' && p.host.trim() ? <span className="f-hint col-[1/-1]" >Publicado en todas las interfaces: accesible desde tu red.</span> : null}
                 </div>
               ))}
               <div><Button type="button" variant="secondary" size="sm" onClick={() => setPorts((p) => [...p, { id: uuidv7(), hostIp: 'local', host: '', container: '', protocol: 'tcp' }])}><Icon name="plus" size="sm" />Añadir puerto</Button></div>
@@ -304,7 +304,7 @@ export default function CreateContainerPage() {
                   <div><label className="sr-only" htmlFor={`eK${i}`}>Variable {i + 1}</label><Input className="mono" id={`eK${i}`} value={v.key} placeholder="CLAVE" aria-invalid={!!fe(`env.${v.id}.key`)} aria-describedby={fe(`env.${v.id}.key`) ? `eEK${i}` : undefined} onBlur={() => touch(`env.${v.id}.key`)} onChange={(e) => upd(setEnv, v.id, { key: e.target.value })} /></div>
                   <div><label className="sr-only" htmlFor={`eV${i}`}>Valor {i + 1}</label><Input className="mono" id={`eV${i}`} value={v.value} placeholder="valor" onChange={(e) => upd(setEnv, v.id, { value: e.target.value })} /></div>
                   <Button type="button" variant="ghost" size="icon" aria-label={`Quitar variable ${i + 1}`} onClick={() => rm(setEnv, v.id)}><Icon name="x" /></Button>
-                  {fe(`env.${v.id}.key`) ? <span className="f-error" id={`eEK${i}`} style={{ gridColumn: '1/-1' }}><Icon name="alert" size="sm" />{fe(`env.${v.id}.key`)}</span> : null}
+                  {fe(`env.${v.id}.key`) ? <span className="f-error col-[1/-1]" id={`eEK${i}`} ><Icon name="alert" size="sm" />{fe(`env.${v.id}.key`)}</span> : null}
                 </div>
               ))}
               <div><Button type="button" variant="secondary" size="sm" onClick={() => setEnv((p) => [...p, { id: uuidv7(), key: '', value: '' }])}><Icon name="plus" size="sm" />Añadir variable</Button></div>
@@ -325,7 +325,7 @@ export default function CreateContainerPage() {
                 </div>
                 <div className="f-row">
                   <span className="f-label" id="lRestart">Política de reinicio</span>
-                  <Segmented<Restart> labelledBy="lRestart" style={{ justifySelf: 'start' }} value={restart} onChange={setRestart} options={RESTARTS.map((r) => ({ value: r, label: r }))} />
+                  <Segmented<Restart> labelledBy="lRestart" className="justify-self-start" value={restart} onChange={setRestart} options={RESTARTS.map((r) => ({ value: r, label: r }))} />
                 </div>
               </div>
             </div>
@@ -336,7 +336,7 @@ export default function CreateContainerPage() {
             <div className="form-body">
               <div className="f-row">
                 <label htmlFor="fGroup">Grupo propio <span className="muted">(opcional)</span></label>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <div className="flex flex-wrap gap-2">
                   <Select id="fGroup" value={groupId} onChange={(e) => setGroupId(e.target.value)} aria-describedby="hGroup">
                     <option value="">Sin grupo (por defecto: su stack o suelto)</option>
                     {groups.map((g) => <option key={g.id} value={g.id}>{safeText(g.name, { singleLine: true })}</option>)}
@@ -350,9 +350,9 @@ export default function CreateContainerPage() {
 
           {phase === 'pulling' && pullRef ? (
             <section className="card" aria-label="Descargando imagen" ref={pullCard}>
-              <header style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+              <header className="flex items-center gap-3 px-4 py-3 border-b border-border">
                 <b>Descargando imagen</b><span className="mono muted">{safeText(pullRef, { singleLine: true })}</span>
-                <Button type="button" variant="secondary" size="sm" style={{ marginLeft: 'auto' }} onClick={() => store.getState().cancelPull(pullRef)}><Icon name="x" size="sm" />Cancelar</Button>
+                <Button type="button" variant="secondary" size="sm" className="ml-auto" onClick={() => store.getState().cancelPull(pullRef)}><Icon name="x" size="sm" />Cancelar</Button>
               </header>
               <div role="status" aria-live="polite" className="sr-only">Descargando {pullRef}</div>
               {pullOp?.layers.length ? <LayerProgress layers={pullOp.layers} pulling /> : <div className="layer"><span className="muted">Conectando con el registro…</span></div>}

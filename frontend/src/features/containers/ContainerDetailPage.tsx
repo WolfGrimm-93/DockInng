@@ -106,9 +106,9 @@ function Detail({ c, initialTab }: { c: Container; initialTab: Tab }) {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-      <header className="view-head" style={{ paddingBottom: 6 }}>
-        <div style={{ width: '100%' }}>
+    <div className="flex flex-col flex-1 min-h-0">
+      <header className="view-head pb-1.5" >
+        <div className="w-full">
           <a className="crumb" href={route.href('containers')}><Icon name="back" size="sm" />Contenedores</a>
         </div>
         <div className="detail-title">
@@ -123,7 +123,7 @@ function Detail({ c, initialTab }: { c: Container; initialTab: Tab }) {
             <Button variant="primary" locked={locked || !!busy} onClick={() => void store.getState().runContainerOp(c.id, 'start')}><Icon name="play" fill />Iniciar</Button>
           )}
           <Button variant="secondary" disabled={!on || !!busy || locked} onClick={() => void store.getState().runContainerOp(c.id, 'restart')}><Icon name="rotate" />Reiniciar</Button>
-          <span className="sep" aria-hidden="true" style={{ margin: '4px 10px' }} />
+          <span className="sep my-1 mx-2.5" aria-hidden="true"  />
           <Button variant="outline-destructive" locked={locked || !!busy} onClick={() => void remove()}><Icon name="trash" />Eliminar…</Button>
         </div>
       </header>
@@ -149,7 +149,7 @@ function Detail({ c, initialTab }: { c: Container; initialTab: Tab }) {
         </span>
         <span>{statusTextEs(c.status, c.state)}</span>
       </div>
-      <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+      <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="flex flex-col flex-1 min-h-0">
         <TabsList aria-label="Secciones del contenedor">
           {TABS.map((t) => (
             <TabsTab key={t.id} value={t.id}><Icon name={t.icon} />{t.label}</TabsTab>

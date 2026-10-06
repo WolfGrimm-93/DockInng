@@ -21,7 +21,7 @@ export function describeCleanup(plan: ActionPlan): PlanDescription {
         <p>Se eliminarán, uno a uno, <b>{resume}</b>{total ? ` (hasta ${total}; puede ser menos si comparten capas)` : ''}. Antes de borrar cada uno se vuelve a comprobar que siga sin usarse.</p>
         {skipped?.items.length ? <div className="dlg-warn" role="note"><span>Se omiten {skipped.items.length} elemento(s) que ya no existen o pasaron a estar en uso: {skipped.items.slice(0, 5).map((n) => safeText(n, { singleLine: true })).join(', ')}{skipped.items.length > 5 ? '…' : ''}.</span></div> : null}
         {parts.filter(([, l]) => l.length).map(([label, l]) => (
-          <div key={label}><p style={{ marginTop: 8 }}>{label[0].toUpperCase() + label.slice(1)}:</p><DialogList label={`Lista de ${label} a eliminar`} items={listOf(l, label === 'volúmenes' ? 'database' : undefined)} /></div>
+          <div key={label}><p className="mt-2">{label[0].toUpperCase() + label.slice(1)}:</p><DialogList label={`Lista de ${label} a eliminar`} items={listOf(l, label === 'volúmenes' ? 'database' : undefined)} /></div>
         ))}
       </>
     ),

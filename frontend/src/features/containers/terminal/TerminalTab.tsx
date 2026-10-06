@@ -104,7 +104,7 @@ export function TerminalTab({ c, name }: { c: Container; name: string }) {
 
   return (
     <div className="term-tab">
-      <div className="toolbar term-bar" style={{ padding: 0 }}>
+      <div className="toolbar term-bar p-0" >
         <span className="term-status" role="status" aria-live="polite">
           <Icon name={sess.kind === 'connecting' ? 'loader' : sess.kind === 'open' ? 'check' : sess.kind === 'error' ? 'alert' : 'info'} size="sm" spin={sess.kind === 'connecting'} />
           {' '}{safeText(status, { singleLine: true })}

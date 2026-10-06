@@ -215,9 +215,9 @@ function Editor({ name, broken, run, startFile }: { name: string; broken: boolea
         {val.risks.some((r) => r.type !== 'remote_bind') ? (
           <AlertBox kind="warn" icon="warn" title="Este stack tiene configuración de riesgo" text={`El archivo ${val.risks.filter((r) => r.type !== 'remote_bind').map((r) => (r.type === 'sensitive_bind' && r.path ? `monta ${safeText(r.path, { singleLine: true })}` : RISK_TEXT[r.type])).join('; ')}. Revísalo antes de levantarlo.`} />
         ) : null}
-        <div className="toolbar" style={{ paddingBottom: 0 }}>
+        <div className="toolbar pb-0" >
           <Segmented<FileId> ariaLabel="Archivo" value={file} onChange={setFile} options={[{ value: 'yaml', label: <>compose.yaml{dot(dirty.yaml)}</> }, { value: 'env', label: <>.env{dot(dirty.env)}</> }]} />
-          <span className="muted mono" style={{ overflowWrap: 'anywhere' }}>{files ? safeText(file === 'yaml' ? files.path : files.env_path, { singleLine: true }) : ''}</span>
+          <span className="muted mono [overflow-wrap:anywhere]" >{files ? safeText(file === 'yaml' ? files.path : files.env_path, { singleLine: true }) : ''}</span>
         </div>
         <div className="editor">
           <div className="code-wrap is-cm">
@@ -227,10 +227,10 @@ function Editor({ name, broken, run, startFile }: { name: string; broken: boolea
                 ariaLabel={`Contenido de ${FILE_LABEL[file]}`} handleRef={editor} onSave={() => { if (anyDirty) void save() }}
                 onChange={(v) => setText((t) => ({ ...t, [file]: v }))}
               />
-            ) : <div className="editor-loading" role="status" aria-busy="true"><span className="skeleton" style={{ width: '60%', height: 12 }} /><span className="skeleton" style={{ width: '80%', height: 12 }} /><span className="skeleton" style={{ width: '45%', height: 12 }} /></div>}
+            ) : <div className="editor-loading" role="status" aria-busy="true"><span className="skeleton w-[60%] h-3"  /><span className="skeleton w-[80%] h-3"  /><span className="skeleton w-[45%] h-3"  /></div>}
           </div>
           <section className="card" aria-label="Validación">
-            <h2 className="section-title" style={{ padding: '12px 14px 0' }}>Validación en vivo</h2>
+            <h2 className="section-title pt-3 px-3.5" >Validación en vivo</h2>
             <div className="val-summary" role="status" aria-live="polite">
               {val.status === 'validating' ? <><Icon name="loader" size="sm" spin /> Validando con Docker Compose…</> : val.summary}
               {val.status === 'unavailable' && loaded ? <span className="muted"> · Validación completa no disponible{val.unavailableReason ? `: ${safeText(val.unavailableReason, { singleLine: true })}` : ''}. Se usan las comprobaciones básicas.</span> : null}
@@ -250,7 +250,7 @@ function Editor({ name, broken, run, startFile }: { name: string; broken: boolea
         </div>
         {op ? (
           <section className="card" id="upcard" aria-label="Progreso de la operación del stack">
-            <header style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+            <header className="flex items-center gap-3 px-4 py-3 border-b border-border">
               <b>docker compose {op.kind}</b>
             </header>
             <StackOpPanel op={op} locked={gate.locked} onCancel={() => store.getState().cancelStackOp(name)} onRetry={() => void up()} onDismiss={() => store.getState().dismissStackOp(name)} />

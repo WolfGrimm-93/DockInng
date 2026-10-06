@@ -28,11 +28,11 @@ export function FormDialog({ open, onClose, title, description, icon = 'plus', s
         <form noValidate aria-busy={busy || undefined} onSubmit={(e: FormEvent) => { e.preventDefault(); if (!busy) onSubmit() }}>
           <div className="dlg-body">
             <span className="dlg-ico"><Icon name={icon} size="lg" /></span>
-            <div style={{ minWidth: 0, flex: 1 }}>
+            <div className="min-w-0 flex-1">
               <AlertDialogTitle>{title}</AlertDialogTitle>
               <AlertDialogDescription render={<div />}>{description}</AlertDialogDescription>
               <fieldset disabled={busy} className="dlg-fields">{children}</fieldset>
-              {formError ? <div className="alert alert-error" role="alert" style={{ marginTop: 12 }}><Icon name="alert" /><div><p>{formError}</p></div></div> : null}
+              {formError ? <div className="alert alert-error mt-3" role="alert" ><Icon name="alert" /><div><p>{formError}</p></div></div> : null}
             </div>
           </div>
           <div className="dlg-foot">

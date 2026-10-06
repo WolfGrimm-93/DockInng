@@ -220,7 +220,7 @@ export default function ConnNewPage() {
             <div className="form-body">
               <div className="f-row">
                 <span className="f-label" id="lType">Tipo</span>
-                <Segmented<Kind> labelledBy="lType" style={{ justifySelf: 'start' }} value={kind} onChange={pickKind} options={[{ value: 'ssh', label: 'SSH' }, { value: 'tls', label: 'TLS (tcp://)' }]} />
+                <Segmented<Kind> labelledBy="lType" className="justify-self-start" value={kind} onChange={pickKind} options={[{ value: 'ssh', label: 'SSH' }, { value: 'tls', label: 'TLS (tcp://)' }]} />
               </div>
               <div className="f-cols">
                 <div className="f-row"><label htmlFor="cName">Nombre</label><Input ref={nameInput} id="cName" value={name} placeholder="prod-hetzner" maxLength={40} {...inv('name', 'eName')} onChange={(e) => setName(e.target.value)} />{field('name', 'eName')}</div>
@@ -236,12 +236,12 @@ export default function ConnNewPage() {
                 <>
                   <div className="f-row">
                     <span className="f-label" id="lMode">Cómo se resuelve el host</span>
-                    <Segmented<Mode> labelledBy="lMode" style={{ justifySelf: 'start' }} value={mode} onChange={(m) => { setMode(m); dirty() }} options={[{ value: 'explicit', label: 'Host y usuario' }, { value: 'alias', label: 'Alias de ~/.ssh/config' }]} />
+                    <Segmented<Mode> labelledBy="lMode" className="justify-self-start" value={mode} onChange={(m) => { setMode(m); dirty() }} options={[{ value: 'explicit', label: 'Host y usuario' }, { value: 'alias', label: 'Alias de ~/.ssh/config' }]} />
                     <span className="f-hint">Con alias, el propio ssh lee tu configuración; DockInng igualmente exige verificar la huella y usa su propio archivo de hosts conocidos.</span>
                   </div>
                   <div className="f-row">
                     <span className="f-label" id="lIdent">Identidad</span>
-                    <Segmented<Ident> labelledBy="lIdent" style={{ justifySelf: 'start' }} value={ident} onChange={(i) => { setIdent(i); dirty() }} options={[{ value: 'agent', label: 'ssh-agent' }, { value: 'file', label: 'Archivo de llave' }]} />
+                    <Segmented<Ident> labelledBy="lIdent" className="justify-self-start" value={ident} onChange={(i) => { setIdent(i); dirty() }} options={[{ value: 'agent', label: 'ssh-agent' }, { value: 'file', label: 'Archivo de llave' }]} />
                   </div>
                   {ident === 'file' ? (
                     <div className="f-row">
@@ -279,14 +279,14 @@ export default function ConnNewPage() {
 
           {podman.length ? (
             <AlertBox kind="info" icon="info" title="Se detectó Podman en este equipo"
-              text={<>{podman.map((c) => <span key={c.path} style={{ display: 'block' }}><code>{safeText(c.path, { singleLine: true })}</code> ({c.rootless ? 'rootless' : 'root'})</span>)}Por ahora es solo detección: conectar con Podman todavía no está disponible.</>} />
+              text={<>{podman.map((c) => <span key={c.path} className="block"><code>{safeText(c.path, { singleLine: true })}</code> ({c.rootless ? 'rootless' : 'root'})</span>)}Por ahora es solo detección: conectar con Podman todavía no está disponible.</>} />
           ) : null}
 
           <div className="form-actions">
             <Button ref={verifyBtn} type="button" variant="secondary" locked={busy} onClick={() => { if (!busy) void verify() }}><Icon name={testing ? 'loader' : 'zap'} spin={testing} />{ssh ? 'Verificar y probar' : 'Probar conexión'}</Button>
             <Button type="submit" variant="primary" disabled={!canSave}><Icon name="check" />Guardar conexión</Button>
             <LinkButton variant="ghost" href={route.href('settings')}>Cancelar</LinkButton>
-            {!result && !testing ? <span className="muted" style={{ alignSelf: 'center' }}>Sin probar todavía.</span> : null}
+            {!result && !testing ? <span className="muted self-center" >Sin probar todavía.</span> : null}
           </div>
         </form>
       </div>
