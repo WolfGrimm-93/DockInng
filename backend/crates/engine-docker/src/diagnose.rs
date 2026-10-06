@@ -40,53 +40,63 @@ pub async fn check_unix_socket(path: &str) -> (Vec<DiagStep>, Option<ConnectionC
 
     // Conectar al socket basta para distinguir EACCES (sin permisos) de ECONNREFUSED (sin daemon).
     let connect = tokio::time::timeout(CONNECT_TIMEOUT, UnixStream::connect(path)).await;
-    let (perm, cause) = match connect {
-        Err(_elapsed) => (
-            DiagStep {
-                id: DiagStepId::Permissions,
-                status: StepStatus::Skipped,
-                detail: "el socket no aceptó la conexión a tiempo".into(),
-            },
-            None,
-        ),
-        Ok(Ok(_)) => (
-            DiagStep {
-                id: DiagStepId::Permissions,
-                status: StepStatus::Ok,
-                detail: "se puede abrir el socket".into(),
-            },
-            None,
-        ),
-        Ok(Err(e)) => match cause_from_io(&e) {
-            ConnectionCause::PermissionDenied => (
-                DiagStep {
-                    id: DiagStepId::Permissions,
-                    status: StepStatus::Fail,
-                    detail: e.to_string(),
-                },
-                Some(ConnectionCause::PermissionDenied),
-            ),
-            // El socket es accesible aunque nadie escuche: el fallo es del daemon.
-            ConnectionCause::DaemonDown => (
-                DiagStep {
-                    id: DiagStepId::Permissions,
-                    status: StepStatus::Ok,
-                    detail: "hay permiso para abrir el socket".into(),
-                },
-                None,
-            ),
-            _ => (
-                DiagStep {
-                    id: DiagStepId::Permissions,
-                    status: StepStatus::Skipped,
-                    detail: e.to_string(),
-                },
-                None,
-            ),
+    let probe = match connect {
+        Err(_elapsed) => ConnectProbe::TimedOut,
+        Ok(Ok(_)) => ConnectProbe::Connected,
+        Ok(Err(e)) => ConnectProbe::Failed {
+            cause: cause_from_io(&e),
+            detail: e.to_string(),
         },
     };
+    let (perm, cause) = permissions_outcome(probe);
     steps.push(perm);
     (steps, cause)
+}
+
+/// Resultado de intentar abrir el socket. Separado de la E/S para probar la decisión.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConnectProbe {
+    TimedOut,
+    Connected,
+    Failed {
+        cause: ConnectionCause,
+        detail: String,
+    },
+}
+
+/// Paso "permisos" y causa de fallo a partir de la prueba de conexión.
+pub fn permissions_outcome(probe: ConnectProbe) -> (DiagStep, Option<ConnectionCause>) {
+    let step = |status, detail: &str| DiagStep {
+        id: DiagStepId::Permissions,
+        status,
+        detail: detail.into(),
+    };
+    match probe {
+        ConnectProbe::TimedOut => (
+            step(
+                StepStatus::Skipped,
+                "el socket no aceptó la conexión a tiempo",
+            ),
+            None,
+        ),
+        ConnectProbe::Connected => (step(StepStatus::Ok, "se puede abrir el socket"), None),
+        ConnectProbe::Failed {
+            cause: ConnectionCause::PermissionDenied,
+            detail,
+        } => (
+            step(StepStatus::Fail, &detail),
+            Some(ConnectionCause::PermissionDenied),
+        ),
+        // El socket es accesible aunque nadie escuche: el fallo es del daemon.
+        ConnectProbe::Failed {
+            cause: ConnectionCause::DaemonDown,
+            ..
+        } => (
+            step(StepStatus::Ok, "hay permiso para abrir el socket"),
+            None,
+        ),
+        ConnectProbe::Failed { detail, .. } => (step(StepStatus::Skipped, &detail), None),
+    }
 }
 
 /// Pasos "socket" y "permisos" de un túnel SSH: el socket es local y privado; lo que importa
@@ -179,5 +189,52 @@ mod tests {
         if let Some(dir) = path.parent() {
             let _ = std::fs::remove_dir_all(dir);
         }
+    }
+
+    fn fallo(cause: ConnectionCause) -> ConnectProbe {
+        ConnectProbe::Failed {
+            cause,
+            detail: "detalle".into(),
+        }
+    }
+
+    #[test]
+    fn permiso_denegado_es_fallo_con_causa() {
+        let (paso, causa) = permissions_outcome(fallo(ConnectionCause::PermissionDenied));
+        assert_eq!(paso.status, StepStatus::Fail);
+        assert_eq!(paso.detail, "detalle");
+        assert_eq!(causa, Some(ConnectionCause::PermissionDenied));
+    }
+
+    #[test]
+    fn daemon_caido_con_socket_accesible_es_ok_sin_causa_de_socket() {
+        let (paso, causa) = permissions_outcome(fallo(ConnectionCause::DaemonDown));
+        assert_eq!(paso.status, StepStatus::Ok);
+        assert_eq!(causa, None);
+    }
+
+    #[test]
+    fn otros_fallos_y_timeout_se_omiten_sin_causa() {
+        let (paso, causa) = permissions_outcome(fallo(ConnectionCause::Other));
+        assert_eq!((paso.status, causa), (StepStatus::Skipped, None));
+        let (paso, causa) = permissions_outcome(ConnectProbe::TimedOut);
+        assert_eq!(paso.status, StepStatus::Skipped);
+        assert_eq!(causa, None);
+    }
+
+    #[test]
+    fn conexion_correcta_es_ok() {
+        let (paso, causa) = permissions_outcome(ConnectProbe::Connected);
+        assert_eq!((paso.status, causa), (StepStatus::Ok, None));
+    }
+
+    #[test]
+    fn error_de_io_se_clasifica_antes_de_decidir() {
+        let e = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+        let (_, causa) = permissions_outcome(ConnectProbe::Failed {
+            cause: cause_from_io(&e),
+            detail: e.to_string(),
+        });
+        assert_eq!(causa, Some(ConnectionCause::PermissionDenied));
     }
 }
