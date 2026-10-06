@@ -124,3 +124,12 @@ describe('persistencia', () => {
     expect(() => loadGroups()).not.toThrow()
   })
 })
+
+describe('F-7: longitud de nombres en caracteres Unicode', () => {
+  it('un emoji cuenta como un carácter (igual que chars().count() del backend)', () => {
+    // 40 emojis: 80 unidades UTF-16 pero 40 caracteres → válido
+    const cuarenta = '😀'.repeat(MAX_GROUP_NAME)
+    expect(validateGroupName(cuarenta, [])).toBeNull()
+    expect(validateGroupName(cuarenta + '😀', [])).toBe(`Máximo ${MAX_GROUP_NAME} caracteres.`)
+  })
+})

@@ -18,6 +18,7 @@ import { toApiError } from '../errors'
 import { safeStorage } from '@/lib/safeStorage'
 import { installWindowActivity, isIdle, onWake } from '@/lib/windowActivity'
 import { toast } from '@/lib/toastStore'
+import type { PrefKey } from '../types'
 import type {
   ApiError, ComposeInfo, ConnectionIssue, ConnectionProfile, ConnectionState, ConnectionStatus, Container, ContainerBusy, ContainerStats, EngineFeed, EngineInfo,
   Image, Network, PullFeed, PullOp, StackOpFeed, StackOpState, StackSummary, Unsubscribe, Volume, GpuInfo, SystemUsage } from '../types'
@@ -161,6 +162,16 @@ export function deriveConnection(status: ConnectionStatus, profile: ConnectionPr
   if (status.state === 'connected') return { status: 'connected', info: status.server, endpoint: status.endpoint }
   const diagnostic = buildDiagnostic(status, profile)
   return { status: 'error', issue: diagnostic.issue, diagnostic, message: status.message }
+}
+
+/**
+ * Guarda una preferencia en el almacén del backend. Si falla, avisa sin bloquear: la app sigue con el valor en memoria,
+ * pero el usuario debe saber que no se conservará al reiniciar (antes el fallo se silenciaba).
+ */
+function guardarPref(api: EngineApi, clave: PrefKey, valor: unknown): void {
+  api.prefs.set(clave, valor).catch((e) => {
+    toast.warn('No se pudo guardar una preferencia', { sub: `«${clave}»: ${toApiError(e).message}` })
+  })
 }
 
 export function createEngineStore(api: EngineApi, opts: EngineStoreOptions = {}): EngineStore {
@@ -415,7 +426,7 @@ export function createEngineStore(api: EngineApi, opts: EngineStoreOptions = {})
         await connect(status)
         if (get().connection.status === 'connected') {
           toast.ok(`Conectado a ${target.name}`, { sub: target.version || undefined })
-          void api.prefs.set('last_connection_id', id).catch(() => undefined)
+          guardarPref(api, 'last_connection_id', id)
         } else toast.err(`No se pudo conectar con ${target.name}`, { sub: 'Revisa el diagnóstico en pantalla.' })
       } catch (e) {
         const a = toApiError(e)
@@ -455,7 +466,7 @@ export function createEngineStore(api: EngineApi, opts: EngineStoreOptions = {})
           const p = await api.prefs.get('polling')
           if (gen !== generation) return
           if (typeof p === 'boolean') set({ polling: p })
-          else if (get().polling) void api.prefs.set('polling', true).catch(() => undefined)
+          else if (get().polling) guardarPref(api, 'polling', true)
         } catch { /* sin almacén: vale localStorage */ }
         const status = await api.connection.status()
         if (gen !== generation) return
@@ -717,7 +728,7 @@ export function createEngineStore(api: EngineApi, opts: EngineStoreOptions = {})
       setPolling(on) {
         set({ polling: on })
         try { storage?.setItem(POLL_KEY, on ? '1' : '0') } catch { /* sin storage */ }
-        void api.prefs.set('polling', on).catch(() => undefined)
+        guardarPref(api, 'polling', on)
         applyPolling(on)
       },
     }

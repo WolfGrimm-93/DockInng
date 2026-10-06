@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createSimApi, type SimEngineApi } from '../adapters/sim'
 import { getToasts, toast } from '@/lib/toastStore'
 import { createEngineStore, type EngineStore } from './engineStore'
@@ -206,5 +206,15 @@ describe('feedback: estadísticas y reconexión', () => {
     await store.getState().retry()
     expect(store.getState().connection.status).toBe('lost')
     expect(store.getState().containers.ids).toHaveLength(13)
+  })
+})
+
+describe('F-6: preferencias que no se guardan', () => {
+  it('si prefs.set falla, se avisa con un toast de aviso (no es silencioso)', async () => {
+    await store.getState().bootstrap()
+    vi.spyOn(api.prefs, 'set').mockRejectedValueOnce({ code: 'internal', message: 'disco lleno' })
+    store.getState().setPolling(false)
+    await settle()
+    expect(getToasts().some((t) => t.kind === 'warn' && t.msg === 'No se pudo guardar una preferencia' && /disco lleno/.test(t.sub ?? ''))).toBe(true)
   })
 })

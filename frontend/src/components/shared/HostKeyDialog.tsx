@@ -5,7 +5,7 @@
 //     y NO confía en la nueva (la siguiente conexión vuelve a pedir confirmar la huella).
 //   - state 'trusted': no debería abrirse (el llamador sigue directo); si se abre, solo informa.
 // La huella y el host vienen del servidor remoto: se pintan SIEMPRE como texto (nunca HTML).
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogTitle } from '@/components/ui/dialog'
@@ -36,7 +36,9 @@ export function HostKeyDialog({ probe, host, port, busy, simulated, onTrust, onF
   const where = `${safeText(host, { singleLine: true })}${port === 22 ? '' : `:${port}`}`
   // Confirmación escrita: el nombre del host exacto (solo se recortan los espacios de los extremos, igual que el backend).
   const [typed, setTyped] = useState('')
-  useEffect(() => { if (!probe) setTyped('') }, [probe])
+  // Al cambiar el sondeo (nuevo, o cierre) se vacía la confirmación: se ajusta durante el render, sin efecto.
+  const [typedProbe, setTypedProbe] = useState(probe)
+  if (probe !== typedProbe) { setTypedProbe(probe); setTyped('') }
   const confirmado = host.trim() !== '' && typed.trim() === host.trim()
   return (
     <AlertDialog open={probe !== null} onOpenChange={(o) => { if (!o && !busy) onClose() }}>

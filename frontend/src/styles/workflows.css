@@ -1,4 +1,4 @@
-/* Ola 1: stacks, editor, terminal xterm, pull, crear. Solo tokens del tema (var(--…)); sin colores fijos. */
+/* Flujos: stacks, editor, terminal xterm, descarga de imágenes y creación de contenedores. Solo tokens del tema (var(--…)); sin colores fijos. */
 .progress.is-indeterminate i { width: 40%; animation: indet 1.2s ease-in-out infinite; }
 @keyframes indet { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
 @media (prefers-reduced-motion: reduce) { .progress.is-indeterminate i { animation: none; width: 100%; opacity: 0.5; } }
@@ -15,7 +15,7 @@
   padding: 8px 4px 8px 10px; height: clamp(240px, calc(100vh - 360px), 660px); overflow: hidden; cursor: text;
 }
 .term-x .xterm { height: 100%; }
-.term-x .xterm-viewport { background-color: transparent !important; }
+.term-x .xterm-viewport { background-color: transparent; }
 .term-x:focus-within { box-shadow: inset 0 0 0 2px var(--ring); }
 .term-loading { display: flex; align-items: center; justify-content: center; color: var(--console-muted); font-family: var(--font-mono); font-size: var(--text-xs); }
 

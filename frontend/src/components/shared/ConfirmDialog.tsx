@@ -12,6 +12,7 @@ import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogTitle } from '@/components/ui/dialog'
 import { safeText } from '@/lib/safeText'
+import { toast } from '@/lib/toastStore'
 import { Icon } from './Icon'
 import { LevelNote } from './LevelNote'
 import { SafeName } from './SafeName'
@@ -78,9 +79,9 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
                         Para confirmar, escribe <b className="mono typed-exp" title={expected}>{safeText(expected, { singleLine: true })}</b>
                       </label>
                       {expected.length > 24 ? (
-                          <button type="button" className="btn btn-ghost btn-sm" style={{ justifySelf: 'start' }} aria-label="Copiar el texto de confirmación" onClick={() => void navigator.clipboard?.writeText(expected).catch(() => undefined)}>
+                          <Button type="button" variant="ghost" size="sm" className="justify-self-start" aria-label="Copiar el texto de confirmación" onClick={() => void copiarTexto(expected)}>
                             <Icon name="copy" size="sm" />Copiar
-                          </button>
+                          </Button>
                         ) : null}
                       <input
                         className="input"
@@ -115,18 +116,13 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
               <div className="dlg-body">
                 <span className="dlg-ico blocked"><Icon name="ban" size="lg" /></span>
                 <div>
-                  <AlertDialogTitle>{pending.req.title ?? 'Limpiar todo el sistema está bloqueado'}</AlertDialogTitle>
+                  <AlertDialogTitle>{pending.req.title ?? 'Acción bloqueada'}</AlertDialogTitle>
                   <AlertDialogDescription render={<div />}>
-                    {pending.req.description ?? (
-                      <p>DockInng no ejecuta esta acción, ni siquiera con confirmación. Borraría contenedores detenidos, redes, imágenes sin usar y caché de compilación de una sola vez.</p>
-                    )}
+                    {pending.req.description ?? <p>DockInng no ejecuta esta acción: el motor de seguridad la rechaza.</p>}
                   </AlertDialogDescription>
-                  <ul>
-                    {(pending.req.bullets ?? [
-                      'Para limpiar por partes: elimina imágenes o volúmenes sin usar desde sus vistas, con confirmación.',
-                      'Si de verdad lo necesitas, ejecútalo tú mismo en una terminal.',
-                    ]).map((b) => <li key={b}>{b}</li>)}
-                  </ul>
+                  {pending.req.bullets?.length ? (
+                    <ul>{pending.req.bullets.map((b) => <li key={b}>{b}</li>)}</ul>
+                  ) : null}
                   <LevelNote icon="lock"><b>Nivel Bloqueado.</b> El motor de seguridad rechaza la acción antes de enviarla a Docker.</LevelNote>
                 </div>
               </div>
@@ -139,6 +135,17 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
       </AlertDialog>
     </Ctx.Provider>
   )
+}
+
+/** Copia al portapapeles y avisa del resultado (antes un fallo se tragaba en silencio). */
+async function copiarTexto(texto: string): Promise<void> {
+  try {
+    if (!navigator.clipboard) throw new Error('El portapapeles no está disponible en este entorno.')
+    await navigator.clipboard.writeText(texto)
+    toast.ok('Texto copiado')
+  } catch (e) {
+    toast.err('No se pudo copiar el texto', { sub: e instanceof Error ? e.message : undefined })
+  }
 }
 
 /** Aviso de que la acción se ejecutará en un equipo REMOTO (no en el local). */

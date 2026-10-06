@@ -71,7 +71,8 @@ export interface EngineApi {
   /** Política: el frontend NUNCA calcula la decisión. plan -> (diálogo) -> execute. */
   actions: {
     plan(request: ActionRequest): Promise<ActionPlan>
-    execute(ticket: string, typed?: string | null): Promise<ActionOutcome>
+    /** `confirmed` es `true` SOLO si el usuario confirmó en el diálogo; el backend rechaza un ticket `confirm` sin él. */
+    execute(ticket: string, typed: string | null | undefined, confirmed: boolean): Promise<ActionOutcome>
     cancel(ticket: string): Promise<void>
   }
   /** `subscribe_engine_events` (incluye cambios de conexión). */

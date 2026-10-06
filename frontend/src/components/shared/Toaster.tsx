@@ -11,7 +11,7 @@ function OverflowView({ t }: { t: ToastItem }) {
       <div className="t-body">
         <b>{t.msg}</b>
         <small>Avisos anteriores sin mostrar.</small>
-        <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+        <div className="mt-1.5 flex gap-1.5">
           <button className="btn btn-secondary btn-sm" onClick={() => toast.expandAll()}>Ver todas</button>
           <button className="btn btn-ghost btn-sm" onClick={() => toast.dismissHidden()}>Descartar</button>
         </div>

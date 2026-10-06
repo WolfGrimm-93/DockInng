@@ -1,12 +1,13 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
-import { describe, expect, it, beforeEach } from 'vitest'
+import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { createSimApi } from '@/data/adapters/sim'
 import { EngineProvider } from '@/data/EngineProvider'
 import type { ActionRequest } from '@/data/types'
-import { toast } from '@/lib/toastStore'
+import { getToasts, toast } from '@/lib/toastStore'
 import { ConfirmProvider } from './ConfirmDialog'
+import { blockedRequestFor } from './blockedText'
 import { typedMatches, useBlockedDialog, useConfirm, type ConfirmRequest } from './confirmApi'
 import { useGuardedAction, type GuardedResult } from './useGuardedAction'
 
@@ -94,7 +95,7 @@ describe('ConfirmDialog — nivel Bloqueado', () => {
     const u = userEvent.setup()
     function B() {
       const blocked = useBlockedDialog()
-      return <button onClick={() => void blocked()}>abrir</button>
+      return <button onClick={() => void blocked(blockedRequestFor('prune_system'))}>abrir</button>
     }
     render(<ConfirmProvider><B /></ConfirmProvider>)
     await u.click(screen.getByText('abrir'))
@@ -132,6 +133,25 @@ async function mountGuard(request: ActionRequest) {
 }
 
 describe('useGuardedAction (plan → diálogo → execute)', () => {
+  it('F-1: execute_action se llama con confirmed=true solo tras confirmar en el diálogo', async () => {
+    const u = userEvent.setup()
+    const api = await mountGuard({ type: 'remove_containers', ids: ['minio-dev'] })
+    const spy = vi.spyOn(api.actions, 'execute')
+    await u.click(screen.getByText('ejecutar'))
+    await u.click(await screen.findByRole('button', { name: 'Eliminar contenedor' }))
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('done'))
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect(spy.mock.calls[0][2]).toBe(true)
+  })
+  it('F-4: sin conexión se avisa con un toast (no se cancela en silencio)', async () => {
+    const u = userEvent.setup()
+    const api = await mountGuard({ type: 'remove_containers', ids: ['minio-dev'] })
+    api.sim.emit({ type: 'connection', status: { state: 'failed', endpoint: 'x', cause: 'daemon_down', message: 'boom', steps: [] } })
+    await u.click(screen.getByText('ejecutar'))
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('cancelled'))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(getToasts().some((t) => t.kind === 'warn' && /sin conexión/.test(t.msg))).toBe(true)
+  })
   it('Libre (allow): sin diálogo', async () => {
     const u = userEvent.setup()
     await mountGuard({ type: 'remove_containers', ids: [] })
@@ -230,5 +250,53 @@ describe('modalidad real del diálogo', () => {
   it('un expected con bidi se muestra saneado pero se compara exacto', () => {
     expect(typedMatches('a‮b', 'a‮b')).toBe(true)
     expect(typedMatches('ab', 'a‮b')).toBe(false)
+  })
+})
+
+describe('ConfirmDialog — bloqueo por tipo (F-3)', () => {
+  it('una acción distinta de «Limpiar todo» muestra su propio título, sin lista de alternativas vacía', async () => {
+    const u = userEvent.setup()
+    function B() {
+      const blocked = useBlockedDialog()
+      return <button onClick={() => void blocked(blockedRequestFor('remove_volume'))}>abrir</button>
+    }
+    render(<ConfirmProvider><B /></ConfirmProvider>)
+    await u.click(screen.getByText('abrir'))
+    const dlg = await screen.findByRole('alertdialog')
+    expect(within(dlg).getByText('Eliminar volumen está bloqueado')).toBeInTheDocument()
+    expect(within(dlg).queryByText('Limpiar todo el sistema está bloqueado')).not.toBeInTheDocument()
+    expect(within(dlg).queryByRole('list')).not.toBeInTheDocument()
+    expect(within(dlg).getByText(/no ejecuta esta acción en ningún caso/)).toBeInTheDocument()
+  })
+  it('sin argumentos muestra un texto genérico, no el de «Limpiar todo el sistema»', async () => {
+    const u = userEvent.setup()
+    function B() {
+      const blocked = useBlockedDialog()
+      return <button onClick={() => void blocked()}>abrir</button>
+    }
+    render(<ConfirmProvider><B /></ConfirmProvider>)
+    await u.click(screen.getByText('abrir'))
+    const dlg = await screen.findByRole('alertdialog')
+    expect(within(dlg).getByText('Acción bloqueada')).toBeInTheDocument()
+    expect(within(dlg).queryByRole('list')).not.toBeInTheDocument()
+  })
+})
+
+describe('ConfirmDialog — copiar (F-5)', () => {
+  it('copiar: toast de éxito; si el portapapeles falla, toast de error', async () => {
+    const u = userEvent.setup()
+    const long = 'x'.repeat(30)
+    mountConfirm({ ...base, level: 'confirm_typed', typed: long })
+    await u.click(screen.getByText('abrir'))
+    const dlg = await screen.findByRole('alertdialog')
+    const copy = within(dlg).getByRole('button', { name: 'Copiar el texto de confirmación' })
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    await u.click(copy)
+    await waitFor(() => expect(getToasts().some((t) => t.kind === 'ok' && t.msg === 'Texto copiado')).toBe(true))
+    expect(writeText).toHaveBeenCalledWith(long)
+    writeText.mockRejectedValueOnce(new Error('denegado'))
+    await u.click(copy)
+    await waitFor(() => expect(getToasts().some((t) => t.kind === 'err' && t.msg === 'No se pudo copiar el texto')).toBe(true))
   })
 })

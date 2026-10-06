@@ -253,13 +253,15 @@ export function createSimApi(opts: SimOptions = {}): SimEngineApi {
     }
   }
 
-  async function execute(ticket: string, typed?: string | null): Promise<ActionOutcome> {
+  async function execute(ticket: string, typed: string | null | undefined, confirmed: boolean): Promise<ActionOutcome> {
     const t = tickets.get(ticket)
     if (!t) throw apiError('ticket_invalid', 'La confirmación no existe o ya se usó.')
     if (Date.now() > t.expires) {
       tickets.delete(ticket)
       throw apiError('ticket_expired', 'La confirmación caducó (120 s).')
     }
+    // Igual que el backend: un ticket que exige confirmación no se canjea sin `confirmed` (el ticket sigue vivo).
+    if (!confirmed) throw apiError('policy_denied', 'La acción requiere confirmación del usuario.')
     if (t.decision.type === 'confirm_typed' && (typed ?? '').trim() !== t.decision.expected) {
       if (++t.attempts >= 5) tickets.delete(ticket)
       throw apiError('typed_mismatch', 'El texto escrito no coincide.')

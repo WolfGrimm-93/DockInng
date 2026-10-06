@@ -9,6 +9,7 @@ import { useContainers, useEngineApi, useEngineStoreApi } from '@/data/store/hoo
 import { safeText } from '@/lib/safeText'
 import { useTheme } from '@/theme/useTheme'
 import { useBlockedDialog } from './confirmApi'
+import { blockedRequestFor } from './blockedText'
 import type { IconName } from './iconNames'
 
 export interface PaletteItem { id: string; title: string; icon: IconName; kind: 'Vista' | 'Acción' | 'Bloqueado' | 'Contenedor' | 'Plantilla'; run(): void }
@@ -32,7 +33,7 @@ export function usePaletteItems(query = ''): PaletteItem[] {
       { id: 'build-image', title: 'Construir imagen…', icon: 'layers', kind: 'Acción', run: () => route.go('build') },
       { id: 'theme', title: 'Cambiar tema claro/oscuro', icon: 'sun', kind: 'Acción', run: toggle },
       { id: 'sidebar', title: 'Colapsar o expandir barra lateral', icon: 'panel', kind: 'Acción', run: () => setCollapsed(!collapsed) },
-      { id: 'prune-system', title: 'Limpiar todo el sistema', icon: 'ban', kind: 'Bloqueado', run: () => void blocked() },
+      { id: 'prune-system', title: 'Limpiar todo el sistema', icon: 'ban', kind: 'Bloqueado', run: () => void blocked(blockedRequestFor('prune_system')) },
     ]
     if (devFlagsEnabled(api)) {
       items.push({ id: 'dev-error', title: 'Ver estado: error de conexión', icon: 'alert', kind: 'Plantilla', run: () => { store.getState().previewConnection('permission'); route.go('containers') } })

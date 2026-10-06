@@ -16,7 +16,7 @@ export function WindowChrome() {
   const decorations = useShellPrefs((s) => s.decorations)
   const setDecorations = useShellPrefs((s) => s.setDecorations)
   const shown = loaded && !decorations
-  // El contenido baja la altura de la barra (ver `.has-chrome .shell` en ola3.css).
+  // El contenido baja la altura de la barra (ver `.has-chrome .shell` en interaction-chrome.css).
   useEffect(() => {
     document.documentElement.classList.toggle('has-chrome', shown)
     return () => document.documentElement.classList.remove('has-chrome')

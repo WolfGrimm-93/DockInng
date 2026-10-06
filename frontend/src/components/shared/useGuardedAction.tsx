@@ -6,6 +6,7 @@ import type { ActionOutcome, ActionPlan, ActionRequest, ApiError, PlanDecision }
 import { policyDenied, toast } from '@/lib/toastStore'
 import { useCtx } from './confirmApi'
 import { RemoteNote } from './ConfirmDialog'
+import { ACTION_LABEL, blockedRequestFor } from './blockedText'
 import { describePlan, type PlanDescription } from './planDescribe'
 
 export type GuardedResult =
@@ -17,14 +18,9 @@ export type GuardedResult =
 
 export type GuardedDescribe = (plan: ActionPlan) => PlanDescription
 
-const LABEL: Record<ActionRequest['type'], string> = {
-  remove_containers: 'Eliminar contenedores', remove_image: 'Eliminar imagen', prune_images: 'Eliminar imágenes sin usar', remove_volume: 'Eliminar volumen',
-  prune_volumes: 'Eliminar volúmenes sin usar', remove_network: 'Eliminar red', stack_down: 'Bajar stack', stack_delete: 'Eliminar stack', prune_system: 'Limpiar todo el sistema', cleanup: 'Limpiar recursos sin usar',
-}
-
 /**
  * Flujo destructivo completo (el frontend NUNCA calcula la decisión: la da el backend en el plan).
- * plan_action → allow: 'allowed' | confirm/confirm_typed: diálogo → execute_action(ticket, typed) | deny forbidden: BlockedDialog |
+ * plan_action → allow: 'allowed' | confirm/confirm_typed: diálogo → execute_action(ticket, typed, confirmed) | deny forbidden: BlockedDialog |
  * deny needs_confirmation_non_interactive: toast persistente (fallo de la app). Cancelar libera el ticket.
  */
 export function useGuardedAction(): (request: ActionRequest, describe?: GuardedDescribe) => Promise<GuardedResult> {
@@ -33,7 +29,11 @@ export function useGuardedAction(): (request: ActionRequest, describe?: GuardedD
   const { confirm, blocked } = useCtx()
   return useCallback(
     async (request, describe) => {
-      if (storeApi.getState().connection.status !== 'connected') return { status: 'cancelled' }
+      if (storeApi.getState().connection.status !== 'connected') {
+        // Sin conexión no se puede planificar: se avisa (antes se cancelaba en silencio).
+        toast.warn(`No se puede ${ACTION_LABEL[request.type].toLowerCase()} sin conexión`, { sub: 'Vuelve a conectar con el motor y repite la acción.' })
+        return { status: 'cancelled' }
+      }
       let plan: ActionPlan
       try {
         plan = await api.actions.plan(request)
@@ -46,9 +46,9 @@ export function useGuardedAction(): (request: ActionRequest, describe?: GuardedD
       const decision: PlanDecision = plan.decision
       if (decision.type === 'deny') {
         if (decision.reason === 'forbidden') {
-          await blocked(request.type === 'prune_system' ? {} : { title: `${LABEL[request.type]} está bloqueado`, bullets: [] })
+          await blocked(blockedRequestFor(request.type))
         } else {
-          policyDenied(LABEL[request.type], 'La política exigió una confirmación que la aplicación no puede pedir. Es un fallo de la aplicación, no tuyo.')
+          policyDenied(ACTION_LABEL[request.type], 'La política exigió una confirmación que la aplicación no puede pedir. Es un fallo de la aplicación, no tuyo.')
         }
         return { status: 'blocked' }
       }
@@ -69,7 +69,8 @@ export function useGuardedAction(): (request: ActionRequest, describe?: GuardedD
         return { status: 'cancelled' }
       }
       try {
-        const outcome = await api.actions.execute(plan.ticket, decision.type === 'confirm_typed' ? decision.expected : null)
+        // `confirmed: true`: llegamos aquí solo porque el usuario confirmó en el diálogo.
+        const outcome = await api.actions.execute(plan.ticket, decision.type === 'confirm_typed' ? decision.expected : null, true)
         if (outcome.succeeded.length) {
           const s = d.success?.(outcome) ?? { msg: `${outcome.succeeded.length} elemento(s) eliminado(s)` }
           toast.ok(s.msg, { sub: s.sub })
@@ -80,7 +81,7 @@ export function useGuardedAction(): (request: ActionRequest, describe?: GuardedD
         return { status: 'done', plan, outcome }
       } catch (e) {
         const err = toApiError(e)
-        if (err.code === 'policy_denied') policyDenied(LABEL[request.type], err.message)
+        if (err.code === 'policy_denied') policyDenied(ACTION_LABEL[request.type], err.message)
         else {
           const m = apiErrorMessage(err)
           toast.err(m.title, { sub: m.detail })
