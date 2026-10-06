@@ -64,6 +64,7 @@ export const result_compose_info: ComposeInfo = {
   "version": "2.29.7"
 }
 export const result_connection_delete: null = null
+export const result_connection_forget_host_key: null = null
 export const result_connection_list: RawProfile[] = [
   {
     "host": "10.0.0.5",
@@ -895,6 +896,19 @@ export const COMMANDS = {
     "confirmed": true,
     "id": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3e"
   }, resultType: "void", result: result_connection_delete },
+  connection_forget_host_key: { args: {
+    "spec": {
+      "host": "10.0.0.5",
+      "identity": {
+        "type": "agent"
+      },
+      "kind": "ssh",
+      "mode": "explicit",
+      "name": "srv",
+      "port": 22,
+      "user": "deploy"
+    }
+  }, resultType: "void", result: result_connection_forget_host_key },
   connection_list: { args: {}, resultType: "ConnectionProfile[]", result: result_connection_list },
   connection_probe_host_key: { args: {
     "spec": {

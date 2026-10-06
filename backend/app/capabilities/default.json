@@ -54,6 +54,7 @@
     "allow-connection-list",
     "allow-connection-probe-host-key",
     "allow-connection-trust-host-key",
+    "allow-connection-forget-host-key",
     "allow-connection-test",
     "allow-connection-save",
     "allow-connection-delete",

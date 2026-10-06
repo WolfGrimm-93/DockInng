@@ -1,11 +1,13 @@
 // Diálogo de HUELLA DE HOST (TOFU explícito). Contrato:
 //   <HostKeyDialog probe host port onTrust onClose busy? simulated? />   (`probe` = null → cerrado)
 //   - state 'unknown': muestra tipo + huella SHA256 y «Confiar y continuar»; el foco inicial es «Cancelar» (nunca se confía por accidente).
-//   - state 'changed': BLOQUEO rojo. NO hay botón de aceptar: solo «Cerrar». Se enseñan la huella conocida y la nueva.
+//   - state 'changed': BLOQUEO rojo. NO hay botón de aceptar. Se puede «Olvidar» la clave guardada: exige escribir el nombre del host
+//     y NO confía en la nueva (la siguiente conexión vuelve a pedir confirmar la huella).
 //   - state 'trusted': no debería abrirse (el llamador sigue directo); si se abre, solo informa.
 // La huella y el host vienen del servidor remoto: se pintan SIEMPRE como texto (nunca HTML).
-import { useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogTitle } from '@/components/ui/dialog'
 import type { HostKeyProbe } from '@/data/types'
 import { safeText } from '@/lib/safeText'
@@ -17,7 +19,7 @@ async function copyText(t: string) {
   try { await navigator.clipboard.writeText(t); toast.ok('Huella copiada') } catch { toast.warn('No se pudo copiar', { sub: t }) }
 }
 
-export function HostKeyDialog({ probe, host, port, busy, simulated, onTrust, onClose }: {
+export function HostKeyDialog({ probe, host, port, busy, simulated, onTrust, onForget, onClose }: {
   probe: HostKeyProbe | null
   host: string
   port: number
@@ -25,11 +27,17 @@ export function HostKeyDialog({ probe, host, port, busy, simulated, onTrust, onC
   /** Mundo simulado (navegador): la huella es de ejemplo. */
   simulated?: boolean
   onTrust(): void
+  /** Olvida la clave guardada del host (solo se ofrece en 'changed'). */
+  onForget?(): void
   onClose(): void
 }) {
   const cancelRef = useRef<HTMLButtonElement>(null)
   const changed = probe?.state === 'changed'
   const where = `${safeText(host, { singleLine: true })}${port === 22 ? '' : `:${port}`}`
+  // Confirmación escrita: el nombre del host exacto (sin distinguir mayúsculas ni espacios de los extremos).
+  const [typed, setTyped] = useState('')
+  useEffect(() => { if (!probe) setTyped('') }, [probe])
+  const confirmado = typed.trim().toLowerCase() === host.trim().toLowerCase() && host.trim() !== ''
   return (
     <AlertDialog open={probe !== null} onOpenChange={(o) => { if (!o && !busy) onClose() }}>
       <AlertDialogContent initialFocus={cancelRef}>
@@ -64,10 +72,16 @@ export function HostKeyDialog({ probe, host, port, busy, simulated, onTrust, onC
                     <Icon name="alert" />
                     <div>
                       <b>Conexión bloqueada.</b>
-                      <p>Confirma la huella nueva con quien administra el servidor. Aquí no se puede aceptar. Si el cambio es legítimo, quita a mano la entrada de ese host del archivo <code>known_hosts</code> de DockInng (en su carpeta de datos, no el de ~/.ssh) y vuelve a verificar.</p>
+                      <p>Confirma la huella nueva con quien administra el servidor. Aquí no se puede aceptar la clave nueva. Si el cambio es legítimo (p. ej. se reinstaló el servidor), olvida la clave guardada: después DockInng te pedirá confirmar la huella nueva.</p>
                     </div>
                   </div>
-                ) : (
+                ) : null}
+                {changed && onForget ? (
+                  <div style={{ marginTop: 12 }}>
+                    <label className="f-label" htmlFor="forget-host-confirm">Para olvidar la clave guardada, escribe el nombre del host: <b className="mono">{safeText(host, { singleLine: true })}</b></label>
+                    <Input id="forget-host-confirm" value={typed} onChange={(e) => setTyped(e.target.value)} disabled={busy} autoComplete="off" spellCheck={false} />
+                  </div>
+                ) : changed ? null : (
                   <LevelNote icon="lock"><b>Confianza en el primer contacto.</b> Se guarda solo esta huella; si algún día cambia, se bloqueará la conexión.</LevelNote>
                 )}
               </div>
@@ -75,7 +89,11 @@ export function HostKeyDialog({ probe, host, port, busy, simulated, onTrust, onC
             <div className="dlg-foot">
               <Button type="button" variant="ghost" size="sm" onClick={() => void copyText(probe.fingerprint_sha256)}><Icon name="copy" size="sm" />Copiar huella</Button>
               <Button ref={cancelRef} type="button" variant="secondary" disabled={busy} onClick={onClose}>{changed ? 'Cerrar' : 'Cancelar'}</Button>
-              {changed ? null : (
+              {changed ? (onForget ? (
+                <Button type="button" variant="destructive" disabled={busy || !confirmado} onClick={onForget}>
+                  <Icon name={busy ? 'loader' : 'trash'} spin={busy} />Olvidar clave guardada
+                </Button>
+              ) : null) : (
                 <Button type="button" variant="primary" disabled={busy || probe.state === 'trusted'} onClick={onTrust}>
                   <Icon name={busy ? 'loader' : 'check'} spin={busy} />Confiar y continuar
                 </Button>

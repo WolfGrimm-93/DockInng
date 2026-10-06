@@ -106,6 +106,15 @@ describe('sim: conexiones (huella de host)', () => {
     await expect(api.connections.trustHostKey(ssh('changed-1'), p.fingerprint_sha256)).rejects.toMatchObject({ code: 'connection', cause: 'host_key_changed' })
     expect(await api.connections.test(ssh('changed-1'))).toMatchObject({ ok: false, cause: 'host_key_changed' })
   })
+  it('olvidar la clave cambiada la deja desconocida: solo entonces se puede confiar en la nueva', async () => {
+    const api = mk()
+    const p = await api.connections.probeHostKey(ssh('changed-2'))
+    expect(p.state).toBe('changed')
+    await api.connections.forgetHostKey(ssh('changed-2'))
+    const despues = await api.connections.probeHostKey(ssh('changed-2'))
+    expect(despues.state).toBe('unknown')
+    expect(await api.connections.trustHostKey(ssh('changed-2'), despues.fingerprint_sha256)).toMatchObject({ state: 'trusted' })
+  })
   it('sin huella confiada la prueba SSH no conecta (host_key_unknown); tras confiar, ok; causas clasificadas', async () => {
     const api = mk()
     expect(await api.connections.test(ssh('h2'))).toMatchObject({ ok: false, cause: 'host_key_unknown' })

@@ -107,6 +107,7 @@ pub fn run() {
             commands_remote::connection_list,
             commands_remote::connection_probe_host_key,
             commands_remote::connection_trust_host_key,
+            commands_remote::connection_forget_host_key,
             commands_remote::connection_test,
             commands_remote::connection_save,
             commands_remote::connection_delete,

@@ -233,6 +233,13 @@ pub async fn trust(
     }
 }
 
+/// Olvida la clave de confianza guardada para el destino, solo en el `known_hosts` PROPIO.
+/// No confía en nada: el host queda como desconocido y la siguiente conexión vuelve a exigir
+/// confirmar la huella que presente el servidor. Devuelve cuántas entradas se quitaron.
+pub fn forget(known_hosts_path: &Path, target: &SshTarget) -> Result<usize, EngineError> {
+    known_hosts::remove_name(known_hosts_path, &target.known_hosts_name())
+}
+
 /// Huella de la clave de confianza guardada para un destino, calculada solo con datos
 /// locales (sin red). `None` si no hay entrada.
 pub async fn stored_fingerprint(
@@ -359,5 +366,40 @@ mod tests {
         let (s, _) = evaluate(&p, "h", &[ed]).unwrap();
         assert_eq!(s, HostKeyState::Changed);
         std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn olvidar_deja_el_host_desconocido_y_no_confia_en_nada() {
+        let d =
+            std::env::temp_dir().join(format!("dockinng-test-kh-forget-{}", uuid::Uuid::now_v7()));
+        std::fs::create_dir_all(&d).unwrap();
+        let p = d.join("known_hosts");
+        let vieja = HostKey {
+            key_type: "ssh-ed25519".into(),
+            blob: "AAAAOLD".into(),
+        };
+        let nueva = HostKey {
+            key_type: "ssh-ed25519".into(),
+            blob: "AAAANEW".into(),
+        };
+        known_hosts::append(&p, &known_hosts::format_line("srv.local", &vieja)).unwrap();
+        let escaneada = vec![ScannedKey {
+            key: nueva,
+            fingerprint: "SHA256:new".into(),
+            label: "ED25519".into(),
+        }];
+        let (antes, _) = evaluate(&p, "srv.local", &escaneada).unwrap();
+        assert_eq!(antes, HostKeyState::Changed);
+        let target = SshTarget {
+            host: "srv.local".into(),
+            port: Some(22),
+            user: None,
+            mode: SshMode::Explicit,
+            identity: engine_core::SshIdentity::Agent,
+        };
+        assert_eq!(forget(&p, &target).unwrap(), 1);
+        let (despues, _) = evaluate(&p, "srv.local", &escaneada).unwrap();
+        assert_eq!(despues, HostKeyState::Unknown);
+        let _ = std::fs::remove_dir_all(&d);
     }
 }

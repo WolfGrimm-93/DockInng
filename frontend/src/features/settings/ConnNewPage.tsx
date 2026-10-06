@@ -178,6 +178,30 @@ export default function ConnNewPage() {
     }
   }
 
+  // Olvida la clave guardada tras una clave cambiada. NO confía en la nueva: hay que verificarla de nuevo.
+  const forget = async () => {
+    const b = build()
+    if (!b.spec || !probe) return
+    const n = seq.current
+    setPhase('trusting')
+    try {
+      await api.connections.forgetHostKey(b.spec)
+      if (n !== seq.current) return
+      setProbe(null)
+      setPhase('idle')
+      toast.ok('Clave guardada olvidada', { sub: 'Vuelve a verificar la huella del servidor antes de confiar en ella.' })
+      window.setTimeout(() => verifyBtn.current?.focus(), 0)
+    } catch (ex) {
+      if (n !== seq.current) return
+      const a = toApiError(ex)
+      const m = apiErrorMessage(ex)
+      setProbe(null)
+      setResult({ ok: false, cause: a.cause ?? null, error: { ...a, message: m.detail || m.title } })
+      setPhase('idle')
+      window.setTimeout(() => verifyBtn.current?.focus(), 0)
+    }
+  }
+
   const save = async (e: FormEvent) => {
     e.preventDefault()
     const b = build()
@@ -289,7 +313,7 @@ export default function ConnNewPage() {
           </div>
         </form>
       </div>
-      <HostKeyDialog probe={probe} host={host.trim()} port={Number(port) || 22} busy={phase === 'trusting'} simulated={browserWorld} onTrust={() => void trust()} onClose={() => { setProbe(null); setPhase('idle'); window.setTimeout(() => verifyBtn.current?.focus(), 0) }} />
+      <HostKeyDialog probe={probe} host={host.trim()} port={Number(port) || 22} busy={phase === 'trusting'} simulated={browserWorld} onTrust={() => void trust()} onForget={() => void forget()} onClose={() => { setProbe(null); setPhase('idle'); window.setTimeout(() => verifyBtn.current?.focus(), 0) }} />
     </>
   )
 }
