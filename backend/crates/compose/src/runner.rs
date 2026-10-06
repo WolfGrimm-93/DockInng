@@ -369,9 +369,10 @@ impl Core {
             .clone()
             .unwrap_or_else(|| PathBuf::from("."));
         // Textos a revisar con el directorio desde el que Compose resuelve sus rutas locales.
-        let mut pending: Vec<(String, PathBuf)> = Vec::new();
+        // El tercer campo nombra el archivo cuando es un `include` anidado (para el mensaje).
+        let mut pending: Vec<(String, PathBuf, Option<String>)> = Vec::new();
         if let Some(b) = stdin {
-            pending.push((String::from_utf8_lossy(b).into_owned(), base.clone()));
+            pending.push((String::from_utf8_lossy(b).into_owned(), base.clone(), None));
         }
         if let ConfigFiles::Paths(paths) = &project.files {
             for p in paths {
@@ -380,24 +381,28 @@ impl Core {
                     .map(Path::to_path_buf)
                     .unwrap_or_else(|| base.clone());
                 if let Some(t) = read_for_scan(p)? {
-                    pending.push((t, dir));
+                    pending.push((t, dir, None));
                 }
             }
         }
         // Los `include` locales también se siguen: Compose los resuelve desde cada archivo incluido.
         let mut visited = HashSet::new();
         let mut revisados = 0usize;
-        while let Some((text, dir)) = pending.pop() {
+        while let Some((text, dir, origen)) = pending.pop() {
             revisados += 1;
             if revisados > MAX_INCLUDE_FILES {
-                return Err(include_issue(None, INCLUDE_DEMASIADOS));
+                return Err(include_issue(None, INCLUDE_DEMASIADOS, None));
             }
             let scan = crate::validate::scan_includes(&text);
             if let Some(line) = scan.remote_line {
-                return Err(include_issue(Some(line), INCLUDE_REMOTO));
+                return Err(include_issue(Some(line), INCLUDE_REMOTO, origen.as_deref()));
             }
             if scan.unverifiable {
-                return Err(include_issue(None, INCLUDE_NO_VERIFICABLE));
+                return Err(include_issue(
+                    None,
+                    INCLUDE_NO_VERIFICABLE,
+                    origen.as_deref(),
+                ));
             }
             for rel in scan.local_paths {
                 // Si no existe, Compose informará el error al ejecutarse.
@@ -411,8 +416,14 @@ impl Core {
                     .parent()
                     .map(Path::to_path_buf)
                     .unwrap_or_else(|| base.clone());
+                // Nombre relativo al proyecto, para que el usuario sepa en qué archivo está.
+                let nombre = canon
+                    .strip_prefix(&base)
+                    .unwrap_or(&canon)
+                    .display()
+                    .to_string();
                 if let Some(t) = read_for_scan(&canon)? {
-                    pending.push((t, child_dir));
+                    pending.push((t, child_dir, Some(nombre)));
                 }
             }
         }
@@ -960,19 +971,24 @@ fn read_for_scan(p: &Path) -> Result<Option<String>, ComposeError> {
         return Ok(None);
     };
     if meta.len() > crate::files::MAX_YAML_BYTES as u64 {
-        return Err(include_issue(None, INCLUDE_NO_VERIFICABLE));
+        return Err(include_issue(None, INCLUDE_NO_VERIFICABLE, None));
     }
     std::fs::read_to_string(p)
         .map(Some)
-        .map_err(|_| include_issue(None, INCLUDE_NO_VERIFICABLE))
+        .map_err(|_| include_issue(None, INCLUDE_NO_VERIFICABLE, None))
 }
 
-fn include_issue(line: Option<u32>, message: &str) -> ComposeError {
+/// Problema de `include`. Si el `include` está en un archivo anidado, se nombra ese archivo.
+fn include_issue(line: Option<u32>, message: &str, origen: Option<&str>) -> ComposeError {
+    let message = match origen {
+        Some(nombre) => format!("{message} (en {nombre})"),
+        None => message.to_string(),
+    };
     ComposeError::Invalid(vec![ValidationIssue {
         line,
         column: None,
         kind: engine_core::IssueKind::Schema,
-        message: message.into(),
+        message,
     }])
 }
 
