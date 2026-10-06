@@ -490,6 +490,8 @@ fn types() -> Map<String, Value> {
             GroupOp::Assign { .. } => json!({"type": "assign", "connection_id": "local",
                 "names": ["web"], "group_id": null}),
             GroupOp::SetStackHue { .. } => json!({"type": "set_stack_hue", "project": "shop", "hue": null}),
+            GroupOp::PruneAssignments { .. } => json!({"type": "prune_assignments", "connection_id": "local",
+                "live_names": ["web"]}),
         ),
     );
     put(

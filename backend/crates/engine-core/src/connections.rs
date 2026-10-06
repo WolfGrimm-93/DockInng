@@ -345,6 +345,12 @@ pub enum GroupOp {
         project: String,
         hue: Option<i64>,
     },
+    /// Quita las asignaciones de una conexión cuyo contenedor ya no existe. `live_names` debe ser
+    /// la lista COMPLETA de contenedores de esa conexión: sin ella no se sabe qué sobra.
+    PruneAssignments {
+        connection_id: String,
+        live_names: Vec<String>,
+    },
 }
 
 /// Grupo tal como lo guardaba el frontend en `localStorage` (`dockinng.groups.v1`).
