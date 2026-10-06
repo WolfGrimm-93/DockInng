@@ -3,7 +3,7 @@
 // → `connection_trust_host_key` → `connection_test` → «Guardar» (solo tras una prueba correcta de ESTOS datos). No hay campo que acepte contenido
 // de llaves ni opción «inseguro». (?test=testing|ok|fail solo en simulado/DEV: previsualiza los estados de la prueba.)
 import { safeText } from '@/lib/safeText'
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { devFlagsEnabled } from '@/app/devFlags'
 import { useHashRoute } from '@/app/useHashRoute'
 import { HostKeyDialog } from '@/components/shared/HostKeyDialog'
@@ -86,8 +86,11 @@ export default function ConnNewPage() {
   useEffect(() => { void api.system.podmanDetect().then(setPodman).catch(() => setPodman([])); return cancelPending }, [api, cancelPending])
 
   /** Valida en el borde (el backend vuelve a validar) y construye el spec tipado. */
-  const build = () => buildConnSpec({ kind, name, host, port, user, mode, ident, identPath, ca, cert, keyPath }, existing, editId)
-  const specKey = useMemo(() => { const b = build(); return b.spec ? JSON.stringify(b.spec) : null }, [kind, name, host, port, user, mode, ident, identPath, ca, cert, keyPath]) // eslint-disable-line react-hooks/exhaustive-deps
+  const formValues = { kind, name, host, port, user, mode, ident, identPath, ca, cert, keyPath }
+  const build = () => buildConnSpec(formValues, existing, editId)
+  // Huella del spec válido actual (null si no valida): cambia con cualquier campo, así que no se memoiza.
+  const specNow = buildConnSpec(formValues, existing, editId)
+  const specKey = specNow.spec ? JSON.stringify(specNow.spec) : null
   const dirty = () => { seq.current++; setResult(null); setOkFor(null); setPhase('idle') }
 
   const runTest = async (spec: ConnSpec, n: number) => {

@@ -86,13 +86,13 @@ export default function CreateContainerPage() {
     if (r && !conn.profile.remote) conn.select(r.id)
   })
 
-  const form: CreateForm = { image, name, command, restart, network: net, ports, vols, env }
+  const form = useMemo<CreateForm>(() => ({ image, name, command, restart, network: net, ports, vols, env }), [image, name, command, restart, net, ports, vols, env])
   const ctx = useMemo(() => ({
     containerNames: containers.flatMap((c) => c.names),
     publishedPorts: new Map(containers.filter((c) => c.state === 'running').flatMap((c) => c.ports.filter((p) => p.public_port != null).map((p) => [p.public_port as number, c.names[0]] as const))),
     networks: networks.map((n) => n.name),
   }), [containers, networks])
-  const { errors: localErrors, order } = useMemo(() => validateCreateForm(form, ctx), [image, name, command, restart, net, ports, vols, env, ctx]) // eslint-disable-line react-hooks/exhaustive-deps
+  const { errors: localErrors, order } = useMemo(() => validateCreateForm(form, ctx), [form, ctx])
   const errors = { ...localErrors, ...backendErrors }
   const show = (k: string): string | undefined => (submitted > 0 || touched[k] || backendErrors[k] ? errors[k] : undefined)
   const touch = (k: string) => setTouched((t) => (t[k] ? t : { ...t, [k]: true }))
