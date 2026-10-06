@@ -371,7 +371,13 @@ impl Store {
                 .get("name")
                 .and_then(Value::as_str)
                 .ok_or_else(|| StoreError::InvalidInput("grupo sin nombre".into()))?;
-            let hue = g.get("hue").and_then(Value::as_i64);
+            // Ausente = matiz automático; presente pero no entero = error (como fuera de rango).
+            let hue = match g.get("hue") {
+                None | Some(Value::Null) => None,
+                Some(v) => Some(v.as_i64().ok_or_else(|| {
+                    StoreError::InvalidInput(format!("matiz no entero en el grupo «{name}»"))
+                })?),
+            };
             let buscar = |tx: &Transaction<'_>| grupo_con_nombre(tx, name.trim(), None);
             let id = match buscar(&tx)? {
                 Some(id) => {
@@ -437,6 +443,8 @@ impl Store {
         }
         if let Some(colores) = obj.get("stack_hues").and_then(Value::as_object) {
             for (proyecto, hue) in colores {
+                // Matiz de stack no entero o fuera de 0..359: se omite (igual que el rechazo de
+                // `SetStackHue` más abajo). Los matices de grupo sí se rechazan con error.
                 let Some(hue) = hue.as_i64() else { continue };
                 match apply_op(
                     &tx,
@@ -935,6 +943,41 @@ mod tests {
         let snap = s.groups_load().unwrap();
         assert_eq!(snap.assignments.len(), MAX_ASSIGNMENTS);
         assert!(!snap.assignments.iter().any(|a| a.container_name == "extra"));
+    }
+
+    #[test]
+    fn importar_matiz_no_entero_se_rechaza_como_fuera_de_rango() {
+        // B-4: un matiz 12.5 o "rojo" se ignoraba en silencio (se elegía uno automático). Ahora
+        // se rechaza igual que un matiz fuera de rango, sin escribir nada.
+        let (_t, s) = store();
+        for hue in [
+            serde_json::json!(12.5),
+            serde_json::json!("rojo"),
+            serde_json::json!(400),
+        ] {
+            let doc = serde_json::json!({
+                "format": "dockinng-groups", "version": 1,
+                "groups": [{"id": "g", "name": "Nuevo", "hue": hue}]
+            });
+            assert!(
+                matches!(
+                    s.groups_import_export(&doc),
+                    Err(StoreError::InvalidInput(_))
+                ),
+                "matiz {hue} debe rechazarse"
+            );
+        }
+        assert!(
+            s.groups_load().unwrap().groups.is_empty(),
+            "nada debe quedar escrito"
+        );
+        // Un matiz entero válido sigue funcionando.
+        let ok = serde_json::json!({
+            "format": "dockinng-groups", "version": 1,
+            "groups": [{"id": "g", "name": "Nuevo", "hue": 200}]
+        });
+        s.groups_import_export(&ok).unwrap();
+        assert_eq!(s.groups_load().unwrap().groups[0].hue, 200);
     }
 
     #[test]
