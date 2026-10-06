@@ -4,6 +4,19 @@ Ver detalle y contexto en Obsidian: `Proyectos/DockInng/DockInng - Pendientes.md
 
 Lo ya cerrado se retiró de esta lista (2026-10-06); su historial está en la Bitácora de Obsidian.
 
+## Auditoría de correcciones (2026-10-06, integrada en develop)
+
+Pendientes que quedaron abiertos tras las correcciones de la auditoría completa:
+
+- [ ] Creación de contenedor y construcción canjean su ticket con `confirmed=true` fijo: no pasan por confirmación en el núcleo. Añadir `confirmed` a `create_container` y `build` exige cambio de contrato.
+- [ ] `context rm` de la CLI no pasa por el broker de tickets (usa `decide()` y `gate()` del núcleo). Requiere `ActionRequest::RemoveConnection` y un `ItemKind` nuevo, que viajan al contrato TS.
+- [ ] `F-9`: quedan unos 110 `style={{...}}` inline fuera de los cuatro archivos migrados.
+- [ ] `F-12`: `CreateContainerPage.tsx` sigue en ~377 líneas (faltan puertos, entorno, red y grupo).
+- [ ] Revisión visual en la app de los cambios de estilo (`--row-h`/`--head-h` en capa, tokens `--z-*`, renombrado a `workflows.css`, `connections-ops.css`, `interaction-chrome.css`, `ports-actions.css`). Solo se verificó build y tests.
+- [ ] Decidir: `truncate` de `compose` (cuenta bytes) y el de la CLI (caracteres) no se unifican porque cambiaría salidas; `is_remote` son cuatro cosas distintas.
+- [ ] Reglas de argumentos de build y longitud de nombres: la lista de reservados y la validación están igualadas a mano entre frontend y backend (tests de paridad). Falta una fuente única vía contrato.
+- [ ] Riesgo de la línea del webview: el flag `confirmed` lo envía el propio webview, así que un webview comprometido puede confirmarse a sí mismo. Solo se cierra si la confirmación pasa a un canal que el webview no controle.
+
 ## Ola 3: empaquetado
 
 - [ ] Pasar `rpmlint` sin errores al RPM generado por Tauri: verificado en Fedora 44 con `rpmlint 2.8.0`; quedan 9 errores y 2 advertencias por documentación no marcada como `%doc`, `no-documentation`, `no-changelogname-tag`, `no-buildhost-tag` y nombre de archivo no coherente. El paquete instala/desinstala correctamente; documentar o corregir según lo que controle Tauri.
