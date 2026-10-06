@@ -3,7 +3,6 @@
 //   si `open()` resuelve tras el cleanup se cierra al instante, sin sesiones huérfanas).
 // - Colores desde los tokens --console-* (se re-aplican al cambiar el tema). Salida: bytes crudos (xterm decodifica UTF-8 con estado).
 // - Atajos Linux: Ctrl+Shift+C copia, Ctrl+Shift+V pega (evento paste nativo), Ctrl+Shift+M alterna «Tab mueve el foco». Ctrl+C va al proceso.
-import '@xterm/xterm/css/xterm.css'
 import { FitAddon } from '@xterm/addon-fit'
 import { Terminal } from '@xterm/xterm'
 import { useEffect, useImperativeHandle, useRef, type Ref } from 'react'

@@ -515,7 +515,9 @@ a.crumb { text-decoration: underline; } /* en la plantilla los <a> conservan el 
 
 /* ---------- Responsivo (ventana mínima real: 900x600) ---------- */
 @media (max-width: 1000px) { .sidebar { width: 216px; } }
-@media (max-height: 640px) { .view-head { padding-bottom: 8px; } .toolbar { padding-bottom: 8px; } :root { --row-h: 44px !important; --head-h: 30px !important; } /* !important: los tokens de index.css no están en capa y ganarían a @layer components */ }
+/* Alturas de tabla: tokens en esta capa (components), no en index.css, que no tiene capa y ganaría sin !important. */
+:root { --row-h: 48px; --head-h: 34px; }
+@media (max-height: 640px) { .view-head { padding-bottom: 8px; } .toolbar { padding-bottom: 8px; } :root { --row-h: 44px; --head-h: 30px; } }
 
 /* Las vistas también pueden renderizarse en ventanas embebidas o durante un
    cambio de tamaño por debajo del mínimo nativo. No dejamos que las acciones

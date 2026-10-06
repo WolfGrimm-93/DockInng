@@ -15,7 +15,7 @@
   padding: 8px 4px 8px 10px; height: clamp(240px, calc(100vh - 360px), 660px); overflow: hidden; cursor: text;
 }
 .term-x .xterm { height: 100%; }
-.term-x .xterm-viewport { background-color: transparent !important; }
+.term-x .xterm-viewport { background-color: transparent; }
 .term-x:focus-within { box-shadow: inset 0 0 0 2px var(--ring); }
 .term-loading { display: flex; align-items: center; justify-content: center; color: var(--console-muted); font-family: var(--font-mono); font-size: var(--text-xs); }
 

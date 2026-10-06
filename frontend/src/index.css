@@ -11,6 +11,7 @@
 @import "tw-animate-css";
 @import "./styles/fonts.css";
 /* Estilos de la plantilla portados (layout + componentes propios), en la capa components. */
+@import "@xterm/xterm/css/xterm.css" layer(components);
 @import "./styles/app.css" layer(components);
 @import "./styles/ola1.css" layer(components);
 @import "./styles/ola2.css" layer(components);
@@ -179,7 +180,7 @@
 
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --dur-fast: 120ms; --dur-base: 200ms;
-  --h-sm: 28px; --h-md: 32px; --h-lg: 36px; --row-h: 48px; --head-h: 34px;
+  --h-sm: 28px; --h-md: 32px; --h-lg: 36px;
 }
 
 .dark {
