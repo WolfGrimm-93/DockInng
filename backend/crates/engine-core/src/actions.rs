@@ -14,6 +14,7 @@ use crate::approval::{Approval, ApprovalPrompt};
 use crate::broker::{Broker, Clock, RedeemError, SystemClock, TICKET_TTL};
 use crate::cleanup::CleanupSelection;
 use crate::client::EngineClient;
+use crate::connections::ConnectionControl;
 use crate::error::EngineError;
 use crate::model::ContainerState;
 use crate::policy::{Action, Decision, DenyReason, Interactivity, decide, decide_batch};
@@ -53,6 +54,10 @@ pub enum ActionRequest {
         selection: CleanupSelection,
     },
     PruneSystem,
+    /// Borra un perfil de conexión guardado (no toca el servidor remoto). Confirmación simple.
+    RemoveConnection {
+        id: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -63,6 +68,7 @@ pub enum ItemKind {
     Volume,
     Network,
     Stack,
+    Connection,
 }
 
 /// Decisión tal como viaja a la UI.
@@ -240,6 +246,7 @@ fn kind_label(kind: ItemKind) -> &'static str {
         ItemKind::Volume => "volumen",
         ItemKind::Network => "red",
         ItemKind::Stack => "stack",
+        ItemKind::Connection => "conexión",
     }
 }
 
@@ -248,6 +255,8 @@ pub struct ActionService {
     broker: Broker<Payload>,
     /// Control de stacks (bajar / borrar). `None` en la CLI y en tests sin stacks.
     stacks: Option<Arc<dyn StackControl>>,
+    /// Perfiles de conexión guardados (borrar). `None` si el adaptador no los expone.
+    connections: Option<Arc<dyn ConnectionControl>>,
 }
 
 impl ActionService {
@@ -260,7 +269,18 @@ impl ActionService {
             engine,
             broker: Broker::new(clock),
             stacks: None,
+            connections: None,
         }
+    }
+
+    /// Servicio con acceso a los perfiles guardados (`RemoveConnection`).
+    pub fn with_connections(
+        engine: Arc<dyn EngineClient>,
+        connections: Arc<dyn ConnectionControl>,
+    ) -> Self {
+        let mut s = Self::new(engine);
+        s.connections = Some(connections);
+        s
     }
 
     /// Servicio con control de stacks (bajar y borrar stacks).
@@ -327,6 +347,7 @@ impl ActionService {
                     .await?
             }
             ActionRequest::StackDelete { name } => self.plan_stack_delete(name).await?,
+            ActionRequest::RemoveConnection { id } => self.plan_remove_connection(id).await?,
             ActionRequest::RemoveContainers { ids } => {
                 self.plan_containers(ids, &mut warnings).await?
             }
@@ -467,6 +488,32 @@ impl ActionService {
             warnings,
             total_size_bytes,
         })
+    }
+
+    /// Perfil guardado: el backend fija el id y el nombre; el borrado ocurre al ejecutar.
+    async fn plan_remove_connection(&self, id: String) -> Result<Vec<PlannedItem>, ActionError> {
+        let conns = self.connections.as_ref().ok_or_else(|| {
+            ActionError::NotImplemented(
+                "los perfiles de conexión no están disponibles en esta interfaz".into(),
+            )
+        })?;
+        if id.trim().is_empty() {
+            return Err(EngineError::InvalidInput("id de conexión vacío".into()).into());
+        }
+        let name = conns
+            .profile_name(&id)
+            .await?
+            .ok_or_else(|| EngineError::NotFound(format!("conexión {id}")))?;
+        Ok(vec![PlannedItem {
+            kind: ItemKind::Connection,
+            id,
+            name,
+            action: Action::RemoveConnection,
+            force: false,
+            fingerprint: None,
+            size_bytes: None,
+            state: None,
+        }])
     }
 
     fn stack_control(&self) -> Result<&Arc<dyn StackControl>, ActionError> {
@@ -993,6 +1040,16 @@ impl ActionService {
                 self.engine.remove_volume(&item.name).await?;
             }
             ItemKind::Stack => self.run_stack_item(item).await?,
+            ItemKind::Connection => {
+                // Solo se llega aquí con el ticket aprobado; el perfil se borra al ejecutar.
+                let conns = self.connections.as_ref().ok_or_else(|| {
+                    ApiError::new(
+                        ApiErrorCode::NotImplemented,
+                        "los perfiles de conexión no están disponibles en esta interfaz",
+                    )
+                })?;
+                conns.delete_profile(&item.id).await?;
+            }
             ItemKind::Network => {
                 if networks.is_none() {
                     *networks = Some(self.engine.list_networks().await?);
@@ -1576,6 +1633,88 @@ mod extra_tests {
             .expect("confirmado");
         assert_eq!(out.succeeded.len(), 1);
         assert_eq!(removes(&e), vec!["remove_image:app:1"]);
+    }
+
+    /// Perfiles en memoria: (id, nombre).
+    #[derive(Default)]
+    struct FakeConns {
+        perfiles: std::sync::Mutex<Vec<(String, String)>>,
+    }
+
+    impl FakeConns {
+        fn con(id: &str, nombre: &str) -> Arc<Self> {
+            let f = Self::default();
+            f.perfiles.lock().unwrap().push((id.into(), nombre.into()));
+            Arc::new(f)
+        }
+        fn quedan(&self) -> usize {
+            self.perfiles.lock().unwrap().len()
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl ConnectionControl for FakeConns {
+        async fn profile_name(&self, id: &str) -> Result<Option<String>, EngineError> {
+            Ok(self
+                .perfiles
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|(i, _)| i == id)
+                .map(|(_, n)| n.clone()))
+        }
+        async fn delete_profile(&self, id: &str) -> Result<(), EngineError> {
+            self.perfiles.lock().unwrap().retain(|(i, _)| i != id);
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn remove_connection_no_borra_sin_aprobacion_y_si_con_ella() {
+        // `context rm` pasa por el broker: el perfil NO se borra sin ticket aprobado.
+        let e = Arc::new(MockEngine::new());
+        let conns = FakeConns::con("0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3e", "prod");
+        let s = ActionService::with_connections(e.clone(), conns.clone());
+        let p = s
+            .plan(ActionRequest::RemoveConnection {
+                id: "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3e".into(),
+            })
+            .await
+            .expect("plan");
+        assert_eq!(p.decision, PlanDecision::Confirm);
+        assert_eq!(p.affected[0].name, "prod");
+        let t = p.ticket.expect("ticket");
+        // Antes de ejecutar, el perfil sigue existiendo (el plan no borra nada).
+        assert_eq!(conns.quedan(), 1);
+
+        let err = s.execute(&t, None, None).await.expect_err("sin aprobación");
+        assert!(matches!(err, ActionError::PolicyDenied(_)));
+        assert_eq!(conns.quedan(), 1, "sin aprobación no se borra");
+
+        let out = s
+            .execute(&t, None, Some(crate::Approval::for_tests()))
+            .await
+            .expect("aprobado");
+        assert_eq!(out.succeeded.len(), 1);
+        assert_eq!(out.succeeded[0].kind, ItemKind::Connection);
+        assert_eq!(conns.quedan(), 0, "el perfil se borra al ejecutar");
+    }
+
+    #[tokio::test]
+    async fn remove_connection_inexistente_o_sin_adaptador_falla_en_el_plan() {
+        let e = Arc::new(MockEngine::new());
+        let s = ActionService::with_connections(e.clone(), FakeConns::con("a", "x"));
+        let err = s
+            .plan(ActionRequest::RemoveConnection { id: "no".into() })
+            .await
+            .expect_err("no existe");
+        assert!(matches!(err, ActionError::Engine(EngineError::NotFound(_))));
+        let sin = svc(&e);
+        let err = sin
+            .plan(ActionRequest::RemoveConnection { id: "a".into() })
+            .await
+            .expect_err("sin adaptador");
+        assert!(matches!(err, ActionError::NotImplemented(_)));
     }
 
     #[tokio::test]

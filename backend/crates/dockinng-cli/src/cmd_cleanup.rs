@@ -116,7 +116,7 @@ pub fn build_selection(a: &ApplyArgs, report: Option<&CleanupReport>) -> Cleanup
                 ItemKind::Container => &mut sel.containers,
                 ItemKind::Image => &mut sel.images,
                 ItemKind::Network => &mut sel.networks,
-                ItemKind::Volume | ItemKind::Stack => continue,
+                ItemKind::Volume | ItemKind::Stack | ItemKind::Connection => continue,
             };
             if !list.contains(&item.id) {
                 list.push(item.id.clone());

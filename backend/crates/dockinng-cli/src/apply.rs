@@ -15,6 +15,7 @@ fn kind_label(k: ItemKind) -> &'static str {
         ItemKind::Volume => "volumen",
         ItemKind::Network => "red",
         ItemKind::Stack => "stack",
+        ItemKind::Connection => "conexión",
     }
 }
 

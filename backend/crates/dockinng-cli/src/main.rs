@@ -165,7 +165,7 @@ async fn dispatch(ctx: &Ctx, command: Command) -> Result<(), CliError> {
             ContextCmd::Add(add) => cmd_context::add(ctx, add),
             ContextCmd::Use { target } => cmd_context::use_context(ctx, &target),
             ContextCmd::Ls => cmd_context::ls(ctx),
-            ContextCmd::Rm { target, confirm } => cmd_context::rm(ctx, &target, confirm),
+            ContextCmd::Rm { target, confirm } => cmd_context::rm(ctx, &target, confirm).await,
         },
         Command::Completions { .. } => unreachable!("se atiende antes de crear el contexto"),
     }
