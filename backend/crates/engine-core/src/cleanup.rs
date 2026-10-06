@@ -130,19 +130,12 @@ pub fn rfc3339_utc(secs: i64) -> String {
     )
 }
 
-fn now_unix() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
-}
-
 /// Informe de limpieza con la hora del sistema. Solo llama a `list_*` y `system_usage`.
 pub async fn cleanup_report(
     engine: &dyn EngineClient,
     min_age_days: u32,
 ) -> Result<CleanupReport, EngineError> {
-    cleanup_report_at(engine, min_age_days, now_unix()).await
+    cleanup_report_at(engine, min_age_days, crate::now_unix_secs()).await
 }
 
 /// Igual con la hora inyectada (tests deterministas).

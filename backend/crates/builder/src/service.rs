@@ -135,7 +135,8 @@ impl Default for BuildService {
 }
 
 fn invalid(msg: impl Into<String>) -> ApiError {
-    ApiError::new(ApiErrorCode::InvalidInput, msg)
+    // Mismo código y mensaje que el resto de entradas inválidas del núcleo.
+    ApiError::from(engine_core::EngineError::invalid(msg))
 }
 
 impl BuildService {

@@ -38,6 +38,12 @@ pub enum EngineError {
 }
 
 impl EngineError {
+    /// Entrada inválida (validación de campos). Única constructora de `InvalidInput` con
+    /// mensaje libre en el núcleo: sustituye a los `fn invalid` locales de cada módulo.
+    pub fn invalid(message: impl Into<String>) -> Self {
+        Self::InvalidInput(message.into())
+    }
+
     /// Atajo para construir un error con código propio.
     pub fn coded(code: ApiErrorCode, message: impl Into<String>) -> Self {
         Self::Coded {

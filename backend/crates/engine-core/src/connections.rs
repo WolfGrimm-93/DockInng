@@ -122,10 +122,6 @@ pub struct ConnTestResult {
 // Validación de campos (frontera de confianza: todo lo que llegue de la UI pasa por aquí).
 // ---------------------------------------------------------------------------------------
 
-fn invalid(msg: impl Into<String>) -> EngineError {
-    EngineError::InvalidInput(msg.into())
-}
-
 /// Caracteres de control C0/DEL y de control bidireccional: no se admiten en nombres.
 fn has_forbidden_chars(t: &str) -> bool {
     t.chars().any(|c| {
@@ -139,13 +135,17 @@ fn has_forbidden_chars(t: &str) -> bool {
 pub fn validate_display_name(name: &str) -> Result<String, EngineError> {
     let t = name.trim();
     if t.is_empty() {
-        return Err(invalid("escribe un nombre"));
+        return Err(EngineError::invalid("escribe un nombre"));
     }
     if t.chars().count() > MAX_NAME {
-        return Err(invalid(format!("máximo {MAX_NAME} caracteres")));
+        return Err(EngineError::invalid(format!(
+            "máximo {MAX_NAME} caracteres"
+        )));
     }
     if has_forbidden_chars(t) {
-        return Err(invalid("el nombre tiene caracteres no permitidos"));
+        return Err(EngineError::invalid(
+            "el nombre tiene caracteres no permitidos",
+        ));
     }
     Ok(t.to_string())
 }
@@ -155,7 +155,7 @@ pub fn validate_hue(hue: i64) -> Result<u16, EngineError> {
     u16::try_from(hue)
         .ok()
         .filter(|h| *h < 360)
-        .ok_or_else(|| invalid("el matiz debe estar entre 0 y 359"))
+        .ok_or_else(|| EngineError::invalid("el matiz debe estar entre 0 y 359"))
 }
 
 /// Verdadero si `id` es un UUID v7 en forma canónica.
@@ -177,7 +177,7 @@ pub fn validate_host(host: &str) -> Result<(), EngineError> {
         return if ok {
             Ok(())
         } else {
-            Err(invalid("host IPv6 inválido"))
+            Err(EngineError::invalid("host IPv6 inválido"))
         };
     }
     let ok = !host.is_empty()
@@ -189,7 +189,7 @@ pub fn validate_host(host: &str) -> Result<(), EngineError> {
     if ok {
         Ok(())
     } else {
-        Err(invalid(
+        Err(EngineError::invalid(
             "host inválido (solo letras, números, '.', '_' y '-')",
         ))
     }
@@ -207,7 +207,7 @@ pub fn validate_user(user: &str) -> Result<(), EngineError> {
     if ok {
         Ok(())
     } else {
-        Err(invalid("usuario inválido"))
+        Err(EngineError::invalid("usuario inválido"))
     }
 }
 
@@ -216,7 +216,7 @@ pub fn validate_port(port: u32) -> Result<u16, EngineError> {
     u16::try_from(port)
         .ok()
         .filter(|p| *p != 0)
-        .ok_or_else(|| invalid("puerto inválido (1-65535)"))
+        .ok_or_else(|| EngineError::invalid("puerto inválido (1-65535)"))
 }
 
 /// Ruta absoluta, sin NUL ni saltos de línea, de largo acotado. NO comprueba existencia.
@@ -226,7 +226,7 @@ pub fn validate_abs_path(path: &str, what: &str) -> Result<(), EngineError> {
         || !path.starts_with('/')
         || path.chars().any(|c| c == '\0' || c == '\n' || c == '\r')
     {
-        return Err(invalid(format!(
+        return Err(EngineError::invalid(format!(
             "{what}: debe ser una ruta absoluta válida"
         )));
     }
@@ -241,7 +241,7 @@ pub fn validate_ssh_path(path: &str, what: &str) -> Result<(), EngineError> {
         .chars()
         .any(|c| c == '%' || c.is_whitespace() || c == '"' || c == '\'' || c == '\\')
     {
-        return Err(invalid(format!(
+        return Err(EngineError::invalid(format!(
             "{what}: la ruta no puede contener '%', espacios ni comillas"
         )));
     }
