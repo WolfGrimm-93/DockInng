@@ -181,6 +181,17 @@
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --dur-fast: 120ms; --dur-base: 200ms;
   --h-sm: 28px; --h-md: 32px; --h-lg: 36px;
+
+  /* Escala de capas (z-index): una sola fuente para toda la hoja. De menor a mayor. */
+  --z-raised: 2;          /* cabeceras de tabla pegadas */
+  --z-resizer: 3;         /* asa de redimensionar columnas */
+  --z-menu: 60;           /* menú contextual y bandeja de arrastre */
+  --z-drag-ghost: 61;     /* fantasma al arrastrar */
+  --z-win-edge: 80;       /* bordes de ventana */
+  --z-dialog-backdrop: 90;
+  --z-dialog: 91;
+  --z-toast: 100;         /* avisos y popovers de ayuda/menús */
+  --z-skip-link: 300;     /* enlace de salto (accesibilidad), siempre encima */
 }
 
 .dark {
