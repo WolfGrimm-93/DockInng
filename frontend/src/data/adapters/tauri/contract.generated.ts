@@ -897,6 +897,7 @@ export const COMMANDS = {
     "id": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3e"
   }, resultType: "void", result: result_connection_delete },
   connection_forget_host_key: { args: {
+    "confirmedHost": "srv.example",
     "spec": {
       "host": "10.0.0.5",
       "identity": {

@@ -179,13 +179,13 @@ export default function ConnNewPage() {
   }
 
   // Olvida la clave guardada tras una clave cambiada. NO confía en la nueva: hay que verificarla de nuevo.
-  const forget = async () => {
+  const forget = async (confirmedHost: string) => {
     const b = build()
     if (!b.spec || !probe) return
     const n = seq.current
     setPhase('trusting')
     try {
-      await api.connections.forgetHostKey(b.spec)
+      await api.connections.forgetHostKey(b.spec, confirmedHost)
       if (n !== seq.current) return
       setProbe(null)
       setPhase('idle')
@@ -313,7 +313,7 @@ export default function ConnNewPage() {
           </div>
         </form>
       </div>
-      <HostKeyDialog probe={probe} host={host.trim()} port={Number(port) || 22} busy={phase === 'trusting'} simulated={browserWorld} onTrust={() => void trust()} onForget={() => void forget()} onClose={() => { setProbe(null); setPhase('idle'); window.setTimeout(() => verifyBtn.current?.focus(), 0) }} />
+      <HostKeyDialog probe={probe} host={host.trim()} port={Number(port) || 22} busy={phase === 'trusting'} simulated={browserWorld} onTrust={() => void trust()} onForget={(confirmed) => void forget(confirmed)} onClose={() => { setProbe(null); setPhase('idle'); window.setTimeout(() => verifyBtn.current?.focus(), 0) }} />
     </>
   )
 }

@@ -1171,7 +1171,7 @@ fn commands() -> Value {
     );
     c.add(
         "connection_forget_host_key",
-        json!({"spec": spec_ssh}),
+        json!({"spec": spec_ssh, "confirmedHost": "srv.example"}),
         "void",
         Value::Null,
     );

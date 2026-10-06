@@ -36,6 +36,11 @@ pub enum Action {
     RemoveRegistry,
     /// Borrar un perfil de conexión guardado (confirmación simple: no toca el servidor remoto).
     RemoveConnection,
+    /// Olvidar la clave guardada de un host (known_hosts propio). Confirmación escrita: el host.
+    /// No concede confianza: la siguiente conexión vuelve a exigir confirmar la huella.
+    ForgetHostKey {
+        host: String,
+    },
     /// Construir una imagen con un contexto sensible (`$HOME`, raíz, directorios del sistema):
     /// confirmación simple, `--yes` la salta.
     BuildSensitiveContext,
@@ -154,6 +159,7 @@ impl ConfirmationPolicy {
             PruneVolumes => typed(CONFIRM_WORD),
             StackDown { project } => typed(project),
             StackDelete { name } => typed(name),
+            ForgetHostKey { host } => typed(host),
         }
     }
 
@@ -388,6 +394,27 @@ mod tests {
         let dec = d(&a, Interactive, true);
         assert!(dec.accepts(Some("tienda")));
         assert!(!dec.accepts(Some("otro")));
+        assert_eq!(d(&a, NonInteractive, true), NCNI);
+        assert_eq!(d(&a, Interactive, false), dec);
+    }
+
+    #[test]
+    fn forget_host_key_pide_el_host_y_no_lo_salta_yes() {
+        let a = Action::ForgetHostKey {
+            host: "srv.example".into(),
+        };
+        let dec = d(&a, Interactive, true);
+        assert_eq!(
+            dec,
+            Decision::ConfirmTyped {
+                expected: "srv.example".into()
+            }
+        );
+        assert!(dec.accepts(Some("srv.example")));
+        assert!(dec.accepts(Some("  srv.example ")));
+        assert!(!dec.accepts(Some("SRV.example")));
+        assert!(!dec.accepts(Some("otro")));
+        assert!(!dec.accepts(None));
         assert_eq!(d(&a, NonInteractive, true), NCNI);
         assert_eq!(d(&a, Interactive, false), dec);
     }

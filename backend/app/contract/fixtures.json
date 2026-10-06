@@ -278,6 +278,7 @@
     },
     "connection_forget_host_key": {
       "args": {
+        "confirmedHost": "srv.example",
         "spec": {
           "host": "10.0.0.5",
           "identity": {

@@ -159,7 +159,7 @@ export function createTauriApi(): EngineApi {
       list: async () => (await store.listProfiles()).map((p) => (p.id === 'local' ? { ...p, target: localEndpoint, version: localVersion || p.version } : p.id === active ? { ...p, version: lastVersion || p.version } : p)),
       probeHostKey: (spec) => call<HostKeyProbe>('connection_probe_host_key', { spec }),
       trustHostKey: (spec, fingerprint) => call<HostKeyProbe>('connection_trust_host_key', { spec, fingerprint }),
-      forgetHostKey: (spec) => call<void>('connection_forget_host_key', { spec }),
+      forgetHostKey: (spec, confirmedHost) => call<void>('connection_forget_host_key', { spec, confirmedHost }),
       test: (spec) => call<ConnTestResult>('connection_test', { spec }),
       save: async (spec, id) => normalizeProfile(await call<RawProfile>('connection_save', id ? { spec, id } : { spec })),
       remove: (id, confirmed) => call<void>('connection_delete', { id, confirmed }),
