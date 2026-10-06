@@ -79,9 +79,9 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
                         Para confirmar, escribe <b className="mono typed-exp" title={expected}>{safeText(expected, { singleLine: true })}</b>
                       </label>
                       {expected.length > 24 ? (
-                          <button type="button" className="btn btn-ghost btn-sm" style={{ justifySelf: 'start' }} aria-label="Copiar el texto de confirmación" onClick={() => void copiarTexto(expected)}>
+                          <Button type="button" variant="ghost" size="sm" className="justify-self-start" aria-label="Copiar el texto de confirmación" onClick={() => void copiarTexto(expected)}>
                             <Icon name="copy" size="sm" />Copiar
-                          </button>
+                          </Button>
                         ) : null}
                       <input
                         className="input"
