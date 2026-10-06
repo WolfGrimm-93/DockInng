@@ -19,6 +19,8 @@ use crate::{Store, new_id, now_secs};
 pub(crate) const LEGACY_FLAG: &str = "legacy_groups_imported";
 /// Máximo de nombres por operación de asignación.
 const MAX_NAMES_PER_OP: usize = 500;
+/// Tope de contenedores que se envían como «vivos» al limpiar asignaciones huérfanas.
+const MAX_LIVE_NAMES: usize = 10_000;
 /// Máximo de largo de un nombre de contenedor / proyecto.
 const MAX_ITEM_NAME: usize = 255;
 /// Paleta de matices para grupos nuevos sin color explícito.
@@ -225,6 +227,39 @@ fn apply_op(tx: &Transaction<'_>, op: GroupOp) -> Result<(), StoreError> {
                         )?;
                     }
                 }
+            }
+        }
+        GroupOp::PruneAssignments {
+            connection_id,
+            live_names,
+        } => {
+            if live_names.len() > MAX_LIVE_NAMES {
+                return invalid("demasiados contenedores para limpiar asignaciones");
+            }
+            let conn_ok = tx
+                .query_row(
+                    "SELECT 1 FROM connections WHERE id = ?1",
+                    [&connection_id],
+                    |_| Ok(()),
+                )
+                .optional()?
+                .is_some();
+            if !conn_ok {
+                return Err(StoreError::NotFound("conexión".into()));
+            }
+            let vivos: HashSet<&str> = live_names.iter().map(String::as_str).collect();
+            let existentes: Vec<String> = {
+                let mut st = tx.prepare(
+                    "SELECT container_name FROM group_assignments WHERE connection_id = ?1",
+                )?;
+                let filas = st.query_map([&connection_id], |r| r.get::<_, String>(0))?;
+                filas.collect::<Result<_, _>>()?
+            };
+            for n in existentes.iter().filter(|n| !vivos.contains(n.as_str())) {
+                tx.execute(
+                    "DELETE FROM group_assignments WHERE connection_id = ?1 AND container_name = ?2",
+                    params![connection_id, n],
+                )?;
             }
         }
         GroupOp::SetStackHue { project, hue } => {
@@ -653,5 +688,49 @@ mod tests {
                 .iter()
                 .all(|g| { uuid::Uuid::parse_str(&g.id).unwrap().get_version_num() == 7 })
         );
+    }
+
+    #[test]
+    fn limpiar_huerfanos_quita_solo_los_que_ya_no_existen() {
+        let d = std::env::temp_dir().join(format!("dockinng-test-prune-{}", uuid::Uuid::now_v7()));
+        std::fs::create_dir_all(&d).unwrap();
+        let s = Store::open(&d.join("store.db")).unwrap();
+        let g = s
+            .groups_mutate(GroupOp::CreateGroup {
+                name: "API".into(),
+                hue: None,
+            })
+            .unwrap()
+            .groups[0]
+            .id
+            .clone();
+        s.groups_mutate(GroupOp::Assign {
+            connection_id: "local".into(),
+            names: vec!["web".into(), "db".into(), "viejo".into()],
+            group_id: Some(g.clone()),
+        })
+        .unwrap();
+        let snap = s
+            .groups_mutate(GroupOp::PruneAssignments {
+                connection_id: "local".into(),
+                live_names: vec!["web".into(), "db".into()],
+            })
+            .unwrap();
+        let mut nombres: Vec<&str> = snap
+            .assignments
+            .iter()
+            .map(|a| a.container_name.as_str())
+            .collect();
+        nombres.sort_unstable();
+        assert_eq!(nombres, vec!["db", "web"]);
+        // Conexión inexistente: se rechaza sin tocar nada.
+        assert!(
+            s.groups_mutate(GroupOp::PruneAssignments {
+                connection_id: "no-existe".into(),
+                live_names: vec![],
+            })
+            .is_err()
+        );
+        let _ = std::fs::remove_dir_all(&d);
     }
 }

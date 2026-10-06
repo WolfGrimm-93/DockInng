@@ -117,6 +117,12 @@ export function createSimStore(ctx: SimCtx, getActive: () => string, opts: SimSt
         if (op.hue === null) delete g.stack_hues[op.project]
         else g.stack_hues[op.project] = clampHue(op.hue)
         return
+      case 'prune_assignments': {
+        if (!connKnown(op.connection_id)) throw apiError('not_found', 'La conexión no existe.')
+        const vivos = new Set(op.live_names)
+        g.assignments = g.assignments.filter((a) => a.connection_id !== op.connection_id || vivos.has(a.container_name))
+        return
+      }
     }
   }
 

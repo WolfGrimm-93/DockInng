@@ -418,6 +418,7 @@ export type GroupOp =
   | { type: 'delete_group'; id: string }
   | { type: 'assign'; connection_id: string; names: string[]; group_id: string | null }
   | { type: 'set_stack_hue'; project: string; hue: number | null }
+  | { type: 'prune_assignments'; connection_id: string; live_names: string[] }
 /** Carga útil de `groups_import_legacy` = lo que produce `loadGroups()` de `dockinng.groups.v1`. */
 export interface LegacyGroupsPayload { v: 1; groups: StoredGroup[]; assign: Record<string, string>; stackHue: Record<string, number> }
 /** `LegacyImportReport` de engine-core: con `already_imported:true` no se escribió nada. */

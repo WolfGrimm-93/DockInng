@@ -42,7 +42,6 @@ Lo ya cerrado se retiró de esta lista (2026-10-06); su historial está en la Bi
 
 - [ ] Los grupos propios y los colores de stack ya viven en el almacén SQLite (Ola 2); no se sincronizan entre equipos ni se exportan.
 - [ ] Asignar arrastrando filas a una cabecera de grupo (hoy: menú de la fila o barra masiva).
-- [ ] Las asignaciones de contenedores que ya no existen no se limpian (quedan inertes en el almacenamiento).
 - [ ] Consumo por grupo: solo cuentan los contenedores en marcha; el disco por grupo es aproximado (capas de escritura + volúmenes, sin imágenes) y Docker solo informa la capa de escritura de parte de los contenedores. GPU solo global (NVIDIA, motor local).
 
 ## Puertos (rama `feature/containers-ux`)

@@ -2150,6 +2150,13 @@ export const TYPE_GroupOp: GroupOp[] = [
     "hue": null,
     "project": "shop",
     "type": "set_stack_hue"
+  },
+  {
+    "connection_id": "local",
+    "live_names": [
+      "web"
+    ],
+    "type": "prune_assignments"
   }
 ]
 

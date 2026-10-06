@@ -6,10 +6,11 @@ import { Button } from '@/components/ui/button'
 import { useContainers, useConnection } from '@/data/store/hooks'
 import { containerName } from '@/data/store/engineStore'
 import { safeText } from '@/lib/safeText'
+import { toast } from '@/lib/toastStore'
 import { assignGroupHues } from '../common/groupColor'
 import { HuePicker } from './HuePicker'
 import { hueStyle } from './hueStyle'
-import { MAX_GROUP_NAME, useGroupsStore, validateGroupName, type CustomGroup } from './groupsStore'
+import { MAX_GROUP_NAME, orphanNames, useGroupsStore, validateGroupName, type CustomGroup } from './groupsStore'
 import { NewGroupDialog } from './NewGroupDialog'
 
 function GroupRow({ g, count }: { g: CustomGroup; count: number }) {
@@ -59,13 +60,18 @@ function GroupRow({ g, count }: { g: CustomGroup; count: number }) {
 }
 
 export function GroupsManager() {
-  const { list } = useContainers()
+  const { list, status } = useContainers()
   const profileId = useConnection().profile.id
   const groups = useGroupsStore((s) => s.groups)
   const assign = useGroupsStore((s) => s.assign)
   const stackHue = useGroupsStore((s) => s.stackHue)
   const setStackHue = useGroupsStore((s) => s.setStackHue)
+  const pruneOrphans = useGroupsStore((s) => s.pruneOrphans)
   const [creating, setCreating] = useState(false)
+  const liveNames = useMemo(() => list.map((c) => containerName(c)), [list])
+  // Solo se calcula con el listado completo: con una lista incompleta se quitarían asignaciones válidas.
+  const listo = status === 'ready'
+  const huerfanas = useMemo(() => (listo ? orphanNames(assign, profileId, liveNames).length : 0), [assign, profileId, liveNames, listo])
 
   const counts = useMemo(() => {
     const names = new Set(list.map((c) => containerName(c)))
@@ -96,6 +102,13 @@ export function GroupsManager() {
           <div className="setting-row">
             <div className="grow"><small>Los grupos se guardan solo en esta app y por conexión; no cambian nada en Docker.</small></div>
             <Button variant="primary" size="sm" onClick={() => setCreating(true)}><Icon name="folder-plus" size="sm" />Nuevo grupo</Button>
+          </div>
+          <div className="setting-row">
+            <div className="grow">
+              <b>Asignaciones huérfanas</b>
+              <small>{!listo ? 'Espera a que se carguen los contenedores de esta conexión.' : huerfanas === 0 ? 'No hay asignaciones de contenedores que ya no existan.' : `${huerfanas} asignación(es) de contenedores que ya no existen en esta conexión.`}</small>
+            </div>
+            <Button variant="secondary" size="sm" disabled={!listo || huerfanas === 0} onClick={() => { const n = pruneOrphans(profileId, liveNames); toast.ok(`Se quitaron ${n} asignaciones huérfanas`) }}>Limpiar huérfanas</Button>
           </div>
         </div>
       </section>
