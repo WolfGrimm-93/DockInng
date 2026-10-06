@@ -58,7 +58,6 @@ Lo ya cerrado se retiró de esta lista (2026-10-06); su historial está en la Bi
 - [ ] Commitear o guardar en stash los 35 archivos sin commitear de wave3/wave4 (ramas `feature/wave3-security`, `feature/wave4-security`, `feature/wave4-security-compose-hardening`, `feature/wave4-contracts`, `feature/wave4-frontend`). Bloqueado por permisos el 2026-10-05; pendiente de decisión del usuario.
 - [ ] Commitear `quality-gate.yaml` y `scripts/dts-quality-gate.py` (sin `__pycache__`) en una rama propia, no en `main`.
 - [ ] Integrar `feature/fix-layout-audit` en `develop` y luego en `main` (flujo del proyecto). Publicada en GitHub sin PR.
-- [ ] Reconciliar los commits citados en las notas con el historial real (`43968de`, `2ca8b81`, `6f3c3ee`, `372d906`, `7b494a9` no existen en el repo).
 
 ## Calidad y verificación
 
