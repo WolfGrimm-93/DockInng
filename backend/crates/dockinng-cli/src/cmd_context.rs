@@ -2,6 +2,7 @@
 //! `context add` solo guarda metadatos y rutas; la conexión remota se prepara al ejecutar otro
 //! comando con `--context` o con la selección predeterminada.
 
+use crate::error::CliError;
 use engine_core::connections::{SshIdentity, SshMode};
 use engine_core::{Action, ConnSpec, PlanDecision, decide};
 use store::Store;
@@ -11,21 +12,21 @@ use crate::confirm::{Stdin, gate, interactivity};
 use crate::ctx::Ctx;
 use crate::output::{print_json, print_lines, table};
 
-fn open_store() -> Result<Store, String> {
-    Store::open_default().map_err(|e| e.to_string())
+fn open_store() -> Result<Store, CliError> {
+    Store::open_default().map_err(CliError::from)
 }
 
 fn find_profile<'a>(
     profiles: &'a [engine_core::ConnectionProfile],
     target: &str,
-) -> Result<&'a engine_core::ConnectionProfile, String> {
+) -> Result<&'a engine_core::ConnectionProfile, CliError> {
     profiles
         .iter()
         .find(|p| p.id == target || p.spec.name().eq_ignore_ascii_case(target))
-        .ok_or_else(|| format!("no existe la conexión {target}"))
+        .ok_or_else(|| CliError::Usage(format!("no existe la conexión {target}")))
 }
 
-pub fn add(ctx: &Ctx, add: crate::cli::ContextAddCmd) -> Result<(), String> {
+pub fn add(ctx: &Ctx, add: crate::cli::ContextAddCmd) -> Result<(), CliError> {
     let spec = match add {
         crate::cli::ContextAddCmd::Ssh {
             name,
@@ -76,7 +77,7 @@ pub fn add(ctx: &Ctx, add: crate::cli::ContextAddCmd) -> Result<(), String> {
     }
 }
 
-pub fn use_context(ctx: &Ctx, target: &str) -> Result<(), String> {
+pub fn use_context(ctx: &Ctx, target: &str) -> Result<(), CliError> {
     let store = open_store()?;
     let profiles = store.connection_list().map_err(|e| e.to_string())?;
     let id = if target.eq_ignore_ascii_case("local") {
@@ -100,7 +101,7 @@ fn kind(spec: &ConnSpec) -> &'static str {
     }
 }
 
-pub fn ls(ctx: &Ctx) -> Result<(), String> {
+pub fn ls(ctx: &Ctx) -> Result<(), CliError> {
     let profiles = open_store()?.connection_list().map_err(|e| e.to_string())?;
     if ctx.json {
         return print_json(&profiles);
@@ -121,7 +122,7 @@ pub fn ls(ctx: &Ctx) -> Result<(), String> {
 }
 
 /// Borra un perfil guardado (por nombre o id) tras confirmar. No toca el servidor remoto.
-pub fn rm(ctx: &Ctx, target: &str, confirm: Confirm) -> Result<(), String> {
+pub fn rm(ctx: &Ctx, target: &str, confirm: Confirm) -> Result<(), CliError> {
     let store = open_store()?;
     let profiles = store.connection_list().map_err(|e| e.to_string())?;
     let p = profiles

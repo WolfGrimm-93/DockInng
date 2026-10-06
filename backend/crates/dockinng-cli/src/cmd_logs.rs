@@ -1,12 +1,13 @@
 //! `logs <id> [-f] [--tail N]`.
 
+use crate::error::CliError;
 use engine_core::{EngineClient, LogStream, LogsRequest};
 use futures_util::StreamExt;
 
 use crate::ctx::{Ctx, ctrl_c};
 use crate::output::print_ndjson;
 
-pub async fn logs(ctx: &Ctx, id: &str, follow: bool, tail: Option<u32>) -> Result<(), String> {
+pub async fn logs(ctx: &Ctx, id: &str, follow: bool, tail: Option<u32>) -> Result<(), CliError> {
     engine_core::validate::container_id(id).map_err(|e| e.to_string())?;
     let req = LogsRequest {
         tail,

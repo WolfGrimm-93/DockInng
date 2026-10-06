@@ -1,5 +1,6 @@
 //! `images ls|pull|rm|prune|build`.
 
+use crate::error::CliError;
 use engine_core::pull::PullTracker;
 use engine_core::{
     ActionRequest, BuildFeed, BuildOutcome, BuildSpec, BuildStream, EngineClient, PullEngine,
@@ -12,7 +13,7 @@ use crate::confirm::{Stdin, gate};
 use crate::ctx::{Ctx, api_msg, ctrl_c};
 use crate::output::{format_images, print_json, print_lines, print_ndjson};
 
-pub async fn ls(ctx: &Ctx) -> Result<(), String> {
+pub async fn ls(ctx: &Ctx) -> Result<(), CliError> {
     let images = ctx.engine.list_images().await.map_err(|e| e.to_string())?;
     if ctx.json {
         return print_json(&images);
@@ -21,7 +22,7 @@ pub async fn ls(ctx: &Ctx) -> Result<(), String> {
     Ok(())
 }
 
-pub async fn pull(ctx: &Ctx, reference: &str) -> Result<(), String> {
+pub async fn pull(ctx: &Ctx, reference: &str) -> Result<(), CliError> {
     engine_core::pull::validate_reference(reference).map_err(|e| e.to_string())?;
     let mut stream = ctx.engine.pull_image(reference);
     let mut tracker = PullTracker::new();
@@ -63,7 +64,7 @@ fn pull_line(id: &Option<String>, status: &str) -> Option<String> {
     }
 }
 
-pub async fn rm(ctx: &Ctx, reference: &str, confirm: Confirm) -> Result<(), String> {
+pub async fn rm(ctx: &Ctx, reference: &str, confirm: Confirm) -> Result<(), CliError> {
     apply(
         ctx,
         &ctx.actions(),
@@ -78,7 +79,7 @@ pub async fn rm(ctx: &Ctx, reference: &str, confirm: Confirm) -> Result<(), Stri
     .map(|_| ())
 }
 
-pub async fn prune(ctx: &Ctx, confirm: Confirm) -> Result<(), String> {
+pub async fn prune(ctx: &Ctx, confirm: Confirm) -> Result<(), CliError> {
     // Nunca un `prune` del daemon: el plan lista las imágenes sin usar y se borran una a una.
     apply(
         ctx,
@@ -93,12 +94,12 @@ pub async fn prune(ctx: &Ctx, confirm: Confirm) -> Result<(), String> {
 }
 
 /// Convierte los `NOMBRE=VALOR` de la línea de comandos (el valor puede contener `=`).
-pub fn parse_build_args(raw: &[String]) -> Result<Vec<(String, String)>, String> {
+pub fn parse_build_args(raw: &[String]) -> Result<Vec<(String, String)>, CliError> {
     raw.iter()
         .map(|a| {
             a.split_once('=')
                 .map(|(n, v)| (n.to_string(), v.to_string()))
-                .ok_or_else(|| "los --build-arg deben ser NOMBRE=VALOR".to_string())
+                .ok_or_else(|| CliError::Usage("los --build-arg deben ser NOMBRE=VALOR".into()))
         })
         .collect()
 }
@@ -139,7 +140,7 @@ impl builder::BuildSink for PrintSink {
     }
 }
 
-pub async fn build(ctx: &Ctx, a: BuildArgs, confirm: Confirm) -> Result<(), String> {
+pub async fn build(ctx: &Ctx, a: BuildArgs, confirm: Confirm) -> Result<(), CliError> {
     let spec = BuildSpec {
         context_dir: a.context,
         dockerfile: a.file,
@@ -188,10 +189,11 @@ pub async fn build(ctx: &Ctx, a: BuildArgs, confirm: Confirm) -> Result<(), Stri
             Ok(())
         }
         BuildOutcome::Canceled => Err("construcción cancelada".into()),
-        BuildOutcome::Failed => Err(r
-            .error
-            .map(|e| e.message)
-            .unwrap_or_else(|| "la construcción falló".into())),
+        BuildOutcome::Failed => Err(CliError::Failed(
+            r.error
+                .map(|e| e.message)
+                .unwrap_or_else(|| "la construcción falló".into()),
+        )),
     }
 }
 

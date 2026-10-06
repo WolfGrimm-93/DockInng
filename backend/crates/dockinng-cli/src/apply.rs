@@ -1,6 +1,7 @@
 //! Camino único de las acciones destructivas: plan -> mostrar afectados -> confirmación según
 //! la política del núcleo -> ejecución por ticket. Es el mismo flujo que usa la GUI.
 
+use crate::error::CliError;
 use engine_core::{ActionOutcome, ActionPlan, ActionRequest, ActionService, ItemKind, PlanWarning};
 
 use crate::confirm::{Asker, gate};
@@ -72,7 +73,7 @@ pub async fn apply(
     assume_yes: bool,
     question: &str,
     asker: &mut dyn Asker,
-) -> Result<ActionOutcome, String> {
+) -> Result<ActionOutcome, CliError> {
     apply_checked(ctx, actions, req, assume_yes, question, asker, |_| Ok(())).await
 }
 
@@ -85,8 +86,8 @@ pub async fn apply_checked(
     assume_yes: bool,
     question: &str,
     asker: &mut dyn Asker,
-    check: impl FnOnce(&ActionPlan) -> Result<(), String>,
-) -> Result<ActionOutcome, String> {
+    check: impl FnOnce(&ActionPlan) -> Result<(), CliError>,
+) -> Result<ActionOutcome, CliError> {
     let plan = actions
         .plan_with(req, ctx.interactivity, assume_yes)
         .await
@@ -131,10 +132,10 @@ pub async fn apply_checked(
     if outcome.failed.is_empty() {
         Ok(outcome)
     } else {
-        Err(format!(
+        Err(CliError::Failed(format!(
             "{} elemento(s) no se pudieron eliminar",
             outcome.failed.len()
-        ))
+        )))
     }
 }
 
@@ -198,7 +199,7 @@ pub mod tests {
             &mut s,
         )
         .await;
-        assert!(r.unwrap_err().contains("--yes"));
+        assert!(r.unwrap_err().to_string().contains("--yes"));
         assert!(removes(&e).is_empty());
     }
 
