@@ -127,6 +127,22 @@ fn name_taken(tx: &Transaction<'_>, name: &str, except: Option<&str>) -> Result<
     Ok(grupo_con_nombre(tx, name, except)?.is_some())
 }
 
+/// Ya hay una asignación para ese contenedor en esa conexión?
+fn assignment_exists(
+    tx: &Transaction<'_>,
+    connection_id: &str,
+    name: &str,
+) -> Result<bool, StoreError> {
+    Ok(tx
+        .query_row(
+            "SELECT 1 FROM group_assignments WHERE connection_id = ?1 AND container_name = ?2",
+            params![connection_id, name],
+            |_| Ok(()),
+        )
+        .optional()?
+        .is_some())
+}
+
 fn pick_hue(tx: &Transaction<'_>) -> Result<u16, StoreError> {
     let mut used = HashSet::new();
     let mut st = tx.prepare("SELECT hue FROM groups")?;
@@ -219,6 +235,18 @@ fn apply_op(tx: &Transaction<'_>, op: GroupOp) -> Result<(), StoreError> {
                     if !group_exists(tx, &gid)? {
                         return Err(StoreError::NotFound("grupo".into()));
                     }
+                    // Tope comprobado ANTES de escribir: si se comprobara después, un error
+                    // dejaría ya insertadas las filas (dentro de la misma transacción de import).
+                    let distintos: HashSet<&String> = names.iter().collect();
+                    let mut nuevas = 0usize;
+                    for n in &distintos {
+                        if !assignment_exists(tx, &connection_id, n)? {
+                            nuevas += 1;
+                        }
+                    }
+                    if count(tx, "group_assignments")? + nuevas > MAX_ASSIGNMENTS {
+                        return invalid("demasiadas asignaciones de grupo");
+                    }
                     for n in &names {
                         tx.execute(
                             "INSERT INTO group_assignments (connection_id, container_name, group_id)
@@ -226,9 +254,6 @@ fn apply_op(tx: &Transaction<'_>, op: GroupOp) -> Result<(), StoreError> {
                              ON CONFLICT(connection_id, container_name) DO UPDATE SET group_id = excluded.group_id",
                             params![connection_id, n, gid],
                         )?;
-                    }
-                    if count(tx, "group_assignments")? > MAX_ASSIGNMENTS {
-                        return invalid("demasiadas asignaciones de grupo");
                     }
                 }
                 None => {
@@ -880,6 +905,36 @@ mod tests {
             .is_err()
         );
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn asignacion_que_supera_el_limite_no_deja_filas_escritas() {
+        // B-3: el tope se comprobaba DESPUÉS de insertar; el import omite la fila con
+        // InvalidInput y sigue, pero la fila ya insertada en la misma transacción se commiteaba.
+        let (_t, s) = store();
+        create(&s, "G").unwrap();
+        let gid = s.groups_load().unwrap().groups[0].id.clone();
+        let lleno: Vec<serde_json::Value> = (0..MAX_ASSIGNMENTS)
+            .map(|i| {
+                serde_json::json!({"connection_id": "local", "container_name": format!("c{i}"), "group_id": "g"})
+            })
+            .collect();
+        let doc = |asig: Vec<serde_json::Value>| {
+            serde_json::json!({
+                "format": "dockinng-groups", "version": 1,
+                "groups": [{"id": "g", "name": "G"}], "assignments": asig
+            })
+        };
+        // Hasta el tope exacto: todo entra.
+        s.groups_import_export(&doc(lleno)).unwrap();
+        assert_eq!(s.groups_load().unwrap().assignments.len(), MAX_ASSIGNMENTS);
+        // Una más: se omite y NO debe quedar escrita.
+        let extra = serde_json::json!({"connection_id": "local", "container_name": "extra", "group_id": "g"});
+        let rep = s.groups_import_export(&doc(vec![extra])).unwrap();
+        assert_eq!(rep.assignments_skipped, 1);
+        let snap = s.groups_load().unwrap();
+        assert_eq!(snap.assignments.len(), MAX_ASSIGNMENTS);
+        assert!(!snap.assignments.iter().any(|a| a.container_name == "extra"));
     }
 
     #[test]
