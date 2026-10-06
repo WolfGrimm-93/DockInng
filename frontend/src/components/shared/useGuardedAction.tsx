@@ -29,7 +29,11 @@ export function useGuardedAction(): (request: ActionRequest, describe?: GuardedD
   const { confirm, blocked } = useCtx()
   return useCallback(
     async (request, describe) => {
-      if (storeApi.getState().connection.status !== 'connected') return { status: 'cancelled' }
+      if (storeApi.getState().connection.status !== 'connected') {
+        // Sin conexión no se puede planificar: se avisa (antes se cancelaba en silencio).
+        toast.warn(`No se puede ${ACTION_LABEL[request.type].toLowerCase()} sin conexión`, { sub: 'Vuelve a conectar con el motor y repite la acción.' })
+        return { status: 'cancelled' }
+      }
       let plan: ActionPlan
       try {
         plan = await api.actions.plan(request)

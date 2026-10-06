@@ -1,11 +1,11 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
-import { describe, expect, it, beforeEach } from 'vitest'
+import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { createSimApi } from '@/data/adapters/sim'
 import { EngineProvider } from '@/data/EngineProvider'
 import type { ActionRequest } from '@/data/types'
-import { toast } from '@/lib/toastStore'
+import { getToasts, toast } from '@/lib/toastStore'
 import { ConfirmProvider } from './ConfirmDialog'
 import { blockedRequestFor } from './blockedText'
 import { typedMatches, useBlockedDialog, useConfirm, type ConfirmRequest } from './confirmApi'
@@ -133,6 +133,25 @@ async function mountGuard(request: ActionRequest) {
 }
 
 describe('useGuardedAction (plan → diálogo → execute)', () => {
+  it('F-1: execute_action se llama con confirmed=true solo tras confirmar en el diálogo', async () => {
+    const u = userEvent.setup()
+    const api = await mountGuard({ type: 'remove_containers', ids: ['minio-dev'] })
+    const spy = vi.spyOn(api.actions, 'execute')
+    await u.click(screen.getByText('ejecutar'))
+    await u.click(await screen.findByRole('button', { name: 'Eliminar contenedor' }))
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('done'))
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect(spy.mock.calls[0][2]).toBe(true)
+  })
+  it('F-4: sin conexión se avisa con un toast (no se cancela en silencio)', async () => {
+    const u = userEvent.setup()
+    const api = await mountGuard({ type: 'remove_containers', ids: ['minio-dev'] })
+    api.sim.emit({ type: 'connection', status: { state: 'failed', endpoint: 'x', cause: 'daemon_down', message: 'boom', steps: [] } })
+    await u.click(screen.getByText('ejecutar'))
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('cancelled'))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(getToasts().some((t) => t.kind === 'warn' && /sin conexión/.test(t.msg))).toBe(true)
+  })
   it('Libre (allow): sin diálogo', async () => {
     const u = userEvent.setup()
     await mountGuard({ type: 'remove_containers', ids: [] })
