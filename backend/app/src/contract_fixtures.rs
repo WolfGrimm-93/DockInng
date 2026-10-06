@@ -490,6 +490,8 @@ fn types() -> Map<String, Value> {
             GroupOp::Assign { .. } => json!({"type": "assign", "connection_id": "local",
                 "names": ["web"], "group_id": null}),
             GroupOp::SetStackHue { .. } => json!({"type": "set_stack_hue", "project": "shop", "hue": null}),
+            GroupOp::PruneAssignments { .. } => json!({"type": "prune_assignments", "connection_id": "local",
+                "live_names": ["web"]}),
         ),
     );
     put(
@@ -1168,6 +1170,25 @@ fn commands() -> Value {
         json!({"spec": spec_ssh, "fingerprint": "SHA256:abc"}),
         "HostKeyProbe",
         probe,
+    );
+    c.add(
+        "groups_import_file",
+        json!({}),
+        "ExportImportReport | null",
+        json!({"groups_created": 1, "groups_reused": 0, "assignments_imported": 1,
+            "assignments_skipped": 0, "stack_hues_imported": 1}),
+    );
+    c.add(
+        "groups_export",
+        json!({}),
+        "string | null",
+        json!("/home/usuario/dockinng-grupos.json"),
+    );
+    c.add(
+        "connection_forget_host_key",
+        json!({"spec": spec_ssh, "confirmedHost": "srv.example"}),
+        "void",
+        Value::Null,
     );
     c.add(
         "connection_test",

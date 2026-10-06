@@ -4,7 +4,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import type { EngineApi } from '../../api'
 import { toApiError } from '../../errors'
-import type { ConnSpec, ConnectionProfile, GroupsSnapshot, RegistrySummary, SshIdentity } from '../../types'
+import type { ConnSpec, ConnectionProfile, ExportImportReport, GroupsSnapshot, RegistrySummary, SshIdentity } from '../../types'
 
 async function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   try {
@@ -94,6 +94,8 @@ export function createTauriStore(): {
       load: async () => safeSnapshot(await call<GroupsSnapshot>('groups_load')),
       mutate: async (op) => safeSnapshot(await call<GroupsSnapshot>('groups_mutate', { op })),
       importLegacy: (payload) => call('groups_import_legacy', { payload }),
+      exportGroups: () => call<string | null>('groups_export'),
+      importFile: () => call<ExportImportReport | null>('groups_import_file'),
     },
     prefs: {
       get: (key) => call<unknown>('prefs_get', { key }),

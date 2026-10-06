@@ -7,10 +7,11 @@ use engine_core::connections::{
     MAX_ASSIGNMENTS, MAX_GROUPS, is_uuid_v7, validate_display_name, validate_hue,
 };
 use engine_core::{
-    Group, GroupAssignment, GroupOp, GroupsSnapshot, LOCAL_CONNECTION_ID, LegacyGroups,
-    LegacyImportReport,
+    ExportImportReport, Group, GroupAssignment, GroupOp, GroupsSnapshot, LOCAL_CONNECTION_ID,
+    LegacyGroups, LegacyImportReport,
 };
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
+use serde_json::Value;
 
 use crate::error::StoreError;
 use crate::{Store, new_id, now_secs};
@@ -19,6 +20,8 @@ use crate::{Store, new_id, now_secs};
 pub(crate) const LEGACY_FLAG: &str = "legacy_groups_imported";
 /// Máximo de nombres por operación de asignación.
 const MAX_NAMES_PER_OP: usize = 500;
+/// Tope de contenedores que se envían como «vivos» al limpiar asignaciones huérfanas.
+const MAX_LIVE_NAMES: usize = 10_000;
 /// Máximo de largo de un nombre de contenedor / proyecto.
 const MAX_ITEM_NAME: usize = 255;
 /// Paleta de matices para grupos nuevos sin color explícito.
@@ -227,6 +230,39 @@ fn apply_op(tx: &Transaction<'_>, op: GroupOp) -> Result<(), StoreError> {
                 }
             }
         }
+        GroupOp::PruneAssignments {
+            connection_id,
+            live_names,
+        } => {
+            if live_names.len() > MAX_LIVE_NAMES {
+                return invalid("demasiados contenedores para limpiar asignaciones");
+            }
+            let conn_ok = tx
+                .query_row(
+                    "SELECT 1 FROM connections WHERE id = ?1",
+                    [&connection_id],
+                    |_| Ok(()),
+                )
+                .optional()?
+                .is_some();
+            if !conn_ok {
+                return Err(StoreError::NotFound("conexión".into()));
+            }
+            let vivos: HashSet<&str> = live_names.iter().map(String::as_str).collect();
+            let existentes: Vec<String> = {
+                let mut st = tx.prepare(
+                    "SELECT container_name FROM group_assignments WHERE connection_id = ?1",
+                )?;
+                let filas = st.query_map([&connection_id], |r| r.get::<_, String>(0))?;
+                filas.collect::<Result<_, _>>()?
+            };
+            for n in existentes.iter().filter(|n| !vivos.contains(n.as_str())) {
+                tx.execute(
+                    "DELETE FROM group_assignments WHERE connection_id = ?1 AND container_name = ?2",
+                    params![connection_id, n],
+                )?;
+            }
+        }
         GroupOp::SetStackHue { project, hue } => {
             if !valid_item_name(&project) {
                 return invalid("nombre de proyecto inválido");
@@ -266,6 +302,131 @@ impl Store {
 
     /// Migración única e idempotente desde el `localStorage` del frontend. Revalida todo, regenera
     /// ids que no sean UUID v7 y descarta (contando) lo que no encaje. Una sola transacción.
+    /// Importa un documento de `groups_export` en UNA transacción: los grupos con el mismo nombre
+    /// se reutilizan; las asignaciones de conexiones que no existen aquí se descartan. Si algo grave
+    /// falla (p. ej. se superan los límites), no se escribe nada.
+    pub fn groups_import_export(&self, doc: &Value) -> Result<ExportImportReport, StoreError> {
+        let obj = doc.as_object().ok_or_else(|| {
+            StoreError::InvalidInput("el archivo no es un documento de grupos".into())
+        })?;
+        if obj.get("format").and_then(Value::as_str) != Some("dockinng-groups")
+            || obj.get("version").and_then(Value::as_i64) != Some(1)
+        {
+            return invalid("formato o versión de grupos no soportados");
+        }
+        let grupos = obj.get("groups").and_then(Value::as_array);
+        let grupos =
+            grupos.ok_or_else(|| StoreError::InvalidInput("falta la lista de grupos".into()))?;
+        let asignaciones = obj
+            .get("assignments")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        if grupos.len() > MAX_GROUPS || asignaciones.len() > MAX_ASSIGNMENTS {
+            return invalid("el archivo supera los límites de grupos o asignaciones");
+        }
+        let mut conn = self.lock();
+        let tx = conn.transaction()?;
+        let mut rep = ExportImportReport::default();
+        // Id del grupo en el archivo (o su nombre, si no lo trae) -> id real aquí.
+        let mut mapa: HashMap<String, String> = HashMap::new();
+        for g in grupos {
+            let name = g
+                .get("name")
+                .and_then(Value::as_str)
+                .ok_or_else(|| StoreError::InvalidInput("grupo sin nombre".into()))?;
+            let hue = g.get("hue").and_then(Value::as_i64);
+            let buscar = |tx: &Transaction<'_>| -> Result<Option<String>, StoreError> {
+                Ok(tx
+                    .query_row(
+                        "SELECT id FROM groups WHERE lower(name) = lower(?1)",
+                        [name.trim()],
+                        |r| r.get(0),
+                    )
+                    .optional()?)
+            };
+            let id = match buscar(&tx)? {
+                Some(id) => {
+                    rep.groups_reused += 1;
+                    id
+                }
+                None => {
+                    apply_op(
+                        &tx,
+                        GroupOp::CreateGroup {
+                            name: name.to_string(),
+                            hue,
+                        },
+                    )?;
+                    rep.groups_created += 1;
+                    buscar(&tx)?
+                        .ok_or_else(|| StoreError::NotFound("grupo recién creado".into()))?
+                }
+            };
+            if let Some(viejo) = g.get("id").and_then(Value::as_str) {
+                mapa.insert(viejo.to_string(), id.clone());
+            }
+            mapa.entry(name.to_string()).or_insert(id);
+        }
+        for a in &asignaciones {
+            let conexion = a
+                .get("connection_id")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let nombre = a
+                .get("container_name")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let destino = a
+                .get("group_id")
+                .and_then(Value::as_str)
+                .and_then(|g| mapa.get(g));
+            let conexion_ok = !conexion.is_empty()
+                && tx
+                    .query_row(
+                        "SELECT 1 FROM connections WHERE id = ?1",
+                        [conexion],
+                        |_| Ok(()),
+                    )
+                    .optional()?
+                    .is_some();
+            let Some(gid) = destino.filter(|_| conexion_ok && !nombre.is_empty()) else {
+                rep.assignments_skipped += 1;
+                continue;
+            };
+            match apply_op(
+                &tx,
+                GroupOp::Assign {
+                    connection_id: conexion.to_string(),
+                    names: vec![nombre.to_string()],
+                    group_id: Some(gid.clone()),
+                },
+            ) {
+                Ok(()) => rep.assignments_imported += 1,
+                Err(StoreError::InvalidInput(_)) => rep.assignments_skipped += 1,
+                Err(e) => return Err(e),
+            }
+        }
+        if let Some(colores) = obj.get("stack_hues").and_then(Value::as_object) {
+            for (proyecto, hue) in colores {
+                let Some(hue) = hue.as_i64() else { continue };
+                match apply_op(
+                    &tx,
+                    GroupOp::SetStackHue {
+                        project: proyecto.clone(),
+                        hue: Some(hue),
+                    },
+                ) {
+                    Ok(()) => rep.stack_hues_imported += 1,
+                    Err(StoreError::InvalidInput(_)) => {}
+                    Err(e) => return Err(e),
+                }
+            }
+        }
+        tx.commit()?;
+        Ok(rep)
+    }
+
     pub fn groups_import_legacy(
         &self,
         payload: LegacyGroups,
@@ -653,5 +814,85 @@ mod tests {
                 .iter()
                 .all(|g| { uuid::Uuid::parse_str(&g.id).unwrap().get_version_num() == 7 })
         );
+    }
+
+    #[test]
+    fn limpiar_huerfanos_quita_solo_los_que_ya_no_existen() {
+        let d = std::env::temp_dir().join(format!("dockinng-test-prune-{}", uuid::Uuid::now_v7()));
+        std::fs::create_dir_all(&d).unwrap();
+        let s = Store::open(&d.join("store.db")).unwrap();
+        let g = s
+            .groups_mutate(GroupOp::CreateGroup {
+                name: "API".into(),
+                hue: None,
+            })
+            .unwrap()
+            .groups[0]
+            .id
+            .clone();
+        s.groups_mutate(GroupOp::Assign {
+            connection_id: "local".into(),
+            names: vec!["web".into(), "db".into(), "viejo".into()],
+            group_id: Some(g.clone()),
+        })
+        .unwrap();
+        let snap = s
+            .groups_mutate(GroupOp::PruneAssignments {
+                connection_id: "local".into(),
+                live_names: vec!["web".into(), "db".into()],
+            })
+            .unwrap();
+        let mut nombres: Vec<&str> = snap
+            .assignments
+            .iter()
+            .map(|a| a.container_name.as_str())
+            .collect();
+        nombres.sort_unstable();
+        assert_eq!(nombres, vec!["db", "web"]);
+        // Conexión inexistente: se rechaza sin tocar nada.
+        assert!(
+            s.groups_mutate(GroupOp::PruneAssignments {
+                connection_id: "no-existe".into(),
+                live_names: vec![],
+            })
+            .is_err()
+        );
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn importar_export_fusiona_sin_duplicar_y_descarta_conexiones_ajenas() {
+        let d = std::env::temp_dir().join(format!("dockinng-test-imp-{}", uuid::Uuid::now_v7()));
+        std::fs::create_dir_all(&d).unwrap();
+        let s = Store::open(&d.join("store.db")).unwrap();
+        let doc = serde_json::json!({
+            "format": "dockinng-groups", "version": 1,
+            "groups": [{"id": "viejo-1", "name": "API", "hue": 200}],
+            "assignments": [
+                {"connection_id": "local", "container_name": "web", "group_id": "viejo-1"},
+                {"connection_id": "otra-maquina", "container_name": "db", "group_id": "viejo-1"}
+            ],
+            "stack_hues": {"shop": 120}
+        });
+        let primera = s.groups_import_export(&doc).unwrap();
+        assert_eq!((primera.groups_created, primera.groups_reused), (1, 0));
+        assert_eq!(
+            (primera.assignments_imported, primera.assignments_skipped),
+            (1, 1)
+        );
+        assert_eq!(primera.stack_hues_imported, 1);
+        // Segunda importación: el grupo se reutiliza, no se duplica.
+        let segunda = s.groups_import_export(&doc).unwrap();
+        assert_eq!((segunda.groups_created, segunda.groups_reused), (0, 1));
+        let snap = s.groups_load().unwrap();
+        assert_eq!(snap.groups.len(), 1);
+        // Formato ajeno: se rechaza sin tocar nada.
+        assert!(
+            s.groups_import_export(
+                &serde_json::json!({"format": "otro", "version": 1, "groups": []})
+            )
+            .is_err()
+        );
+        let _ = std::fs::remove_dir_all(&d);
     }
 }

@@ -1,6 +1,6 @@
 // GENERADO por scripts/contract-gen.mjs desde backend/app/contract/fixtures.json. NO EDITAR A MANO: `pnpm contract:gen`.
 // Literales anotados con los tipos de data/types.ts: si Rust y TypeScript divergen, `tsc -b` falla aquí.
-import type { ActionOutcome, ActionPlan, ActionRequest, AffectedKind, ApiError, ApiErrorCode, AppFeed, BuildFeed, BuildOutcome, BuildPlan, BuildStream, BuildWarning, BusySummary, CleanupCategoryId, CleanupEstimate, CleanupReport, CleanupRisk, ComposeFlavor, ComposeInfo, ConnSpec, ConnTestResult, ConnectionCause, ConnectionStatus, Container, ContainerDetail, ContainerState, CreatePlan, CreateResult, CreateWarning, DenyReason, DiagStepId, EndReason, EngineEventKind, EngineFeed, ExecEndReason, ExecFeed, GpuInfo, GroupOp, GroupsImportResult, GroupsSnapshot, HostKeyProbe, HostKeyState, Image, LayerPhase, LogFeed, LogStream, MountKind, Network, PlanDecision, PlanWarning, PodmanCandidate, PortProtocol, ProgressKind, ProgressStatus, PullFeed, PullOutcome, RegistrySummary, Restart, ServicePhase, SshIdentity, SshMode, StackFiles, StackOpFeed, StackOpRequest, StackOrigin, StackOutcome, StackRisk, StackStatus, StackSummary, StackValidation, StatsFeed, StatsSnapshotItem, StepStatus, SystemUsage, TrayStatus, ValidationKind, Volume } from '../../types'
+import type { ActionOutcome, ActionPlan, ActionRequest, AffectedKind, ApiError, ApiErrorCode, AppFeed, BuildFeed, BuildOutcome, BuildPlan, BuildStream, BuildWarning, BusySummary, CleanupCategoryId, CleanupEstimate, CleanupReport, CleanupRisk, ComposeFlavor, ComposeInfo, ConnSpec, ConnTestResult, ConnectionCause, ConnectionStatus, Container, ContainerDetail, ContainerState, CreatePlan, CreateResult, CreateWarning, DenyReason, DiagStepId, EndReason, EngineEventKind, EngineFeed, ExecEndReason, ExecFeed, ExportImportReport, GpuInfo, GroupOp, GroupsImportResult, GroupsSnapshot, HostKeyProbe, HostKeyState, Image, LayerPhase, LogFeed, LogStream, MountKind, Network, PlanDecision, PlanWarning, PodmanCandidate, PortProtocol, ProgressKind, ProgressStatus, PullFeed, PullOutcome, RegistrySummary, Restart, ServicePhase, SshIdentity, SshMode, StackFiles, StackOpFeed, StackOpRequest, StackOrigin, StackOutcome, StackRisk, StackStatus, StackSummary, StackValidation, StatsFeed, StatsSnapshotItem, StepStatus, SystemUsage, TrayStatus, ValidationKind, Volume } from '../../types'
 import type { RawProfile } from './store'
 
 /** Resultado de cada comando IPC, anotado con su tipo TS (`result_type` de Rust traducido). */
@@ -64,6 +64,7 @@ export const result_compose_info: ComposeInfo = {
   "version": "2.29.7"
 }
 export const result_connection_delete: null = null
+export const result_connection_forget_host_key: null = null
 export const result_connection_list: RawProfile[] = [
   {
     "host": "10.0.0.5",
@@ -255,6 +256,14 @@ export const result_gpu_status: GpuInfo[] = [
     "utilization_percent": 0
   }
 ]
+export const result_groups_export: string | null = "/home/usuario/dockinng-grupos.json"
+export const result_groups_import_file: ExportImportReport | null = {
+  "assignments_imported": 1,
+  "assignments_skipped": 0,
+  "groups_created": 1,
+  "groups_reused": 0,
+  "stack_hues_imported": 1
+}
 export const result_groups_import_legacy: GroupsImportResult = {
   "already_imported": false,
   "dropped_assignments": 0,
@@ -895,6 +904,20 @@ export const COMMANDS = {
     "confirmed": true,
     "id": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3e"
   }, resultType: "void", result: result_connection_delete },
+  connection_forget_host_key: { args: {
+    "confirmedHost": "srv.example",
+    "spec": {
+      "host": "10.0.0.5",
+      "identity": {
+        "type": "agent"
+      },
+      "kind": "ssh",
+      "mode": "explicit",
+      "name": "srv",
+      "port": 22,
+      "user": "deploy"
+    }
+  }, resultType: "void", result: result_connection_forget_host_key },
   connection_list: { args: {}, resultType: "ConnectionProfile[]", result: result_connection_list },
   connection_probe_host_key: { args: {
     "spec": {
@@ -1030,6 +1053,8 @@ export const COMMANDS = {
     "typed": "ELIMINAR"
   }, resultType: "ActionOutcome", result: result_execute_action },
   gpu_status: { args: {}, resultType: "GpuInfo[]", result: result_gpu_status },
+  groups_export: { args: {}, resultType: "string | null", result: result_groups_export },
+  groups_import_file: { args: {}, resultType: "ExportImportReport | null", result: result_groups_import_file },
   groups_import_legacy: { args: {
     "payload": {
       "assign": {
@@ -2135,6 +2160,13 @@ export const TYPE_GroupOp: GroupOp[] = [
     "hue": null,
     "project": "shop",
     "type": "set_stack_hue"
+  },
+  {
+    "connection_id": "local",
+    "live_names": [
+      "web"
+    ],
+    "type": "prune_assignments"
   }
 ]
 

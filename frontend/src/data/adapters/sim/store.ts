@@ -53,6 +53,8 @@ type Stores = { connections: Omit<EngineApi['connections'], 'select'> } & Pick<E
 /** `getActive`: id de la conexión activa (la mantiene index.ts junto con el estado de fallos simulados). */
 export function createSimStore(ctx: SimCtx, getActive: () => string, opts: SimStoreOptions = {}): { api: Stores; controls: SimStoreControls } {
   const trustedHosts = new Map<string, string>()
+  // Hosts «cambiados» de ejemplo que el usuario ya olvidó: a partir de ahí se ven como desconocidos.
+  const olvidados = new Set<string>()
   const prefs = new Map<string, unknown>()
   const registries: RegistrySummary[] = []
 
@@ -115,6 +117,12 @@ export function createSimStore(ctx: SimCtx, getActive: () => string, opts: SimSt
         if (op.hue === null) delete g.stack_hues[op.project]
         else g.stack_hues[op.project] = clampHue(op.hue)
         return
+      case 'prune_assignments': {
+        if (!connKnown(op.connection_id)) throw apiError('not_found', 'La conexión no existe.')
+        const vivos = new Set(op.live_names)
+        g.assignments = g.assignments.filter((a) => a.connection_id !== op.connection_id || vivos.has(a.container_name))
+        return
+      }
     }
   }
 
@@ -135,7 +143,7 @@ export function createSimStore(ctx: SimCtx, getActive: () => string, opts: SimSt
   function probeOf(spec: ConnSpec): HostKeyProbe {
     const fp = fakeFingerprint(spec.host, 'ed25519')
     const known = trustedHosts.get(hostKey(spec))
-    if (/changed|mitm/i.test(spec.host)) return { key_type: 'ssh-ed25519', fingerprint_sha256: fakeFingerprint(spec.host, 'nueva'), state: 'changed', known_fingerprint_sha256: fp }
+    if (/changed|mitm/i.test(spec.host) && !olvidados.has(hostKey(spec))) return { key_type: 'ssh-ed25519', fingerprint_sha256: fakeFingerprint(spec.host, 'nueva'), state: 'changed', known_fingerprint_sha256: fp }
     return { key_type: 'ssh-ed25519', fingerprint_sha256: fp, state: known === fp ? 'trusted' : 'unknown' }
   }
 
@@ -156,6 +164,15 @@ export function createSimStore(ctx: SimCtx, getActive: () => string, opts: SimSt
         if (p.fingerprint_sha256 !== fingerprint) throw apiError('conflict', 'La huella del servidor cambió desde que la viste: vuelve a sondear.')
         trustedHosts.set(hostKey(spec), fingerprint)
         return { ...p, state: 'trusted' }
+      },
+      async forgetHostKey(spec, confirmedHost) {
+        await sleep(Math.min(ctx.latency, 200))
+        validateSpec(spec)
+        if (spec.kind !== 'ssh') throw apiError('invalid_input', 'La huella de host solo aplica a SSH.')
+        // Mismo criterio que el backend: confirmación escrita exacta (sin recortar mayúsculas).
+        if (confirmedHost.trim() !== spec.host.trim()) throw apiError('policy_denied', 'Escribe exactamente el nombre indicado para confirmar.')
+        trustedHosts.delete(hostKey(spec))
+        olvidados.add(hostKey(spec))
       },
       async test(spec): Promise<ConnTestResult> {
         await sleep(Math.min(ctx.latency + 400, 1200))
@@ -245,6 +262,22 @@ export function createSimStore(ctx: SimCtx, getActive: () => string, opts: SimSt
         try { applyOp(op) } catch (e) { groups = backup; throw e }
         save()
         return snap()
+      },
+      async importFile() {
+        // El navegador no puede abrir un archivo elegido con diálogo nativo: la importación es de la app de escritorio.
+        throw apiError('not_implemented', 'Importar grupos requiere la app de escritorio.')
+      },
+      async exportGroups() {
+        // Navegador: la descarga la hace el propio navegador (no hay diálogo nativo).
+        const s = snap()
+        const doc = { format: 'dockinng-groups', version: 1, groups: s.groups, assignments: s.assignments, stack_hues: s.stack_hues }
+        const url = URL.createObjectURL(new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' }))
+        const a = document.createElement('a')
+        a.href = url
+        a.download = 'dockinng-grupos.json'
+        a.click()
+        setTimeout(() => URL.revokeObjectURL(url), 0)
+        return 'dockinng-grupos.json'
       },
       async importLegacy(payload) {
         if (groups.legacy_imported) return { already_imported: true, imported_groups: 0, imported_assignments: 0, dropped_assignments: 0, snapshot: snap() }

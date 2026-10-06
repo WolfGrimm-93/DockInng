@@ -1072,6 +1072,67 @@ async fn includes_remotos_se_rechazan_sin_ejecutar_compose() {
 }
 
 #[tokio::test]
+async fn include_en_forma_de_flujo_y_anidado_se_rechazan() {
+    let tmp = Tmp::new();
+    let fake = FakeSpawn::new();
+    let r = setup(fake.clone(), &tmp).await;
+    // Forma de flujo: el pre-escaneo por líneas no la veía y Compose sí hace la petición.
+    let flow = "{include: [oci://registry.example/x:1]}\nservices: {}\n";
+    let v = r.stack_validate(None, flow, "").await.unwrap();
+    assert!(!v.ok);
+    assert!(fake.displays().iter().all(|d| !d.contains("config")));
+    // Remoto escondido en un archivo local incluido: también debe bloquearse.
+    let proj = tmp.0.join("anidado");
+    std::fs::create_dir_all(&proj).unwrap();
+    std::fs::write(
+        proj.join("compose.yaml"),
+        "include:\n  - ./base.yaml\nservices: {}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        proj.join("base.yaml"),
+        "include:\n  - oci://registry.example/x:1\n",
+    )
+    .unwrap();
+    let err = r
+        .stack_link(proj.join("compose.yaml").to_str().unwrap(), vec![])
+        .await
+        .expect_err("el include anidado debe bloquearse");
+    // El mensaje debe nombrar el archivo donde está el `include`, no solo una línea.
+    assert!(format!("{err:?}").contains("base.yaml"), "{err:?}");
+    assert!(fake.displays().iter().all(|d| !d.contains("config")));
+}
+
+/// Cuatro validaciones de 300 ms con tope de 2 deben ejecutarse en al menos dos tandas (≥ 600 ms).
+/// Sin el tope terminarían en ~300 ms. El mínimo de 600 ms no depende de la carga de la máquina.
+#[tokio::test]
+async fn validaciones_simultaneas_se_limitan_a_dos() {
+    let tmp = Tmp::new();
+    let fake = FakeSpawn::new();
+    fake.on(
+        "config --format json",
+        Script::lines("").then_sleep(std::time::Duration::from_millis(300)),
+    );
+    let r = Arc::new(setup(fake.clone(), &tmp).await);
+    let t0 = std::time::Instant::now();
+    let mut tareas = Vec::new();
+    for _ in 0..4 {
+        let r = r.clone();
+        tareas.push(tokio::spawn(async move {
+            let _ = r.stack_validate(None, "services: {}\n", "").await;
+        }));
+    }
+    for t in tareas {
+        t.await.unwrap();
+    }
+    assert!(
+        t0.elapsed() >= std::time::Duration::from_millis(600),
+        "esperado en dos tandas, tardó {:?}",
+        t0.elapsed()
+    );
+}
+
+#[tokio::test]
 async fn secretos_no_salen_por_ningun_canal() {
     let tmp = Tmp::new();
     let fake = FakeSpawn::new();

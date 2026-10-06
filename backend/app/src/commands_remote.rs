@@ -9,6 +9,8 @@
 //!   connection_trust_host_key(spec, fingerprint) -> HostKeyProbe
 //!        (re-sondea y escribe en el known_hosts PROPIO solo si la huella coincide con la vista;
 //!         una clave cambiada da `connection` con causa `host_key_changed` y nunca se acepta)
+//!   connection_forget_host_key(spec, confirmed_host) -> void (quita la clave guardada del known_hosts PROPIO;
+//!        `confirmed_host` debe ser el host exacto: Action::ForgetHostKey. No confía en nada.)
 //!   connection_test(spec) -> ConnTestResult                   (no activa; el fallo va dentro)
 //!   connection_save(spec, id?) -> ConnectionProfile           (sin `id` CREA: un nombre ya usado da `conflict`;
 //!        con `id` EDITA esa conexión, que no puede ser la activa; el nombre no puede ser el de otra)
@@ -24,7 +26,7 @@ use tauri::State;
 use transport::keyscan;
 use transport::ssh_args::SshTarget;
 
-use crate::commands_store::{require_confirmed, with_store};
+use crate::commands_store::{require_confirmed, require_typed, with_store};
 use crate::state::AppState;
 use crate::switch::{known_hosts_path, select_connection, test_connection};
 
@@ -92,6 +94,28 @@ pub async fn connection_trust_host_key(
     // El directorio de datos existe (lo crea el almacén con 0700) antes de escribir.
     keyscan::trust(&target, &kh, &fingerprint)
         .await
+        .map_err(|e| ApiError::from(&e))
+}
+
+/// Olvida la clave guardada del destino (solo el `known_hosts` propio). Exige que
+/// `confirmed_host` sea el nombre del host (confirmación escrita validada aquí, no en la UI).
+/// No confía en la nueva: la siguiente conexión vuelve a pedir confirmar la huella.
+#[tauri::command]
+pub async fn connection_forget_host_key(
+    state: State<'_, AppState>,
+    spec: ConnSpec,
+    confirmed_host: String,
+) -> ApiResult<()> {
+    let target = ssh_target(&spec)?;
+    require_typed(
+        &Action::ForgetHostKey {
+            host: target.host.clone(),
+        },
+        &confirmed_host,
+    )?;
+    let kh = known_hosts_path(&state)?;
+    keyscan::forget(&kh, &target)
+        .map(|_| ())
         .map_err(|e| ApiError::from(&e))
 }
 

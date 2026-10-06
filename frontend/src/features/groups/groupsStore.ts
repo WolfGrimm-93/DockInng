@@ -36,11 +36,26 @@ export interface GroupsState extends GroupsData {
   moveContainers(profileId: string, containerNames: readonly string[], groupId: string | null): void
   /** `hue = null` vuelve al color automático del stack. */
   setStackHue(project: string, hue: number | null): void
+  /** Quita las asignaciones de la conexión cuyo contenedor ya no está en `liveNames` (lista COMPLETA). Devuelve cuántas quitó. */
+  pruneOrphans(profileId: string, liveNames: readonly string[]): number
+  /** Vuelve a leer el estado del backend (tras importar un archivo). No hace nada sin backend. */
+  reloadFromBackend(): Promise<void>
 }
 
 export const assignKey = (profileId: string, containerName: string): string => `${profileId}\u0000${containerName}`
 
 /** Primer matiz de la paleta que no esté en uso; si todos lo están, se reutilizan en orden. */
+/** Nombres de contenedor asignados en `profileId` que ya no aparecen en `liveNames`. Función pura. */
+export function orphanNames(assign: Readonly<Record<string, string>>, profileId: string, liveNames: readonly string[]): string[] {
+  const vivos = new Set(liveNames)
+  const out: string[] = []
+  for (const k of Object.keys(assign)) {
+    const [pid, name] = k.split('\u0000')
+    if (pid === profileId && name !== undefined && !vivos.has(name)) out.push(name)
+  }
+  return out
+}
+
 export function nextFreeHue(used: readonly number[]): number {
   return GROUP_HUES.find((h) => !used.includes(h)) ?? GROUP_HUES[used.length % GROUP_HUES.length]
 }
@@ -176,6 +191,19 @@ export const useGroupsStore = create<GroupsState>()((set, get) => {
       if (hue === null) delete next[project]
       else next[project] = clampHue(hue)
       commit({ stackHue: next }, { type: 'set_stack_hue', project, hue: hue === null ? null : clampHue(hue) })
+    },
+    async reloadFromBackend() {
+      const a = backend
+      if (!a) return
+      apply(snapshotToData(await a.groups.load()))
+    },
+    pruneOrphans(profileId, liveNames) {
+      const huerfanos = orphanNames(get().assign, profileId, liveNames)
+      if (huerfanos.length === 0) return 0
+      const next = { ...get().assign }
+      for (const n of huerfanos) delete next[assignKey(profileId, n)]
+      commit({ assign: next }, { type: 'prune_assignments', connection_id: profileId, live_names: [...liveNames] })
+      return huerfanos.length
     },
   }
 })

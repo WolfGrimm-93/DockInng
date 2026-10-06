@@ -67,15 +67,22 @@ pub fn parse(content: &str) -> Vec<Entry> {
     content.lines().filter_map(parse_line).collect()
 }
 
-/// Estado de un servidor: `Trusted` si alguna clave sondeada coincide con una guardada;
-/// `Changed` si hay entradas para ese nombre pero ninguna coincide; `Unknown` si no hay.
+/// Estado de un servidor. `ssh` prefiere negociar los tipos que ya están en `known_hosts`, así
+/// que si una clave de un tipo guardado cambió, la conexión falla aunque otro tipo coincida.
+/// `Trusted` solo si alguna clave guardada coincide Y ninguna clave del mismo tipo que tenga
+/// entrada guardada cambió; si no, `Changed` (falla cerrado). `Unknown` si no hay entradas.
 pub fn state_for(entries: &[Entry], name: &str, scanned: &[HostKey]) -> HostKeyState {
     let name = name.to_ascii_lowercase();
     let stored: Vec<&Entry> = entries.iter().filter(|e| e.names.contains(&name)).collect();
     if stored.is_empty() {
         return HostKeyState::Unknown;
     }
-    if stored.iter().any(|e| scanned.contains(&e.key)) {
+    let mismatch_mismo_tipo = scanned.iter().any(|k| {
+        stored
+            .iter()
+            .any(|e| e.key.key_type == k.key_type && e.key != *k)
+    });
+    if stored.iter().any(|e| scanned.contains(&e.key)) && !mismatch_mismo_tipo {
         HostKeyState::Trusted
     } else {
         HostKeyState::Changed
@@ -399,5 +406,63 @@ mod tests {
                 .is_symlink()
         );
         fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn rotar_solo_ed25519_no_queda_trusted_aunque_rsa_coincida() {
+        let ed_vieja = HostKey {
+            key_type: "ssh-ed25519".into(),
+            blob: "AAAAOLD".into(),
+        };
+        let rsa = HostKey {
+            key_type: "ssh-rsa".into(),
+            blob: "AAAARSA".into(),
+        };
+        let ed_nueva = HostKey {
+            key_type: "ssh-ed25519".into(),
+            blob: "AAAANEW".into(),
+        };
+        let entries = vec![
+            Entry {
+                names: vec!["srv".into()],
+                key: ed_vieja,
+            },
+            Entry {
+                names: vec!["srv".into()],
+                key: rsa.clone(),
+            },
+        ];
+        // ssh negocia la ed25519 (preferida): al haber cambiado, no debe quedar Trusted.
+        assert_eq!(
+            state_for(&entries, "srv", &[ed_nueva, rsa.clone()]),
+            HostKeyState::Changed
+        );
+    }
+
+    #[test]
+    fn preferida_guardada_y_sin_cambios_es_trusted() {
+        let ed = HostKey {
+            key_type: "ssh-ed25519".into(),
+            blob: "AAAAED".into(),
+        };
+        let rsa = HostKey {
+            key_type: "ssh-rsa".into(),
+            blob: "AAAARSA".into(),
+        };
+        let entries = vec![
+            Entry {
+                names: vec!["srv".into()],
+                key: ed.clone(),
+            },
+            Entry {
+                names: vec!["srv".into()],
+                key: rsa.clone(),
+            },
+        ];
+        assert_eq!(
+            state_for(&entries, "srv", &[ed, rsa]),
+            HostKeyState::Trusted
+        );
+        assert_eq!(state_for(&[], "srv", &[]), HostKeyState::Unknown);
     }
 }
