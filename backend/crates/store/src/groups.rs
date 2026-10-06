@@ -102,18 +102,29 @@ fn group_exists(tx: &Transaction<'_>, id: &str) -> Result<bool, StoreError> {
         .is_some())
 }
 
-/// Hay otro grupo con ese nombre (sin distinguir mayúsculas)?
-fn name_taken(tx: &Transaction<'_>, name: &str, except: Option<&str>) -> Result<bool, StoreError> {
+/// Id del grupo con ese nombre (sin distinguir mayúsculas), si existe; `except` se ignora.
+/// Es la ÚNICA comparación de nombres del módulo (creación, renombrado, importación y legacy):
+/// no puede discrepar entre ellas. `lower()` de SQLite solo cubre ASCII, por eso no se usa.
+fn grupo_con_nombre(
+    tx: &Transaction<'_>,
+    name: &str,
+    except: Option<&str>,
+) -> Result<Option<String>, StoreError> {
     let lower = name.to_lowercase();
     let mut st = tx.prepare("SELECT id, name FROM groups")?;
     let rows = st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
     for row in rows {
         let (id, n) = row?;
         if Some(id.as_str()) != except && n.to_lowercase() == lower {
-            return Ok(true);
+            return Ok(Some(id));
         }
     }
-    Ok(false)
+    Ok(None)
+}
+
+/// Hay otro grupo con ese nombre (sin distinguir mayúsculas)?
+fn name_taken(tx: &Transaction<'_>, name: &str, except: Option<&str>) -> Result<bool, StoreError> {
+    Ok(grupo_con_nombre(tx, name, except)?.is_some())
 }
 
 fn pick_hue(tx: &Transaction<'_>) -> Result<u16, StoreError> {
@@ -336,15 +347,7 @@ impl Store {
                 .and_then(Value::as_str)
                 .ok_or_else(|| StoreError::InvalidInput("grupo sin nombre".into()))?;
             let hue = g.get("hue").and_then(Value::as_i64);
-            let buscar = |tx: &Transaction<'_>| -> Result<Option<String>, StoreError> {
-                Ok(tx
-                    .query_row(
-                        "SELECT id FROM groups WHERE lower(name) = lower(?1)",
-                        [name.trim()],
-                        |r| r.get(0),
-                    )
-                    .optional()?)
-            };
+            let buscar = |tx: &Transaction<'_>| grupo_con_nombre(tx, name.trim(), None);
             let id = match buscar(&tx)? {
                 Some(id) => {
                     rep.groups_reused += 1;
@@ -462,25 +465,8 @@ impl Store {
                 continue;
             }
             // Nombre duplicado (sin distinguir mayúsculas): las asignaciones van al ya importado.
-            if name_taken(&tx, &name, None)? {
-                let existing: Option<String> = {
-                    let lower = name.to_lowercase();
-                    let mut st = tx.prepare("SELECT id, name FROM groups")?;
-                    let rows =
-                        st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
-                    let mut found = None;
-                    for row in rows {
-                        let (id, n) = row?;
-                        if n.to_lowercase() == lower {
-                            found = Some(id);
-                            break;
-                        }
-                    }
-                    found
-                };
-                if let Some(e) = existing {
-                    id_map.insert(g.id.clone(), e);
-                }
+            if let Some(existing) = grupo_con_nombre(&tx, &name, None)? {
+                id_map.insert(g.id.clone(), existing);
                 continue;
             }
             let hue = g.hue.rem_euclid(360) as u16;
@@ -894,5 +880,22 @@ mod tests {
             .is_err()
         );
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn importar_grupo_con_mayusculas_unicode_reutiliza_el_existente() {
+        // B-2: la búsqueda de import usaba lower() de SQLite (solo ASCII) y la de creación
+        // to_lowercase() de Rust: "ñandú" no encontraba a "Ñandú" y el import chocaba.
+        let (_t, s) = store();
+        create(&s, "Ñandú").unwrap();
+        let doc = serde_json::json!({
+            "format": "dockinng-groups", "version": 1,
+            "groups": [{"id": "x", "name": "ñandú"}]
+        });
+        let rep = s
+            .groups_import_export(&doc)
+            .expect("el nombre con otra capitalización Unicode debe reutilizar el grupo");
+        assert_eq!((rep.groups_created, rep.groups_reused), (0, 1));
+        assert_eq!(s.groups_load().unwrap().groups.len(), 1);
     }
 }
