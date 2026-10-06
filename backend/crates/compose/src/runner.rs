@@ -364,30 +364,56 @@ impl Core {
         project: &ProjectSpec,
         stdin: Option<&[u8]>,
     ) -> Result<(), ComposeError> {
-        let mut texts: Vec<String> = Vec::new();
+        let base = project
+            .project_dir
+            .clone()
+            .unwrap_or_else(|| PathBuf::from("."));
+        // Textos a revisar con el directorio desde el que Compose resuelve sus rutas locales.
+        let mut pending: Vec<(String, PathBuf)> = Vec::new();
         if let Some(b) = stdin {
-            texts.push(String::from_utf8_lossy(b).into_owned());
+            pending.push((String::from_utf8_lossy(b).into_owned(), base.clone()));
         }
         if let ConfigFiles::Paths(paths) = &project.files {
             for p in paths {
-                if let Ok(m) = std::fs::metadata(p)
-                    && m.len() <= crate::files::MAX_YAML_BYTES as u64
-                    && let Ok(t) = std::fs::read_to_string(p)
-                {
-                    texts.push(t);
+                let dir = p
+                    .parent()
+                    .map(Path::to_path_buf)
+                    .unwrap_or_else(|| base.clone());
+                if let Some(t) = read_for_scan(p)? {
+                    pending.push((t, dir));
                 }
             }
         }
-        for t in &texts {
-            if let Some(line) = crate::validate::find_remote_include(t) {
-                return Err(ComposeError::Invalid(vec![ValidationIssue {
-                    line: Some(line),
-                    column: None,
-                    kind: engine_core::IssueKind::Schema,
-                    message:
-                        "`include` remoto (git, OCI o http) no permitido: usa archivos locales"
-                            .into(),
-                }]));
+        // Los `include` locales también se siguen: Compose los resuelve desde cada archivo incluido.
+        let mut visited = HashSet::new();
+        let mut revisados = 0usize;
+        while let Some((text, dir)) = pending.pop() {
+            revisados += 1;
+            if revisados > MAX_INCLUDE_FILES {
+                return Err(include_issue(None, INCLUDE_DEMASIADOS));
+            }
+            let scan = crate::validate::scan_includes(&text);
+            if let Some(line) = scan.remote_line {
+                return Err(include_issue(Some(line), INCLUDE_REMOTO));
+            }
+            if scan.unverifiable {
+                return Err(include_issue(None, INCLUDE_NO_VERIFICABLE));
+            }
+            for rel in scan.local_paths {
+                // Si no existe, Compose informará el error al ejecutarse.
+                let Ok(canon) = std::fs::canonicalize(dir.join(&rel)) else {
+                    continue;
+                };
+                if !visited.insert(canon.clone()) {
+                    continue;
+                }
+                let child_dir = canon
+                    .parent()
+                    .map(Path::to_path_buf)
+                    .unwrap_or_else(|| base.clone());
+                if let Some(t) = read_for_scan(&canon)? {
+                    pending.push((t, child_dir));
+                }
             }
         }
         Ok(())
@@ -918,6 +944,36 @@ impl engine_core::StackOpRun for PreparedOp {
     async fn run(self: Box<Self>, sink: StackSink, cancel: CancelSignal) {
         (*self).execute(sink, cancel).await;
     }
+}
+
+/// Tope de archivos YAML revisados por el pre-escaneo de `include` (evita recorrer sin fin).
+const MAX_INCLUDE_FILES: usize = 64;
+const INCLUDE_REMOTO: &str =
+    "`include` remoto (git, OCI o http) no permitido: usa archivos locales";
+const INCLUDE_NO_VERIFICABLE: &str = "`include` no verificable: el YAML no se puede leer o su `include` tiene una forma no soportada; usa rutas locales en un YAML válido";
+const INCLUDE_DEMASIADOS: &str = "demasiados archivos `include` para verificarlos";
+
+/// Lee un YAML para escanear sus `include`. `None` si no existe (lo informará Compose).
+/// Falla cerrado si es demasiado grande o no se puede leer como texto.
+fn read_for_scan(p: &Path) -> Result<Option<String>, ComposeError> {
+    let Ok(meta) = std::fs::metadata(p) else {
+        return Ok(None);
+    };
+    if meta.len() > crate::files::MAX_YAML_BYTES as u64 {
+        return Err(include_issue(None, INCLUDE_NO_VERIFICABLE));
+    }
+    std::fs::read_to_string(p)
+        .map(Some)
+        .map_err(|_| include_issue(None, INCLUDE_NO_VERIFICABLE))
+}
+
+fn include_issue(line: Option<u32>, message: &str) -> ComposeError {
+    ComposeError::Invalid(vec![ValidationIssue {
+        line,
+        column: None,
+        kind: engine_core::IssueKind::Schema,
+        message: message.into(),
+    }])
 }
 
 #[cfg(test)]
