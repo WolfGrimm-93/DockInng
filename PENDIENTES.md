@@ -15,11 +15,8 @@ Lo ya cerrado se retiró de esta lista (2026-10-06); su historial está en la Bi
 
 - [ ] **Parcialmente verificado con servidor real:** `live_real_ssh` pasó de nuevo el 2026-10-06 contra `debian-dev` (server01, solo lectura: ping 854 ms, info 195 ms, corte y reconexión 241 ms sin hijos residuales). Siguen sin verificar: Docker rootless (server01 es rootful, Docker 29.6.2); ProxyJump/alias complejos con TOFU (cubierto por test unitario `alias_con_proxy_falla_cerrado`, no en vivo); cortes físicos prolongados; dockerd con TLS real (requiere cambiar la config del daemon en server01). Las dos últimas exigen confirmación explícita antes de tocar el servidor.
 - [ ] **Builds:** se fuerza `BUILDKIT_PROGRESS=plain` para poder auditar la salida, pero la interfaz actual todavía envía `--build-arg`; los valores marcados como secreto solo generan confirmación y siguen quedando visibles en `docker history` si el daemon usa el builder clásico. Para secretos reales debe usarse un Dockerfile con `RUN --mount=type=secret` y `docker build --secret`; no se implementa una fuente de secretos en esta versión. El borrado de la caché de build por elemento no está implementado; el parser de progreso es frágil entre versiones (se muestran siempre las líneas crudas).
-- [ ] **Conexiones:** reconexión automática del túnel tras un corte largo (hoy el proceso `ssh` no se vigila ni se relanza; solo se reconectan los streams de eventos). Olvidar huella cambiada (hecho, con confirmación en el backend) falta verificarla en WebKitGTK real. Resto de notas: ControlMaster se mantiene desactivado deliberadamente para no compartir sockets; los alias SSH se resuelven solo bajo gesto explícito y se rechazan si `ssh -G` informa `ProxyJump`/`ProxyCommand`, porque no puede verificarse de forma fiable la huella del destino final. Las rutas TLS deben ser archivos regulares sin symlink, de dueño root/usuario actual; la llave además exige `0600`. Un `DOCKER_HOST=tcp://...` heredado se ignora: TCP remoto solo se habilita mediante el perfil TLS explícito.
 - [ ] **Acceso remoto por túnel de Cloudflare desde la app:** `ssh debian-remote` funciona por consola (verificado 2026-10-06 con `ProxyCommand cloudflared access ssh --hostname %h` y huella igual a la LAN), pero DockInng rechaza los alias con `ProxyCommand`/`ProxyJump` (falla cerrado: no puede verificar la huella del servidor final). Decidir: soportar el proxy verificando la huella por ese mismo camino, o dejar la app solo por LAN/IP directa.
 - [ ] **CLI sin `--context` usa la última conexión guardada** (`server01`), no el Docker local: un comando como `dockinng images pull` sin el flag puede actuar sobre el servidor sin avisar. Decidir: default local, o confirmación cuando la conexión activa es remota.
-- [ ] Cambiar de conexión espera a que terminen las acciones en vuelo (`RwLock`); un cambio puede tardar lo que dure una acción larga. Alternativa: generación con aborto inmediato (toca `ActionService`).
-- [ ] Build: el estado del build no persiste entre navegaciones (salir de Construir con un build en curso ya pide confirmación y cancela el canal).
 - [ ] Bundle de entrada: medido **352,94 kB** (no 305,29: creció con las funciones). La opción `experimentalMinChunkSize` no existe en Rolldown 1.2.10. Decidir: aceptar el tamaño o partir las páginas con carga diferida.
 - [ ] Optimización: la mejora medida es la CPU en reposo (≈13 % → ≈0,3 % del hilo gráfico) y el binario (−8,4 %); la RAM (RSS/Pss) **no** bajó de forma demostrable. Sin medir: ventana sin foco, `stats` como stream único, features de tokio/bollard/tauri.
 - [ ] Desborde a 420 px: corregido en las páginas nuevas; falta revisar el resto de páginas nuevas (ver Entrega wave4). Base UI puede dejar pasar el foco con Tab muy rápido (~10 ms) en el diálogo de confirmación tipeada.
@@ -50,6 +47,8 @@ Lo ya cerrado se retiró de esta lista (2026-10-06); su historial está en la Bi
 - [ ] Los alias de DNS solo los da `inspect` (el listado no): la pestaña IPs los pide al abrirse (1 llamada); el modal de redes del grupo no los muestra. No hay IPs por proceso/puerto dentro del contenedor (Docker no lo informa; haría falta `exec`).
 
 ## Riesgos aceptados y decisiones abiertas
+- [ ] Decisión propuesta: el cambio de conexión sigue esperando a las acciones en vuelo (intencional: una acción destructiva se ejecuta completa contra el motor en que se planificó; abortarla a mitad deja estado parcial). Confirmar o cambiar.
+- [ ] Decisión propuesta: salir de Construir sigue cancelando la construcción (confirmado antes al usuario). Persistirla exige que el builder siga sin suscriptor y que la página vuelva a engancharse; cambio en el crate `builder`. Confirmar o cambiar.
 
 - [ ] Un webview comprometido puede llamar a `plan_action` + `execute_action` con el texto de confirmación (no hay diálogo nativo). La barrera real es la CSP y la ausencia de contenido remoto. Reabrir si se carga contenido externo.
 - [ ] Confirmar con el usuario: combinaciones de color, tono "bronce" de ámbar/naranja en claro, verde de estado "running" (matiz 128).
@@ -58,6 +57,9 @@ Lo ya cerrado se retiró de esta lista (2026-10-06); su historial está en la Bi
 - [ ] Commitear o guardar en stash los 35 archivos sin commitear de wave3/wave4 (ramas `feature/wave3-security`, `feature/wave4-security`, `feature/wave4-security-compose-hardening`, `feature/wave4-contracts`, `feature/wave4-frontend`). Bloqueado por permisos el 2026-10-05; pendiente de decisión del usuario.
 - [ ] Commitear `quality-gate.yaml` y `scripts/dts-quality-gate.py` (sin `__pycache__`) en una rama propia, no en `main`.
 - [ ] Integrar `feature/fix-layout-audit` en `develop` y luego en `main` (flujo del proyecto). Publicada en GitHub sin PR.
+
+## Resuelto en revisión (2026-10-06)
+- Reconexión del túnel: resuelta por diseño. Cada conexión HTTP lanza un `ssh` nuevo (`handle_connection`, `kill_on_drop`) y los streams de eventos se reconectan con espera creciente. Verificado en vivo contra `debian-dev`: cliente cortado a mitad, la siguiente operación responde en 241 ms. Queda sin reproducir solo un corte físico prolongado.
 
 ## Calidad y verificación
 
