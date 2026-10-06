@@ -65,7 +65,6 @@ Lo ya cerrado se retiró de esta lista (2026-10-06); su historial está en la Bi
 - [ ] Probar en WebKitGTK real: `color-mix`/`oklch`, foco e `inert`, lectores de pantalla.
 - [ ] Heurística TTY de bollard falla si la salida empieza con un byte de control ≤2 (caso raro).
 - [ ] `time_nano` (i64) pierde precisión en JS por encima de 2^53; no se usa aún.
-- [ ] `pnpm test` falló una vez con «Errors 1 error» (vitest, sin fallo de tests: 738/738) y no se reprodujo en 3 corridas seguidas; vigilar si reaparece.
 
 ## Deuda técnica
 
