@@ -12,6 +12,7 @@ import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogTitle } from '@/components/ui/dialog'
 import { safeText } from '@/lib/safeText'
+import { toast } from '@/lib/toastStore'
 import { Icon } from './Icon'
 import { LevelNote } from './LevelNote'
 import { SafeName } from './SafeName'
@@ -78,7 +79,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
                         Para confirmar, escribe <b className="mono typed-exp" title={expected}>{safeText(expected, { singleLine: true })}</b>
                       </label>
                       {expected.length > 24 ? (
-                          <button type="button" className="btn btn-ghost btn-sm" style={{ justifySelf: 'start' }} aria-label="Copiar el texto de confirmación" onClick={() => void navigator.clipboard?.writeText(expected).catch(() => undefined)}>
+                          <button type="button" className="btn btn-ghost btn-sm" style={{ justifySelf: 'start' }} aria-label="Copiar el texto de confirmación" onClick={() => void copiarTexto(expected)}>
                             <Icon name="copy" size="sm" />Copiar
                           </button>
                         ) : null}
@@ -134,6 +135,17 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
       </AlertDialog>
     </Ctx.Provider>
   )
+}
+
+/** Copia al portapapeles y avisa del resultado (antes un fallo se tragaba en silencio). */
+async function copiarTexto(texto: string): Promise<void> {
+  try {
+    if (!navigator.clipboard) throw new Error('El portapapeles no está disponible en este entorno.')
+    await navigator.clipboard.writeText(texto)
+    toast.ok('Texto copiado')
+  } catch (e) {
+    toast.err('No se pudo copiar el texto', { sub: e instanceof Error ? e.message : undefined })
+  }
 }
 
 /** Aviso de que la acción se ejecutará en un equipo REMOTO (no en el local). */

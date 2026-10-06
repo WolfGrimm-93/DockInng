@@ -281,3 +281,22 @@ describe('ConfirmDialog — bloqueo por tipo (F-3)', () => {
     expect(within(dlg).queryByRole('list')).not.toBeInTheDocument()
   })
 })
+
+describe('ConfirmDialog — copiar (F-5)', () => {
+  it('copiar: toast de éxito; si el portapapeles falla, toast de error', async () => {
+    const u = userEvent.setup()
+    const long = 'x'.repeat(30)
+    mountConfirm({ ...base, level: 'confirm_typed', typed: long })
+    await u.click(screen.getByText('abrir'))
+    const dlg = await screen.findByRole('alertdialog')
+    const copy = within(dlg).getByRole('button', { name: 'Copiar el texto de confirmación' })
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    await u.click(copy)
+    await waitFor(() => expect(getToasts().some((t) => t.kind === 'ok' && t.msg === 'Texto copiado')).toBe(true))
+    expect(writeText).toHaveBeenCalledWith(long)
+    writeText.mockRejectedValueOnce(new Error('denegado'))
+    await u.click(copy)
+    await waitFor(() => expect(getToasts().some((t) => t.kind === 'err' && t.msg === 'No se pudo copiar el texto')).toBe(true))
+  })
+})
