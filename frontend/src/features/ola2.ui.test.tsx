@@ -73,10 +73,13 @@ describe('HostKeyDialog', () => {
     await u.type(campo, 'otro-host')
     expect(boton).toBeDisabled()
     await u.clear(campo)
-    await u.type(campo, '  SRV.example ')
+    await u.type(campo, 'SRV.example')
+    expect(boton).toBeDisabled() // la confirmación es exacta, como en el backend
+    await u.clear(campo)
+    await u.type(campo, '  srv.example ')
     expect(boton).toBeEnabled()
     await u.click(boton)
-    expect(onForget).toHaveBeenCalledTimes(1)
+    expect(onForget).toHaveBeenCalledWith('srv.example')
     expect(onTrust).not.toHaveBeenCalled()
   })
   it('un host/huella con HTML se pinta como texto', async () => {

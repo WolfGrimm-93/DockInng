@@ -108,8 +108,9 @@ export interface EngineApi {
     probeHostKey(spec: ConnSpec): Promise<HostKeyProbe>
     /** `connection_trust_host_key`: escribe la huella SOLO si sigue coincidiendo con la que vio el usuario. */
     trustHostKey(spec: ConnSpec, fingerprint: string): Promise<HostKeyProbe>
-    /** `connection_forget_host_key`: quita la clave guardada del destino (known_hosts propio). NO confía en la nueva. */
-    forgetHostKey(spec: ConnSpec): Promise<void>
+    /** `connection_forget_host_key`: quita la clave guardada del destino (known_hosts propio). NO confía en la nueva.
+     *  `confirmedHost` debe ser el nombre exacto del host: lo valida el backend (confirmación escrita). */
+    forgetHostKey(spec: ConnSpec, confirmedHost: string): Promise<void>
     /** `connection_test`: nunca lanza por fallos de conexión (van en el resultado). */
     test(spec: ConnSpec): Promise<ConnTestResult>
     /** `connection_save {spec, id?}`: sin `id` CREA (nombre repetido = conflict); con `id` EDITA esa conexión (la activa no se puede editar). */

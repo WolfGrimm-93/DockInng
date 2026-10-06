@@ -27,17 +27,17 @@ export function HostKeyDialog({ probe, host, port, busy, simulated, onTrust, onF
   /** Mundo simulado (navegador): la huella es de ejemplo. */
   simulated?: boolean
   onTrust(): void
-  /** Olvida la clave guardada del host (solo se ofrece en 'changed'). */
-  onForget?(): void
+  /** Olvida la clave guardada del host (solo se ofrece en 'changed'). Recibe lo escrito: el backend lo valida. */
+  onForget?(confirmedHost: string): void
   onClose(): void
 }) {
   const cancelRef = useRef<HTMLButtonElement>(null)
   const changed = probe?.state === 'changed'
   const where = `${safeText(host, { singleLine: true })}${port === 22 ? '' : `:${port}`}`
-  // Confirmación escrita: el nombre del host exacto (sin distinguir mayúsculas ni espacios de los extremos).
+  // Confirmación escrita: el nombre del host exacto (solo se recortan los espacios de los extremos, igual que el backend).
   const [typed, setTyped] = useState('')
   useEffect(() => { if (!probe) setTyped('') }, [probe])
-  const confirmado = typed.trim().toLowerCase() === host.trim().toLowerCase() && host.trim() !== ''
+  const confirmado = host.trim() !== '' && typed.trim() === host.trim()
   return (
     <AlertDialog open={probe !== null} onOpenChange={(o) => { if (!o && !busy) onClose() }}>
       <AlertDialogContent initialFocus={cancelRef}>
@@ -90,7 +90,7 @@ export function HostKeyDialog({ probe, host, port, busy, simulated, onTrust, onF
               <Button type="button" variant="ghost" size="sm" onClick={() => void copyText(probe.fingerprint_sha256)}><Icon name="copy" size="sm" />Copiar huella</Button>
               <Button ref={cancelRef} type="button" variant="secondary" disabled={busy} onClick={onClose}>{changed ? 'Cerrar' : 'Cancelar'}</Button>
               {changed ? (onForget ? (
-                <Button type="button" variant="destructive" disabled={busy || !confirmado} onClick={onForget}>
+                <Button type="button" variant="destructive" disabled={busy || !confirmado} onClick={() => onForget(typed.trim())}>
                   <Icon name={busy ? 'loader' : 'trash'} spin={busy} />Olvidar clave guardada
                 </Button>
               ) : null) : (

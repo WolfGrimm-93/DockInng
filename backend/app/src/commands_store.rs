@@ -86,6 +86,20 @@ pub fn require_confirmed(action: &Action, confirmed: bool) -> ApiResult<()> {
     }
 }
 
+/// Confirmación escrita validada en el backend: `typed` debe ser lo que pide la política
+/// (p. ej. el nombre del host). Nunca la salta `--yes` y no depende de lo que haga la UI.
+pub fn require_typed(action: &Action, typed: &str) -> ApiResult<()> {
+    let dec = decide(action, Interactivity::Interactive, false);
+    if matches!(dec, Decision::ConfirmTyped { .. }) && dec.accepts(Some(typed)) {
+        Ok(())
+    } else {
+        Err(ApiError::new(
+            ApiErrorCode::PolicyDenied,
+            "escribe exactamente el nombre indicado para confirmar",
+        ))
+    }
+}
+
 #[tauri::command]
 pub async fn groups_load(state: State<'_, AppState>) -> ApiResult<GroupsSnapshot> {
     with_store(&state, |s| s.groups_load()).await
@@ -164,4 +178,26 @@ pub async fn registry_test(state: State<'_, AppState>, id: String) -> ApiResult<
         .check_registry_auth(&auth)
         .await
         .map_err(|e| ApiError::from(&e))
+}
+
+#[cfg(test)]
+mod tests_require_typed {
+    use super::*;
+
+    #[test]
+    fn olvidar_host_exige_el_nombre_exacto() {
+        let a = Action::ForgetHostKey {
+            host: "srv.example".into(),
+        };
+        assert!(require_typed(&a, "srv.example").is_ok());
+        assert!(require_typed(&a, "  srv.example ").is_ok());
+        assert!(require_typed(&a, "SRV.example").is_err());
+        assert!(require_typed(&a, "").is_err());
+        assert!(require_typed(&a, "otro").is_err());
+    }
+
+    #[test]
+    fn acciones_sin_confirmacion_escrita_no_se_aceptan_por_esta_via() {
+        assert!(require_typed(&Action::RemoveConnection, "x").is_err());
+    }
 }

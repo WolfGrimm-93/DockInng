@@ -159,10 +159,12 @@ export function createSimStore(ctx: SimCtx, getActive: () => string, opts: SimSt
         trustedHosts.set(hostKey(spec), fingerprint)
         return { ...p, state: 'trusted' }
       },
-      async forgetHostKey(spec) {
+      async forgetHostKey(spec, confirmedHost) {
         await sleep(Math.min(ctx.latency, 200))
         validateSpec(spec)
         if (spec.kind !== 'ssh') throw apiError('invalid_input', 'La huella de host solo aplica a SSH.')
+        // Mismo criterio que el backend: confirmación escrita exacta (sin recortar mayúsculas).
+        if (confirmedHost.trim() !== spec.host.trim()) throw apiError('policy_denied', 'Escribe exactamente el nombre indicado para confirmar.')
         trustedHosts.delete(hostKey(spec))
         olvidados.add(hostKey(spec))
       },
