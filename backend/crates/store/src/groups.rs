@@ -515,6 +515,10 @@ impl Store {
             if group_exists(&tx, &new)? {
                 new = new_id();
             }
+            // Tope contra las filas que YA existen en la base, no solo contra el payload.
+            if count(&tx, "groups")? >= MAX_GROUPS {
+                return invalid("los datos de grupos exceden los límites");
+            }
             tx.execute(
                 "INSERT INTO groups (id, name, hue, sort, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
                 params![new, name, hue, sort, now_secs()],
@@ -543,6 +547,12 @@ impl Store {
             if !conn_ok {
                 dropped += 1;
                 continue;
+            }
+            // Igual que el tope de grupos: cuenta lo que ya hay en la base.
+            if !assignment_exists(&tx, profile, container)?
+                && count(&tx, "group_assignments")? >= MAX_ASSIGNMENTS
+            {
+                return invalid("los datos de grupos exceden los límites");
             }
             tx.execute(
                 "INSERT INTO group_assignments (connection_id, container_name, group_id)
@@ -774,6 +784,43 @@ mod tests {
         assert!(s.groups_import_legacy(p).is_err());
         // Un rechazo no marca la migración como hecha.
         assert!(!s.groups_load().unwrap().legacy_imported);
+    }
+
+    #[test]
+    fn import_legacy_respeta_el_tope_con_grupos_ya_guardados() {
+        // B-6: el tope se comparaba solo con el payload; con grupos ya en la base se superaba.
+        let (_t, s) = store();
+        for i in 0..MAX_GROUPS - 1 {
+            create(&s, &format!("previo {i}")).unwrap();
+        }
+        let p = LegacyGroups {
+            v: 1,
+            groups: vec![
+                LegacyGroup {
+                    id: "a".into(),
+                    name: "nuevo a".into(),
+                    hue: 1,
+                },
+                LegacyGroup {
+                    id: "b".into(),
+                    name: "nuevo b".into(),
+                    hue: 2,
+                },
+            ],
+            assign: BTreeMap::new(),
+            stack_hue: BTreeMap::new(),
+        };
+        assert!(matches!(
+            s.groups_import_legacy(p),
+            Err(StoreError::InvalidInput(_))
+        ));
+        let snap = s.groups_load().unwrap();
+        assert_eq!(
+            snap.groups.len(),
+            MAX_GROUPS - 1,
+            "el primer nuevo no debe quedar escrito"
+        );
+        assert!(!snap.legacy_imported);
     }
 
     #[test]
