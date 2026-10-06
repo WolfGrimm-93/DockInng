@@ -9,7 +9,6 @@ Lo ya cerrado se retiró de esta lista (2026-10-06); su historial está en la Bi
 - [ ] Pasar `rpmlint` sin errores al RPM generado por Tauri: verificado en Fedora 44 con `rpmlint 2.8.0`; quedan 9 errores y 2 advertencias por documentación no marcada como `%doc`, `no-documentation`, `no-changelogname-tag`, `no-buildhost-tag` y nombre de archivo no coherente. El paquete instala/desinstala correctamente; documentar o corregir según lo que controle Tauri.
 - [ ] Build completo del PKGBUILD con red (`pnpm install`, `cargo fetch`), con tag `v0.1.0` publicado y `updpkgsums`; `namcap` no reportó problemas, pero el tag todavía no existe en GitHub y `makepkg --verifysource` devuelve 404.
 - [ ] Bandeja en Plasma: comprobar `tray.png` sobre paneles claro y oscuro, y `StartupWMClass=dockinng-app` en Wayland.
-- [ ] Revisar si `backend/app/Cargo.toml` debe heredar `authors`/`description` del workspace; actualmente queda fuera de alcance.
 - [ ] Copia del RPM compatible con Leap a la ruta canónica (`backend/target-leap/...`): requiere `sudo` porque el directorio pertenece a `root`.
 
 ## Ola 2: pendientes tras la auditoría (rama `feature/wave2-persistence-remote`)
@@ -34,7 +33,6 @@ Lo ya cerrado se retiró de esta lista (2026-10-06); su historial está en la Bi
 - [ ] Ventana TOCTOU residual: el chequeo de `include`/`extends`/`env_file` locales y el de `include` remotos ocurren antes de que Compose lea los archivos; un symlink cambiado en ese instante podría escapar. Cerrarla del todo requiere ejecutar Compose sobre una copia validada del proyecto (decisión de diseño pendiente: los `build:` con rutas relativas se romperían si solo se copian los YAML).
 - [ ] Fragmento filtrado en el error de un archivo linked/descubierto inválido: **no reproducido** con Compose 5.5.1 (los errores de sintaxis, esquema, `include` roto e interpolación salen en una línea y no incluyen el contenido). Reabrir si aparece un caso real.
 - [ ] Falsos positivos del pre-escaneo de `include`: un YAML válido que `serde_norway` no lea se rechaza como «no verificable» (falla cerrado). Revisar con casos reales de YAML poco común y, si aparecen, ajustar el parser o la regla.
-- [ ] `cargo fmt --all` modifica `crates/dockinng-cli/src/output.rs`: el archivo ya estaba sin formato en `develop`. Formatearlo en una rama propia para que `cargo fmt --check` pase.
 - [ ] Cerrar la terminal en un Docker REMOTO no mata el shell (el respaldo Ctrl-C + `exit` está sin probar; el `kill -HUP` por cgroup solo funciona con motor local).
 - [ ] Sin verificar de extremo a extremo: xterm y CodeMirror en WebKitGTK real (portapapeles, teclado, rendimiento con salida masiva, lectores de pantalla); no hubo automatización de entrada/lectura AT-SPI. También siguen pendientes pull contra Docker Hub o registros con credenciales; Compose distinto de 5.5.1 y v1; estado `Warning` de `--progress json`; contenedor sin `/bin/sh`.
 - [ ] La validación simulada de YAML (`lib/yamlCheck.ts`) es heurística (p. ej. `services: [` sin cerrar pasa); solo importa en el modo simulado, el real usa `docker compose config`.
