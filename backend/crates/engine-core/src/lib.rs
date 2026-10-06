@@ -3,6 +3,15 @@
 
 pub mod actions;
 pub mod api;
+
+/// Segundos desde la época Unix. Única implementación: la usan el núcleo y el almacén.
+pub fn now_unix_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
 pub mod broker;
 pub mod build;
 pub mod cleanup;

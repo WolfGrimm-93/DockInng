@@ -927,7 +927,7 @@ fn commands() -> Value {
     );
     c.add(
         "execute_action",
-        json!({"ticket": TICKET, "typed": "ELIMINAR"}),
+        json!({"ticket": TICKET, "typed": "ELIMINAR", "confirmed": true}),
         "ActionOutcome",
         typed::<engine_core::ActionOutcome>(json!({
             "succeeded": [{"kind": "container", "id": CID, "name": "web"}],

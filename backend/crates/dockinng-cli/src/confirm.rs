@@ -1,6 +1,7 @@
 //! Confirmación de acciones destructivas en la terminal. La decisión la toma el núcleo
 //! (`ConfirmationPolicy`, vía `ActionService::plan_with`); aquí solo se pregunta.
 
+use crate::error::CliError;
 use std::io::{self, BufRead, IsTerminal, Write};
 
 use engine_core::{Decision, Interactivity, PlanDecision, PlanDenyReason};
@@ -73,7 +74,7 @@ pub fn gate(
     assume_yes: bool,
     question: &str,
     asker: &mut dyn Asker,
-) -> Result<Option<String>, String> {
+) -> Result<Option<String>, CliError> {
     match decision {
         PlanDecision::Allow => Ok(None),
         PlanDecision::Confirm => {
@@ -141,9 +142,9 @@ pub mod tests {
             reason: PlanDenyReason::NeedsConfirmationNonInteractive,
         };
         let e = gate(&d, false, "?", &mut s).unwrap_err();
-        assert!(e.contains("--yes"), "{e}");
+        assert!(e.to_string().contains("--yes"), "{e}");
         let e = gate(&d, true, "?", &mut s).unwrap_err();
-        assert!(e.contains("no la sustituye"), "{e}");
+        assert!(e.to_string().contains("no la sustituye"), "{e}");
         assert_eq!(s.asked, 0, "sin TTY nunca se pregunta");
     }
 

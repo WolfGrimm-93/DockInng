@@ -79,8 +79,20 @@ impl ValidationDir {
 
 impl Drop for ValidationDir {
     fn drop(&mut self) {
-        let _ = std::fs::remove_file(self.dir.join(".env"));
-        let _ = std::fs::remove_dir(&self.dir);
+        // En `drop` no hay a quién devolver el error: se avisa por stderr (sin rutas, solo el
+        // tipo de fallo). Que el archivo ya no exista es lo normal y no se avisa.
+        let avisar = |paso: &str, r: std::io::Result<()>| {
+            if let Err(e) = r
+                && e.kind() != std::io::ErrorKind::NotFound
+            {
+                eprintln!(
+                    "aviso: no se pudo limpiar la validación temporal ({paso}: {:?})",
+                    e.kind()
+                );
+            }
+        };
+        avisar("borrar .env", std::fs::remove_file(self.dir.join(".env")));
+        avisar("borrar directorio", std::fs::remove_dir(&self.dir));
     }
 }
 

@@ -961,8 +961,15 @@ impl CreateService {
                     "esta configuración requiere confirmación: planifica y confirma primero",
                 )
             })?;
+            // La creación con ticket se confirma con la propia llamada `create` (sin campo
+            // `confirmed` propio en este camino): comportamiento previo, sin cambios aquí.
+            // Pendiente de decisión: exigir `confirmed` también en la creación (ver informe).
             let (payload, redeemed_decision) =
-                self.broker.redeem(t, None).map_err(|e| match e {
+                self.broker.redeem(t, None, true).map_err(|e| match e {
+                    RedeemError::NotConfirmed => ApiError::new(
+                        ApiErrorCode::PolicyDenied,
+                        "la acción requiere confirmación del usuario",
+                    ),
                     RedeemError::Invalid => ApiError::new(
                         ApiErrorCode::TicketInvalid,
                         "el ticket no existe o ya se usó",

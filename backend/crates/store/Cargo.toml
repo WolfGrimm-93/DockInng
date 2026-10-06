@@ -7,7 +7,7 @@ publish.workspace = true
 
 [dependencies]
 engine-core = { path = "../engine-core" }
-rusqlite.workspace = true
+rusqlite = { workspace = true, features = ["functions"] }
 keyring.workspace = true
 serde.workspace = true
 serde_json.workspace = true

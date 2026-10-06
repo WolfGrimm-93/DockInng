@@ -156,6 +156,45 @@ fn temp_suffix() -> String {
     uuid::Uuid::now_v7().simple().to_string()
 }
 
+/// Resultado de un borrado de limpieza: `Some(descripción)` si falló de verdad. Que el archivo
+/// no exista es lo normal (el fallo pudo ocurrir antes de crearlo) y no cuenta.
+fn borrar_creado(paso: &str, r: std::io::Result<()>) -> Option<String> {
+    match r {
+        Ok(()) => None,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        // Solo el `kind`: los errores del SO pueden llevar rutas.
+        Err(e) => Some(format!("{paso} ({:?})", e.kind())),
+    }
+}
+
+/// Añade a `principal` los borrados de limpieza que fallaron. El error original se conserva
+/// (misma variante, mismo código de API); la limpieza incompleta se anota en el mensaje para
+/// que no quede en silencio que algo sobró en disco.
+fn anotar_limpieza(
+    principal: ComposeError,
+    limpieza: impl IntoIterator<Item = Option<String>>,
+) -> ComposeError {
+    let fallos: Vec<String> = limpieza.into_iter().flatten().collect();
+    if fallos.is_empty() {
+        return principal;
+    }
+    let nota = format!("limpieza incompleta: {}", fallos.join(", "));
+    let anotado = |m: String| format!("{m}; {nota}");
+    match principal {
+        ComposeError::Missing(m) => ComposeError::Missing(anotado(m)),
+        ComposeError::InvalidInput(m) => ComposeError::InvalidInput(anotado(m)),
+        ComposeError::Denied(m) => ComposeError::Denied(anotado(m)),
+        ComposeError::NotFound(m) => ComposeError::NotFound(anotado(m)),
+        ComposeError::Conflict(m) => ComposeError::Conflict(anotado(m)),
+        ComposeError::StateChanged(m) => ComposeError::StateChanged(anotado(m)),
+        ComposeError::Io(m) => ComposeError::Io(anotado(m)),
+        ComposeError::Internal(m) => ComposeError::Internal(anotado(m)),
+        // Variantes sin texto libre (Failed, Invalid, Timeout...): la nota no puede perderse,
+        // así que el error pasa a interno con el original dentro.
+        otro => ComposeError::Internal(anotado(otro.to_string())),
+    }
+}
+
 /// Escritura atómica: temporal en el MISMO directorio (`O_EXCL`, sin seguir symlinks) + `rename`.
 fn write_atomic(
     dir: &Path,
@@ -648,10 +687,15 @@ impl StackStore {
         })();
         if let Err(e) = result {
             // Limpieza de lo que acabamos de crear (solo nuestros archivos conocidos).
-            let _ = fs::remove_file(dir.join(COMPOSE_NAMES[0]));
-            let _ = fs::remove_file(dir.join(ENV_NAME));
-            let _ = fs::remove_dir(&dir);
-            return Err(e);
+            let limpieza = [
+                borrar_creado(
+                    "borrar compose",
+                    fs::remove_file(dir.join(COMPOSE_NAMES[0])),
+                ),
+                borrar_creado("borrar .env", fs::remove_file(dir.join(ENV_NAME))),
+                borrar_creado("borrar directorio", fs::remove_dir(&dir)),
+            ];
+            return Err(anotar_limpieza(e, limpieza));
         }
         self.read(name)
     }
@@ -741,10 +785,15 @@ impl StackStore {
             compose.file_name().map(|n| n.to_os_string()),
             Some(ENV_NAME.into()),
         ];
-        let foreign = fs::read_dir(&dir)
-            .map_err(|e| ComposeError::io("listar stack", &e))?
-            .flatten()
-            .any(|e| !known.iter().flatten().any(|k| *k == e.file_name()));
+        // Una entrada que no se puede leer cuenta como ajena: se rechaza el borrado en vez de
+        // ignorarla (ignorarla podía dejar borrar un directorio con archivos del usuario).
+        let mut foreign = false;
+        for entrada in fs::read_dir(&dir).map_err(|e| ComposeError::io("listar stack", &e))? {
+            let entrada = entrada.map_err(|e| ComposeError::io("listar stack", &e))?;
+            if !known.iter().flatten().any(|k| *k == entrada.file_name()) {
+                foreign = true;
+            }
+        }
         if foreign {
             return Err(ComposeError::Conflict(
                 "el directorio del stack contiene otros archivos".into(),
@@ -822,8 +871,8 @@ impl StackStore {
         let json =
             serde_json::to_vec_pretty(&data).map_err(|e| ComposeError::Internal(e.to_string()))?;
         if let Err(e) = write_atomic(&dir, LINK_NAME, &json, 0o600) {
-            let _ = fs::remove_dir(&dir);
-            return Err(e);
+            let limpieza = [borrar_creado("borrar directorio", fs::remove_dir(&dir))];
+            return Err(anotar_limpieza(e, limpieza));
         }
         self.read(name)
     }
@@ -879,6 +928,51 @@ pub(crate) mod testutil {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
         }
+    }
+}
+
+#[cfg(test)]
+mod limpieza_tests {
+    use super::*;
+    use std::io::{Error, ErrorKind};
+
+    #[test]
+    fn ausente_en_la_limpieza_no_es_un_fallo() {
+        assert_eq!(
+            borrar_creado("x", Err(Error::from(ErrorKind::NotFound))),
+            None
+        );
+        assert_eq!(borrar_creado("x", Ok(())), None);
+    }
+
+    #[test]
+    fn fallo_real_de_limpieza_se_registra_sin_rutas() {
+        let nota = borrar_creado("borrar .env", Err(Error::from(ErrorKind::PermissionDenied)))
+            .expect("debe registrarse");
+        assert!(nota.contains("borrar .env"));
+        assert!(nota.contains("PermissionDenied"));
+        assert!(!nota.contains('/'), "sin rutas: {nota}");
+    }
+
+    #[test]
+    fn la_nota_se_anade_sin_cambiar_la_variante_del_error() {
+        let limpieza = [
+            None,
+            Some("borrar directorio (PermissionDenied)".to_string()),
+        ];
+        let e = anotar_limpieza(ComposeError::Conflict("ocupado".into()), limpieza);
+        assert_eq!(
+            e,
+            ComposeError::Conflict(
+                "ocupado; limpieza incompleta: borrar directorio (PermissionDenied)".into()
+            )
+        );
+    }
+
+    #[test]
+    fn sin_fallos_de_limpieza_el_error_queda_intacto() {
+        let original = ComposeError::Io("escribir: Other".into());
+        assert_eq!(anotar_limpieza(original.clone(), [None, None]), original);
     }
 }
 

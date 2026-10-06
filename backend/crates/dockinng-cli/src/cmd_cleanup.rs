@@ -1,6 +1,7 @@
 //! `cleanup plan|apply`. El plan es de solo lectura; `apply` NUNCA es un prune: ejecuta la
 //! selección elemento a elemento por el flujo plan -> confirmación -> ticket.
 
+use crate::error::CliError;
 use engine_core::{
     ActionRequest, CleanupCategoryId, CleanupReport, CleanupSelection, ItemKind, SizeEstimate,
     cleanup_report,
@@ -77,7 +78,7 @@ pub fn format_report(r: &CleanupReport) -> Vec<String> {
     out
 }
 
-pub async fn plan(ctx: &Ctx, min_age_days: u32) -> Result<(), String> {
+pub async fn plan(ctx: &Ctx, min_age_days: u32) -> Result<(), CliError> {
     let r = cleanup_report(ctx.engine.as_ref(), min_age_days)
         .await
         .map_err(|e| e.to_string())?;
@@ -125,7 +126,7 @@ pub fn build_selection(a: &ApplyArgs, report: Option<&CleanupReport>) -> Cleanup
     sel
 }
 
-pub async fn apply_cmd(ctx: &Ctx, a: ApplyArgs, confirm: Confirm) -> Result<(), String> {
+pub async fn apply_cmd(ctx: &Ctx, a: ApplyArgs, confirm: Confirm) -> Result<(), CliError> {
     let report = if a.defaults {
         Some(
             cleanup_report(ctx.engine.as_ref(), a.min_age_days)

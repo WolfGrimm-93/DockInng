@@ -11,8 +11,10 @@ mod cmd_stacks;
 mod cmd_volumes;
 mod confirm;
 mod ctx;
+mod error;
 mod output;
 
+use crate::error::CliError;
 use std::process::ExitCode;
 
 use clap::{CommandFactory, Parser};
@@ -31,7 +33,7 @@ async fn main() -> ExitCode {
     }
 }
 
-async fn run(cli: Cli) -> Result<(), String> {
+async fn run(cli: Cli) -> Result<(), CliError> {
     // Los completados no necesitan motor.
     if let Command::Completions { shell } = &cli.command {
         let mut cmd = Cli::command();
@@ -66,7 +68,7 @@ async fn run(cli: Cli) -> Result<(), String> {
     dispatch(&ctx, cli.command).await
 }
 
-async fn dispatch(ctx: &Ctx, command: Command) -> Result<(), String> {
+async fn dispatch(ctx: &Ctx, command: Command) -> Result<(), CliError> {
     use cmd_containers::Verb;
     match command {
         Command::Ps { all } => cmd_containers::ps(ctx, all).await,

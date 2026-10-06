@@ -130,19 +130,12 @@ pub fn rfc3339_utc(secs: i64) -> String {
     )
 }
 
-fn now_unix() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
-}
-
 /// Informe de limpieza con la hora del sistema. Solo llama a `list_*` y `system_usage`.
 pub async fn cleanup_report(
     engine: &dyn EngineClient,
     min_age_days: u32,
 ) -> Result<CleanupReport, EngineError> {
-    cleanup_report_at(engine, min_age_days, now_unix()).await
+    cleanup_report_at(engine, min_age_days, crate::now_unix_secs()).await
 }
 
 /// Igual con la hora inyectada (tests deterministas).
@@ -658,7 +651,7 @@ mod tests {
         assert_eq!(plan.decision, PlanDecision::Confirm);
         assert_eq!(plan.affected.len(), 4);
         let out = s
-            .execute(plan.ticket.as_deref().expect("ticket"), None)
+            .execute(plan.ticket.as_deref().expect("ticket"), None, true)
             .await
             .expect("execute");
         assert_eq!(out.succeeded.len(), 4, "{:?}", out.failed);
@@ -693,10 +686,13 @@ mod tests {
         );
         let t = plan.ticket.expect("ticket");
         assert!(matches!(
-            s.execute(&t, Some("libre")).await,
+            s.execute(&t, Some("libre"), true).await,
             Err(ActionError::TypedMismatch)
         ));
-        let out = s.execute(&t, Some("ELIMINAR")).await.expect("execute");
+        let out = s
+            .execute(&t, Some("ELIMINAR"), true)
+            .await
+            .expect("execute");
         assert_eq!(out.succeeded.len(), 1);
         assert_eq!(removes(&e), ["remove_volume:libre"]);
     }
@@ -760,7 +756,11 @@ mod tests {
             st.networks[0].connected = vec!["c2".into()];
         }
         let out = s
-            .execute(plan.ticket.as_deref().expect("ticket"), Some("ELIMINAR"))
+            .execute(
+                plan.ticket.as_deref().expect("ticket"),
+                Some("ELIMINAR"),
+                true,
+            )
             .await
             .expect("execute");
         assert!(out.succeeded.is_empty());

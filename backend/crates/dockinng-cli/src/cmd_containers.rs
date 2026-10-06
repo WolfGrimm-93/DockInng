@@ -1,5 +1,6 @@
 //! `ps`, `start`, `stop`, `restart`, `rm` y `doctor`.
 
+use crate::error::CliError;
 use engine_core::{
     ActionRequest, ConnectionCause, ConnectionStatus, DiagStepId, EngineClient, StepStatus,
 };
@@ -10,7 +11,7 @@ use crate::confirm::Stdin;
 use crate::ctx::Ctx;
 use crate::output::{format_containers, print_json, print_lines};
 
-pub async fn ps(ctx: &Ctx, all: bool) -> Result<(), String> {
+pub async fn ps(ctx: &Ctx, all: bool) -> Result<(), CliError> {
     let containers = ctx
         .engine
         .list_containers(all)
@@ -23,7 +24,7 @@ pub async fn ps(ctx: &Ctx, all: bool) -> Result<(), String> {
     Ok(())
 }
 
-pub async fn lifecycle(ctx: &Ctx, verb: Verb, id: &str) -> Result<(), String> {
+pub async fn lifecycle(ctx: &Ctx, verb: Verb, id: &str) -> Result<(), CliError> {
     let r = match verb {
         Verb::Start => ctx.engine.start_container(id).await,
         Verb::Stop => ctx.engine.stop_container(id).await,
@@ -41,7 +42,7 @@ pub enum Verb {
     Restart,
 }
 
-pub async fn rm(ctx: &Ctx, id: &str, force: bool, confirm: Confirm) -> Result<(), String> {
+pub async fn rm(ctx: &Ctx, id: &str, force: bool, confirm: Confirm) -> Result<(), CliError> {
     // Sin `--force` no se escala: un contenedor en ejecución se rechaza aquí (el plan de la
     // GUI decide `force` por el estado real, la CLI exige que la persona lo pida).
     let detail = ctx
@@ -50,9 +51,9 @@ pub async fn rm(ctx: &Ctx, id: &str, force: bool, confirm: Confirm) -> Result<()
         .await
         .map_err(|e| e.to_string())?;
     if detail.summary.state.is_live() && !force {
-        return Err(format!(
+        return Err(CliError::Usage(format!(
             "{id} está en ejecución: detenlo antes o usa --force"
-        ));
+        )));
     }
     let actions = ctx.actions();
     apply_checked(
@@ -72,7 +73,7 @@ pub async fn rm(ctx: &Ctx, id: &str, force: bool, confirm: Confirm) -> Result<()
 
 /// El plan decide `force` por el estado real; sin `--force` de la persona nunca se escala
 /// (si el contenedor arrancó entre la comprobación y el plan, se aborta).
-pub fn rm_guard(plan: &engine_core::ActionPlan, force: bool) -> Result<(), String> {
+pub fn rm_guard(plan: &engine_core::ActionPlan, force: bool) -> Result<(), CliError> {
     if !force
         && plan
             .affected
@@ -85,7 +86,7 @@ pub fn rm_guard(plan: &engine_core::ActionPlan, force: bool) -> Result<(), Strin
 }
 
 /// Diagnóstico de la conexión: consume `EngineClient::diagnose`, la misma fuente que la GUI.
-pub async fn doctor(ctx: &Ctx) -> Result<(), String> {
+pub async fn doctor(ctx: &Ctx) -> Result<(), CliError> {
     match std::env::var("DOCKER_HOST") {
         Ok(h) => println!("• DOCKER_HOST = {h}"),
         Err(_) => println!("• DOCKER_HOST no definido (se usa el socket local)"),
@@ -137,7 +138,9 @@ pub async fn doctor(ctx: &Ctx) -> Result<(), String> {
                 }
                 _ => {}
             }
-            Err(format!("el motor no está disponible: {message}"))
+            Err(CliError::Failed(format!(
+                "el motor no está disponible: {message}"
+            )))
         }
     }
 }
@@ -200,7 +203,7 @@ mod tests {
             |plan| rm_guard(plan, false),
         )
         .await;
-        assert!(r.unwrap_err().contains("en ejecución"));
+        assert!(r.unwrap_err().to_string().contains("en ejecución"));
         assert!(!e.calls().iter().any(|c| c.starts_with("remove_")));
     }
 }

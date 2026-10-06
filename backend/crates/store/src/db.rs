@@ -4,13 +4,19 @@ use std::fs::{self, DirBuilder};
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
 use std::path::Path;
 
-use rusqlite::Connection;
+use rusqlite::functions::FunctionFlags;
+use rusqlite::{Connection, OptionalExtension};
 
 use crate::error::StoreError;
 use engine_core::LOCAL_CONNECTION_ID;
 
 /// Versión de esquema que entiende este binario.
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
+
+/// Función SQL con la misma minúscula que la comparación de nombres de grupo en Rust
+/// (`to_lowercase`). `lower()` de SQLite solo cubre ASCII: sobre ella no se puede hacer un
+/// índice único que respete "Ñandú" = "ñandú". Se registra en cada conexión.
+const FN_NOMBRE_CLAVE: &str = "dockinng_lower";
 
 /// Esquema v1. Los ids son UUID v7 (texto); `local` es el único id reservado.
 const SCHEMA_V1: &str = "
@@ -95,6 +101,7 @@ pub fn open_and_migrate(path: &Path) -> Result<Connection, StoreError> {
     }
     conn.busy_timeout(std::time::Duration::from_millis(5000))?;
     conn.pragma_update(None, "foreign_keys", "ON")?;
+    registrar_funciones(&conn)?;
 
     let found = user_version(&conn)?;
     if found > SCHEMA_VERSION {
@@ -144,6 +151,46 @@ fn migrate(conn: &mut Connection, from: u32) -> Result<(), StoreError> {
         tx.pragma_update(None, "user_version", 1)?;
         tx.commit()?;
     }
+    if from < 2 {
+        let tx = conn.transaction()?;
+        // Índice único de nombres de grupo (sin distinguir mayúsculas, Unicode incluido).
+        // Se comprueba antes si ya hay duplicados: la migración se aborta sin tocar nada
+        // (la copia `.bak-vN` ya está hecha) en vez de borrar o renombrar datos del usuario.
+        let duplicado: Option<String> = tx
+            .query_row(
+                &format!(
+                    "SELECT name FROM groups GROUP BY {FN_NOMBRE_CLAVE}(name) HAVING COUNT(*) > 1 LIMIT 1"
+                ),
+                [],
+                |r| r.get(0),
+            )
+            .optional()?;
+        if let Some(nombre) = duplicado {
+            return Err(StoreError::Conflict(format!(
+                "no se puede migrar la base: hay grupos con el mismo nombre («{nombre}»); \
+                 renómbralos y vuelve a abrir DockInng. La copia de seguridad está en .bak-v{from}"
+            )));
+        }
+        tx.execute_batch(&format!(
+            "CREATE UNIQUE INDEX groups_name_key ON groups ({FN_NOMBRE_CLAVE}(name));"
+        ))?;
+        tx.pragma_update(None, "user_version", 2)?;
+        tx.commit()?;
+    }
+    Ok(())
+}
+
+/// Registra `dockinng_lower` (determinista) en la conexión.
+fn registrar_funciones(conn: &Connection) -> Result<(), StoreError> {
+    conn.create_scalar_function(
+        FN_NOMBRE_CLAVE,
+        1,
+        FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
+        |ctx| {
+            let s: String = ctx.get(0)?;
+            Ok(s.to_lowercase())
+        },
+    )?;
     Ok(())
 }
 
@@ -153,13 +200,13 @@ mod tests {
     use crate::testutil::TempDir;
 
     #[test]
-    fn migra_v0_a_v1_con_permisos() {
+    fn migra_v0_a_v2_con_permisos() {
         let t = TempDir::new("mig");
         let dir = t.0.join("d");
         ensure_private_dir(&dir).unwrap();
         let path = dir.join("store.db");
         let c = open_and_migrate(&path).unwrap();
-        assert_eq!(user_version(&c).unwrap(), 1);
+        assert_eq!(user_version(&c).unwrap(), SCHEMA_VERSION);
         let fk: i64 = c
             .query_row("PRAGMA foreign_keys", [], |r| r.get(0))
             .unwrap();
@@ -246,5 +293,55 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM connections", [], |r| r.get(0))
             .unwrap();
         assert_eq!(n, 1);
+    }
+
+    #[test]
+    fn indice_unico_de_nombres_de_grupo_respeta_unicode() {
+        // B-5: ya no depende solo de la comprobación en Rust; la base rechaza "ñandú" si
+        // existe "Ñandú" (lower() de SQLite no lo vería).
+        let t = TempDir::new("uniq");
+        let path = t.0.join("store.db");
+        let c = open_and_migrate(&path).unwrap();
+        let ins = |id: &str, name: &str| {
+            c.execute(
+                "INSERT INTO groups (id, name, hue, sort, created_at) VALUES (?1, ?2, 1, 0, 0)",
+                rusqlite::params![id, name],
+            )
+        };
+        ins("a", "Ñandú").unwrap();
+        assert!(ins("b", "ñandú").is_err());
+        assert!(ins("c", "ÑANDÚ").is_err());
+        ins("d", "Otro").unwrap();
+    }
+
+    #[test]
+    fn migracion_con_nombres_duplicados_aborta_sin_tocar_la_base() {
+        let t = TempDir::new("dupmig");
+        let path = t.0.join("store.db");
+        {
+            // Base v1 con dos grupos que el índice nuevo no admitiría.
+            let c = Connection::open(&path).unwrap();
+            c.execute_batch(SCHEMA_V1).unwrap();
+            for (id, name) in [("a", "Ñandú"), ("b", "ñandú")] {
+                c.execute(
+                    "INSERT INTO groups (id, name, hue, sort, created_at) VALUES (?1, ?2, 1, 0, 0)",
+                    rusqlite::params![id, name],
+                )
+                .unwrap();
+            }
+            c.pragma_update(None, "user_version", 1).unwrap();
+        }
+        let err = open_and_migrate(&path).unwrap_err();
+        assert!(matches!(err, StoreError::Conflict(_)), "{err:?}");
+        let c = Connection::open(&path).unwrap();
+        assert_eq!(user_version(&c).unwrap(), 1, "la versión no sube");
+        let n: i64 = c
+            .query_row("SELECT COUNT(*) FROM groups", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 2, "no se borra ni renombra nada");
+        assert!(
+            t.0.join("store.db.bak-v1").exists(),
+            "la copia previa se conserva"
+        );
     }
 }

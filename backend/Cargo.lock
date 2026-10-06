@@ -1168,6 +1168,7 @@ dependencies = [
  "serde",
  "serde_json",
  "store",
+ "thiserror 2.0.21",
  "tokio",
  "transport",
  "uuid",

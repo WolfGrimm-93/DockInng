@@ -61,6 +61,9 @@ pub enum RedeemError {
     Expired,
     /// La confirmación escrita no coincide (el ticket sigue vivo mientras queden intentos).
     TypedMismatch,
+    /// La decisión exige confirmación del usuario y el canje llegó sin ella. El ticket NO se
+    /// consume: se puede volver a canjear con la confirmación.
+    NotConfirmed,
 }
 
 struct Entry<P> {
@@ -117,7 +120,15 @@ impl<P> Broker<P> {
     }
 
     /// Canjea el ticket: lo consume atómicamente si la confirmación es válida.
-    pub fn redeem(&self, ticket: &str, typed: Option<&str>) -> Result<(P, Decision), RedeemError> {
+    ///
+    /// `confirmed` es la confirmación explícita del usuario (diálogo o pregunta de la CLI).
+    /// Si la decisión la exige y `confirmed` es `false`, se rechaza SIN consumir el ticket.
+    pub fn redeem(
+        &self,
+        ticket: &str,
+        typed: Option<&str>,
+        confirmed: bool,
+    ) -> Result<(P, Decision), RedeemError> {
         let now = self.clock.now();
         let mut g = self.lock();
         let Some(entry) = g.map.get_mut(ticket) else {
@@ -126,6 +137,9 @@ impl<P> Broker<P> {
         if entry.expires <= now {
             g.map.remove(ticket);
             return Err(RedeemError::Expired);
+        }
+        if entry.decision.needs_confirmation() && !confirmed {
+            return Err(RedeemError::NotConfirmed);
         }
         if !entry.decision.accepts(typed) {
             entry.attempts += 1;
@@ -201,8 +215,8 @@ pub(crate) mod tests {
     fn un_solo_uso() {
         let (b, _) = broker();
         let t = b.issue(7, Decision::Confirm).expect("cupo");
-        assert_eq!(b.redeem(&t, None).map(|(p, _)| p), Ok(7));
-        assert_eq!(b.redeem(&t, None).err(), Some(RedeemError::Invalid));
+        assert_eq!(b.redeem(&t, None, true).map(|(p, _)| p), Ok(7));
+        assert_eq!(b.redeem(&t, None, true).err(), Some(RedeemError::Invalid));
     }
 
     #[test]
@@ -211,10 +225,10 @@ pub(crate) mod tests {
         let t = b.issue(1, Decision::Confirm).expect("cupo");
         c.advance(Duration::from_secs(119));
         let t2 = b.issue(2, Decision::Confirm).expect("cupo");
-        assert!(b.redeem(&t, None).is_ok());
+        assert!(b.redeem(&t, None, true).is_ok());
         c.advance(Duration::from_secs(121));
-        assert_eq!(b.redeem(&t2, None).err(), Some(RedeemError::Expired));
-        assert_eq!(b.redeem(&t2, None).err(), Some(RedeemError::Invalid));
+        assert_eq!(b.redeem(&t2, None, true).err(), Some(RedeemError::Expired));
+        assert_eq!(b.redeem(&t2, None, true).err(), Some(RedeemError::Invalid));
     }
 
     #[test]
@@ -226,18 +240,21 @@ pub(crate) mod tests {
         let t = b.issue(1, dec.clone()).expect("cupo");
         for _ in 0..4 {
             assert_eq!(
-                b.redeem(&t, Some("x")).err(),
+                b.redeem(&t, Some("x"), true).err(),
                 Some(RedeemError::TypedMismatch)
             );
         }
         // Aún vivo: la confirmación correcta funciona.
-        assert!(b.redeem(&t, Some("datos")).is_ok());
+        assert!(b.redeem(&t, Some("datos"), true).is_ok());
         let t = b.issue(1, dec).expect("cupo");
         for _ in 0..5 {
-            assert_eq!(b.redeem(&t, None).err(), Some(RedeemError::TypedMismatch));
+            assert_eq!(
+                b.redeem(&t, None, true).err(),
+                Some(RedeemError::TypedMismatch)
+            );
         }
         assert_eq!(
-            b.redeem(&t, Some("datos")).err(),
+            b.redeem(&t, Some("datos"), true).err(),
             Some(RedeemError::Invalid)
         );
     }
@@ -253,7 +270,7 @@ pub(crate) mod tests {
         // Lleno: el plan nuevo se rechaza y el ticket más viejo sigue vivo.
         assert_eq!(b.issue(99, Decision::Confirm), Err(BrokerFull));
         assert_eq!(b.pending(), MAX_PENDING);
-        assert!(b.redeem(&first, None).is_ok());
+        assert!(b.redeem(&first, None, true).is_ok());
         // Al liberar un cupo (o expirar) vuelve a aceptar.
         assert!(b.issue(100, Decision::Confirm).is_ok());
         c.advance(Duration::from_secs(121));
@@ -285,10 +302,10 @@ pub(crate) mod tests {
         let (b, c) = broker();
         let t = b.issue(1, Decision::Confirm).expect("cupo");
         c.advance(Duration::from_millis(119_999));
-        assert!(b.redeem(&t, None).is_ok());
+        assert!(b.redeem(&t, None, true).is_ok());
         let t = b.issue(1, Decision::Confirm).expect("cupo");
         c.advance(TICKET_TTL);
-        assert_eq!(b.redeem(&t, None).err(), Some(RedeemError::Expired));
+        assert_eq!(b.redeem(&t, None, true).err(), Some(RedeemError::Expired));
     }
 
     #[test]
@@ -303,6 +320,40 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn sin_confirmar_no_se_canjea_y_el_ticket_sigue_vivo() {
+        // B-1: un canje sin confirmación explícita se rechaza y NO consume el ticket.
+        let (b, _) = broker();
+        let t = b.issue(7, Decision::Confirm).expect("cupo");
+        assert_eq!(
+            b.redeem(&t, None, false).err(),
+            Some(RedeemError::NotConfirmed)
+        );
+        assert_eq!(b.pending(), 1, "el ticket no se consume al rechazarlo");
+        assert_eq!(b.redeem(&t, None, true).map(|(p, _)| p), Ok(7));
+    }
+
+    #[test]
+    fn typed_correcto_sin_confirmar_tampoco_se_canjea() {
+        let (b, _) = broker();
+        let dec = Decision::ConfirmTyped {
+            expected: "datos".into(),
+        };
+        let t = b.issue(1, dec).expect("cupo");
+        assert_eq!(
+            b.redeem(&t, Some("datos"), false).err(),
+            Some(RedeemError::NotConfirmed)
+        );
+        assert!(b.redeem(&t, Some("datos"), true).is_ok());
+    }
+
+    #[test]
+    fn allow_no_exige_confirmacion() {
+        let (b, _) = broker();
+        let t = b.issue(1, Decision::Allow).expect("cupo");
+        assert!(b.redeem(&t, None, false).is_ok());
+    }
+
+    #[test]
     fn deny_nunca_se_canjea_y_cinco_intentos_lo_eliminan() {
         let (b, _) = broker();
         let t = b
@@ -310,11 +361,11 @@ pub(crate) mod tests {
             .expect("cupo");
         for _ in 0..5 {
             assert_eq!(
-                b.redeem(&t, Some("x")).err(),
+                b.redeem(&t, Some("x"), true).err(),
                 Some(RedeemError::TypedMismatch)
             );
         }
-        assert_eq!(b.redeem(&t, None).err(), Some(RedeemError::Invalid));
+        assert_eq!(b.redeem(&t, None, true).err(), Some(RedeemError::Invalid));
     }
 
     #[test]
@@ -329,7 +380,7 @@ pub(crate) mod tests {
         .join();
         assert!(b.inner.is_poisoned());
         let t = b.issue(1, Decision::Confirm).expect("cupo");
-        assert!(b.redeem(&t, None).is_ok());
+        assert!(b.redeem(&t, None, true).is_ok());
     }
 
     #[test]
@@ -341,7 +392,7 @@ pub(crate) mod tests {
             let handles: Vec<_> = (0..4)
                 .map(|_| {
                     let (b, t) = (b.clone(), t.clone());
-                    std::thread::spawn(move || b.redeem(&t, None).is_ok())
+                    std::thread::spawn(move || b.redeem(&t, None, true).is_ok())
                 })
                 .collect();
             let wins = handles

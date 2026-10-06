@@ -89,13 +89,8 @@ impl Store {
     }
 }
 
-/// Segundos desde la época Unix.
-pub(crate) fn now_secs() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
-}
+/// Segundos desde la época Unix: la misma función que el resto de la base (`engine_core`).
+pub(crate) use engine_core::now_unix_secs as now_secs;
 
 /// Id nuevo (UUID v7).
 pub(crate) fn new_id() -> String {
