@@ -207,6 +207,8 @@ export type ActionRequest =
   /** Borra los archivos de un stack propio (irreversible: contiene .env). Confirmación escrita con el nombre. */
   | { type: 'stack_delete'; name: string }
   | { type: 'prune_system' }
+  /** Borra un perfil de conexión guardado (no toca el servidor remoto). Confirmación simple. */
+  | { type: 'remove_connection'; id: string }
   /** Limpieza guiada (Ola 2): SIEMPRE por elemento (nunca `prune`). Con volúmenes exige confirmación escrita (ELIMINAR). */
   | { type: 'cleanup'; selection: CleanupSelection }
 
@@ -220,7 +222,7 @@ export type PlanDecision =
 /** Los 4 niveles de la UI (Libre / Confirmar / Confirmar con nombre / Bloqueado). */
 export type ConfirmLevel = 'allow' | 'confirm' | 'confirm_typed' | 'blocked'
 
-export type AffectedKind = 'container' | 'image' | 'volume' | 'network' | 'stack' // ItemKind del backend
+export type AffectedKind = 'container' | 'image' | 'volume' | 'network' | 'stack' | 'connection' // ItemKind del backend
 export interface AffectedItem { kind: AffectedKind; id: string; name: string; state?: ContainerState | null; size_bytes?: number | null; detail?: string | null }
 /** PlanWarning del backend (actions.rs): etiquetado por `type`. */
 export type PlanWarning =

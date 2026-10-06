@@ -250,6 +250,9 @@ export function createSimApi(opts: SimOptions = {}): SimEngineApi {
         throw apiError('internal', 'cleanup se planifica en actions.plan (módulo cargado bajo demanda).')
       case 'prune_system':
         return mk({ type: 'deny', reason: 'forbidden' }, [])
+      case 'remove_connection':
+        // Perfil guardado: confirmación simple; no toca ningún contenedor ni el servidor remoto.
+        return mk({ type: 'confirm' }, [{ kind: 'connection', id: req.id, name: req.id }])
     }
   }
 

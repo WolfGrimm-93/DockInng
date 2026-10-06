@@ -145,6 +145,16 @@ export function describePlan(plan: ActionPlan, request: ActionRequest, ctx: { vo
         success: (o) => ({ msg: `Stack ${safeText(request.project, { singleLine: true })} bajado`, sub: `${o.succeeded.filter((x) => x.kind === 'container').length} contenedores eliminados` }),
       }
     }
+    case 'remove_connection':
+      return {
+        title: 'Eliminar conexión guardada',
+        description: (
+          <p>Se borra el perfil de conexión guardado en DockInng. <b>No se toca el servidor remoto</b> ni sus contenedores.</p>
+        ),
+        levelNote: <><b>Nivel Confirmar.</b> Solo afecta al perfil guardado.</>,
+        okLabel: 'Eliminar conexión',
+        success: () => ({ msg: 'Conexión eliminada' }),
+      }
     case 'stack_delete':
       return {
         title: `Eliminar stack ${safeText(request.name, { singleLine: true })}`,
