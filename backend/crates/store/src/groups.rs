@@ -921,7 +921,6 @@ mod tests {
         // InvalidInput y sigue, pero la fila ya insertada en la misma transacción se commiteaba.
         let (_t, s) = store();
         create(&s, "G").unwrap();
-        let gid = s.groups_load().unwrap().groups[0].id.clone();
         let lleno: Vec<serde_json::Value> = (0..MAX_ASSIGNMENTS)
             .map(|i| {
                 serde_json::json!({"connection_id": "local", "container_name": format!("c{i}"), "group_id": "g"})
