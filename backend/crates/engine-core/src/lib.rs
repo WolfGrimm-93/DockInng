@@ -3,6 +3,7 @@
 
 pub mod actions;
 pub mod api;
+pub mod approval;
 
 /// Segundos desde la época Unix. Única implementación: la usan el núcleo y el almacén.
 pub fn now_unix_secs() -> i64 {
@@ -49,6 +50,7 @@ pub use actions::{
     ItemKind, ItemRef, PlanDecision, PlanDenyReason, PlanWarning,
 };
 pub use api::{ApiError, ApiErrorCode};
+pub use approval::{Approval, ApprovalOrigin, ApprovalPrompt};
 pub use build::{
     BuildFeed, BuildLine, BuildOutcome, BuildPlan, BuildProgress, BuildSpec, BuildStream,
     BuildWarning,

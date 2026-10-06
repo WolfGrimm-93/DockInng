@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::actions::PlanDecision;
 use crate::api::{ApiError, ApiErrorCode};
+use crate::approval::{Approval, ApprovalPrompt};
 use crate::broker::{Broker, Clock, RedeemError, SystemClock, TICKET_TTL};
 use crate::client::EngineClient;
 use crate::error::EngineError;
@@ -929,13 +930,44 @@ impl CreateService {
         })
     }
 
+    /// Texto del diálogo de aprobación para un ticket de creación. `None` si el ticket no existe,
+    /// expiró o su decisión no exige confirmación.
+    pub fn approval_prompt(&self, ticket: &str) -> Option<ApprovalPrompt> {
+        self.broker
+            .peek(ticket, |payload, decision| {
+                if !decision.needs_confirmation() {
+                    return None;
+                }
+                let name = payload
+                    .spec
+                    .name
+                    .clone()
+                    .unwrap_or_else(|| "(sin nombre)".into());
+                Some(ApprovalPrompt {
+                    title: "Confirmar creación de contenedor".into(),
+                    lines: vec![
+                        format!("contenedor: {name}"),
+                        format!("imagen: {}", payload.spec.image),
+                        "La configuración tiene riesgos que requieren tu confirmación.".into(),
+                    ],
+                    typed_hint: match decision {
+                        Decision::ConfirmTyped { expected } => Some(expected.clone()),
+                        _ => None,
+                    },
+                })
+            })
+            .ok()
+            .flatten()
+    }
+
     /// Re-valida y re-planifica SIEMPRE; si la decisión no es `Allow` exige un ticket del
-    /// MISMO spec normalizado. Nunca hace pull.
+    /// MISMO spec normalizado y la aprobación humana (`approval`). Nunca hace pull.
     pub async fn create(
         &self,
         spec: CreateContainerSpec,
         start: bool,
         ticket: Option<&str>,
+        approval: Option<Approval>,
     ) -> Result<CreateResult, ApiError> {
         let ev = self.evaluate(&spec).await?;
         if !ev.field_errors.is_empty() {
@@ -961,11 +993,11 @@ impl CreateService {
                     "esta configuración requiere confirmación: planifica y confirma primero",
                 )
             })?;
-            // La creación con ticket se confirma con la propia llamada `create` (sin campo
-            // `confirmed` propio en este camino): comportamiento previo, sin cambios aquí.
-            // Pendiente de decisión: exigir `confirmed` también en la creación (ver informe).
+            // La aprobación la aporta el adaptador (diálogo nativo). Si falla un arranque después
+            // de canjear, el ticket vuelve al broker pero la aprobación ya se gastó: un reintento
+            // exige otra aprobación.
             let (payload, redeemed_decision) =
-                self.broker.redeem(t, None, true).map_err(|e| match e {
+                self.broker.redeem(t, None, approval).map_err(|e| match e {
                     RedeemError::NotConfirmed => ApiError::new(
                         ApiErrorCode::PolicyDenied,
                         "la acción requiere confirmación del usuario",
@@ -1699,7 +1731,7 @@ mod tests {
         let sensible = bind_spec("/etc");
         // Sin ticket: rechazado y nada se crea.
         let err = s
-            .create(sensible.clone(), false, None)
+            .create(sensible.clone(), false, None, None)
             .await
             .expect_err("sin ticket");
         assert_eq!(err.code, ApiErrorCode::TicketInvalid);
@@ -1711,12 +1743,22 @@ mod tests {
             .expect("plan")
             .ticket
             .expect("ticket");
-        s.create(sensible.clone(), true, Some(&t))
-            .await
-            .expect("crea");
+        s.create(
+            sensible.clone(),
+            true,
+            Some(&t),
+            Some(crate::Approval::for_tests()),
+        )
+        .await
+        .expect("crea");
         assert_eq!(c.calls().len(), 1);
         let err = s
-            .create(sensible.clone(), true, Some(&t))
+            .create(
+                sensible.clone(),
+                true,
+                Some(&t),
+                Some(crate::Approval::for_tests()),
+            )
             .await
             .expect_err("reuso");
         assert_eq!(err.code, ApiErrorCode::TicketInvalid);
@@ -1730,13 +1772,15 @@ mod tests {
         let mut otra = sensible.clone();
         otra.volumes[0].source = "/root".into();
         let err = s
-            .create(otra, false, Some(&t))
+            .create(otra, false, Some(&t), Some(crate::Approval::for_tests()))
             .await
             .expect_err("otra spec");
         assert_eq!(err.code, ApiErrorCode::TicketInvalid);
         assert_eq!(c.calls().len(), 1);
         // Una spec sin riesgo no necesita ticket.
-        s.create(spec("alpine"), false, None).await.expect("libre");
+        s.create(spec("alpine"), false, None, None)
+            .await
+            .expect("libre");
         assert_eq!(c.calls().len(), 2);
     }
 
@@ -1758,18 +1802,28 @@ mod tests {
             "No such image",
         )));
         let err = s
-            .create(sensible.clone(), true, Some(&t))
+            .create(
+                sensible.clone(),
+                true,
+                Some(&t),
+                Some(crate::Approval::for_tests()),
+            )
             .await
             .expect_err("sin imagen");
         assert_eq!(err.code, ApiErrorCode::ImageMissing);
         assert_eq!(s.pending_tickets(), 1, "el ticket sigue vivo");
         // Tras el pull, el mismo ticket sirve; y ahora sí se consume.
         c.set_fail(None);
-        s.create(sensible.clone(), true, Some(&t))
-            .await
-            .expect("reintento");
+        s.create(
+            sensible.clone(),
+            true,
+            Some(&t),
+            Some(crate::Approval::for_tests()),
+        )
+        .await
+        .expect("reintento");
         let err = s
-            .create(sensible, true, Some(&t))
+            .create(sensible, true, Some(&t), Some(crate::Approval::for_tests()))
             .await
             .expect_err("consumido");
         assert_eq!(err.code, ApiErrorCode::TicketInvalid);
@@ -1819,7 +1873,14 @@ mod tests {
 
         // (b) la spec normalizada + ticket se acepta y crea exactamente lo confirmado.
         let t = plan.ticket.expect("ticket");
-        s.create(n.clone(), true, Some(&t)).await.expect("crea");
+        s.create(
+            n.clone(),
+            true,
+            Some(&t),
+            Some(crate::Approval::for_tests()),
+        )
+        .await
+        .expect("crea");
         assert_eq!(c.specs(), vec![n.clone()]);
 
         // (c) modificar `normalized` tras el plan invalida la huella del ticket.
@@ -1831,7 +1892,7 @@ mod tests {
         for tampered in [otro_bind, otro_puerto] {
             let t = s.plan(n.clone()).await.expect("plan").ticket.expect("t");
             let err = s
-                .create(tampered, true, Some(&t))
+                .create(tampered, true, Some(&t), Some(crate::Approval::for_tests()))
                 .await
                 .expect_err("huella");
             assert_eq!(err.code, ApiErrorCode::TicketInvalid);
@@ -1847,7 +1908,7 @@ mod tests {
         let c = Arc::new(MockCreate::default());
         let s = svc(&e, &c);
         let err = s
-            .create(spec("a b"), false, None)
+            .create(spec("a b"), false, None, None)
             .await
             .expect_err("inválida");
         assert_eq!(err.code, ApiErrorCode::InvalidInput);
@@ -1859,7 +1920,7 @@ mod tests {
             container_port: 80,
             protocol: PortProtocol::Tcp,
         });
-        s.create(sp, false, None).await.expect("ok");
+        s.create(sp, false, None, None).await.expect("ok");
         let calls = c.specs();
         assert_eq!(calls[0].ports[0].host_ip.as_deref(), Some("127.0.0.1"));
     }

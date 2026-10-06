@@ -651,7 +651,11 @@ mod tests {
         assert_eq!(plan.decision, PlanDecision::Confirm);
         assert_eq!(plan.affected.len(), 4);
         let out = s
-            .execute(plan.ticket.as_deref().expect("ticket"), None, true)
+            .execute(
+                plan.ticket.as_deref().expect("ticket"),
+                None,
+                Some(crate::Approval::for_tests()),
+            )
             .await
             .expect("execute");
         assert_eq!(out.succeeded.len(), 4, "{:?}", out.failed);
@@ -686,11 +690,12 @@ mod tests {
         );
         let t = plan.ticket.expect("ticket");
         assert!(matches!(
-            s.execute(&t, Some("libre"), true).await,
+            s.execute(&t, Some("libre"), Some(crate::Approval::for_tests()))
+                .await,
             Err(ActionError::TypedMismatch)
         ));
         let out = s
-            .execute(&t, Some("ELIMINAR"), true)
+            .execute(&t, Some("ELIMINAR"), Some(crate::Approval::for_tests()))
             .await
             .expect("execute");
         assert_eq!(out.succeeded.len(), 1);
@@ -759,7 +764,7 @@ mod tests {
             .execute(
                 plan.ticket.as_deref().expect("ticket"),
                 Some("ELIMINAR"),
-                true,
+                Some(crate::Approval::for_tests()),
             )
             .await
             .expect("execute");

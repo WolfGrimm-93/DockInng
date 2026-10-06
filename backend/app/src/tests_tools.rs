@@ -38,14 +38,17 @@ fn ok(r: Result<InvokeResponseBody, serde_json::Value>) -> serde_json::Value {
 }
 
 fn state(engine: Arc<MockEngine>) -> AppState {
-    AppState::with_parts(
+    let mut st = AppState::with_parts(
         engine,
         Arc::new(MockExec::default()),
         Arc::new(MockPull { events: vec![] }),
         Arc::new(MockCreate::default()),
         Arc::new(MockStacks::default()),
         Arc::new(MockStacks::default()),
-    )
+    );
+    // El usuario acepta el diálogo nativo de aprobación (simulado).
+    st.approvals = crate::approvals::FakeApprovals::new(true);
+    st
 }
 
 fn engine() -> Arc<MockEngine> {
@@ -125,7 +128,7 @@ fn ipc_de_herramientas_bajo_la_acl_real() {
     assert_eq!(plan["affected"].as_array().unwrap().len(), 3);
     let out = ok(call(
         "execute_action",
-        serde_json::json!({"ticket": plan["ticket"], "typed": null, "confirmed": true}),
+        serde_json::json!({"ticket": plan["ticket"], "typed": null}),
     ));
     assert_eq!(out["succeeded"].as_array().unwrap().len(), 3);
     assert!(out["failed"].as_array().unwrap().is_empty());

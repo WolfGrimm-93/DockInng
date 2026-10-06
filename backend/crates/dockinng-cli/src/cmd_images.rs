@@ -176,9 +176,21 @@ pub async fn build(ctx: &Ctx, a: BuildArgs, confirm: Confirm) -> Result<(), CliE
         "¿Construir con este contexto sensible?",
         &mut Stdin,
     )?;
+    // `gate` ya pidió la confirmación (o `--yes` la permite): aquí está aprobado.
+    let approval = plan
+        .ticket
+        .as_ref()
+        .map(|_| engine_core::Approval::from_cli_prompt());
     let sink = PrintSink { json: ctx.json };
     let r = service
-        .run(&spec, plan.ticket.as_deref(), &target, &sink, ctrl_c())
+        .run(
+            &spec,
+            plan.ticket.as_deref(),
+            approval,
+            &target,
+            &sink,
+            ctrl_c(),
+        )
         .await
         .map_err(api_msg)?;
     match r.outcome {

@@ -20,6 +20,7 @@ use engine_core::{
 use tauri::ipc::Channel;
 use tauri::{Runtime, State, Window};
 
+use crate::approvals::obtain_approval;
 use crate::exec_sessions::{ExecFeed, close_session, resize_terminal, start_session, write_input};
 use crate::pull_feed::{PullFeed, PullOutcome, run_pull};
 use crate::state::AppState;
@@ -190,7 +191,15 @@ pub async fn create_container(
     ticket: Option<String>,
 ) -> ApiResult<CreateResult> {
     let _guard = state.action_guard().await?;
-    state.create.create(spec, start, ticket.as_deref()).await
+    // La aprobación humana (diálogo nativo) solo si el ticket la exige; sin ella no se crea.
+    let prompt = ticket
+        .as_deref()
+        .and_then(|t| state.create.approval_prompt(t));
+    let approval = obtain_approval(state.approvals.clone(), prompt).await?;
+    state
+        .create
+        .create(spec, start, ticket.as_deref(), approval)
+        .await
 }
 
 #[tauri::command]

@@ -687,10 +687,7 @@ fn acciones_de_contenedor_se_rechazan_durante_un_cambio() {
         assert_eq!(e["code"], "conflict", "{cmd}");
     }
     let e = h
-        .call(
-            "execute_action",
-            json!({"ticket": "x", "typed": null, "confirmed": true}),
-        )
+        .call("execute_action", json!({"ticket": "x", "typed": null}))
         .expect_err("execute");
     assert_eq!(e["code"], "conflict");
     h.webview.state::<AppState>().streams.set_paused(false);

@@ -10,6 +10,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 use crate::api::{ApiError, ApiErrorCode};
+use crate::approval::{Approval, ApprovalPrompt};
 use crate::broker::{Broker, Clock, RedeemError, SystemClock, TICKET_TTL};
 use crate::cleanup::CleanupSelection;
 use crate::client::EngineClient;
@@ -216,6 +217,30 @@ struct PlannedItem {
 #[derive(Debug, Clone)]
 struct Payload {
     items: Vec<PlannedItem>,
+}
+
+/// Máximo de elementos listados en el diálogo de aprobación.
+const PROMPT_MAX_LINES: usize = 10;
+
+fn redeem_error(e: RedeemError) -> ActionError {
+    match e {
+        RedeemError::Invalid => ActionError::TicketInvalid,
+        RedeemError::Expired => ActionError::TicketExpired,
+        RedeemError::TypedMismatch => ActionError::TypedMismatch,
+        RedeemError::NotConfirmed => {
+            ActionError::PolicyDenied("la acción requiere la aprobación del usuario".into())
+        }
+    }
+}
+
+fn kind_label(kind: ItemKind) -> &'static str {
+    match kind {
+        ItemKind::Container => "contenedor",
+        ItemKind::Image => "imagen",
+        ItemKind::Volume => "volumen",
+        ItemKind::Network => "red",
+        ItemKind::Stack => "stack",
+    }
 }
 
 pub struct ActionService {
@@ -796,28 +821,51 @@ impl ActionService {
         Ok(out)
     }
 
+    /// Lo que la app muestra en el diálogo de aprobación antes de canjear `ticket`. `None` si la
+    /// decisión no exige confirmación (o el ticket no existe / expiró).
+    pub fn approval_prompt(&self, ticket: &str) -> Result<Option<ApprovalPrompt>, ActionError> {
+        self.broker
+            .peek(ticket, |payload, decision| {
+                if !decision.needs_confirmation() {
+                    return None;
+                }
+                let n = payload.items.len();
+                let mut lines: Vec<String> = payload
+                    .items
+                    .iter()
+                    .take(PROMPT_MAX_LINES)
+                    .map(|i| format!("{}: {}", kind_label(i.kind), i.name))
+                    .collect();
+                if n > PROMPT_MAX_LINES {
+                    lines.push(format!("y {} más", n - PROMPT_MAX_LINES));
+                }
+                Some(ApprovalPrompt {
+                    title: format!("Confirmar: {} elemento(s)", n),
+                    lines,
+                    typed_hint: match decision {
+                        Decision::ConfirmTyped { expected } => Some(expected.clone()),
+                        _ => None,
+                    },
+                })
+            })
+            .map_err(redeem_error)
+    }
+
     /// Canjea el ticket y ejecuta elemento a elemento, continuando ante fallos.
     ///
-    /// `confirmed` debe ser `true` solo tras la confirmación explícita del usuario (diálogo
-    /// de la GUI o pregunta de la CLI). Sin ella, un ticket que exige confirmación se rechaza
-    /// con `PolicyDenied` y no se consume.
+    /// `approval` es la aprobación humana (diálogo nativo de la app o pregunta de la CLI). Si la
+    /// decisión del ticket la exige y llega `None`, se rechaza con `PolicyDenied` y el ticket NO
+    /// se consume. El webview no puede construir una aprobación: ver `crate::approval`.
     pub async fn execute(
         &self,
         ticket: &str,
         typed: Option<&str>,
-        confirmed: bool,
+        approval: Option<Approval>,
     ) -> Result<ActionOutcome, ActionError> {
-        let (payload, decision) =
-            self.broker
-                .redeem(ticket, typed, confirmed)
-                .map_err(|e| match e {
-                    RedeemError::Invalid => ActionError::TicketInvalid,
-                    RedeemError::Expired => ActionError::TicketExpired,
-                    RedeemError::TypedMismatch => ActionError::TypedMismatch,
-                    RedeemError::NotConfirmed => ActionError::PolicyDenied(
-                        "la acción requiere confirmación del usuario".into(),
-                    ),
-                })?;
+        let (payload, decision) = self
+            .broker
+            .redeem(ticket, typed, approval)
+            .map_err(redeem_error)?;
 
         let mut outcome = ActionOutcome {
             succeeded: vec![],
@@ -1345,7 +1393,10 @@ mod extra_tests {
         // (a) ya no existe
         let t = plan_y_ticket(&s, req()).await;
         e.state().images.retain(|i| i.reference != "app:1");
-        let out = s.execute(&t, None, true).await.expect("exec");
+        let out = s
+            .execute(&t, None, Some(crate::Approval::for_tests()))
+            .await
+            .expect("exec");
         assert_eq!(out.failed[0].error.code, ApiErrorCode::StateChanged);
         assert!(
             out.failed[0]
@@ -1360,14 +1411,20 @@ mod extra_tests {
             .push(MockEngine::image("sha256:aa", "app:1", 0));
         let t = plan_y_ticket(&s, req()).await;
         e.state().images[1].id = "sha256:otro".into();
-        let out = s.execute(&t, None, true).await.expect("exec");
+        let out = s
+            .execute(&t, None, Some(crate::Approval::for_tests()))
+            .await
+            .expect("exec");
         assert_eq!(out.failed[0].error.code, ApiErrorCode::StateChanged);
         assert!(removes(&e).is_empty());
 
         // (d) éxito: remove_image recibe el nombre de la referencia
         e.state().images[1].id = "sha256:aa".into();
         let t = plan_y_ticket(&s, req()).await;
-        let out = s.execute(&t, None, true).await.expect("exec");
+        let out = s
+            .execute(&t, None, Some(crate::Approval::for_tests()))
+            .await
+            .expect("exec");
         assert_eq!(out.succeeded.len(), 1);
         assert_eq!(removes(&e), vec!["remove_image:app:1"]);
     }
@@ -1378,7 +1435,10 @@ mod extra_tests {
         let s = svc(&e);
         let t = plan_y_ticket(&s, ActionRequest::PruneImages).await;
         e.state().images[0].containers = 1;
-        let out = s.execute(&t, None, true).await.expect("exec");
+        let out = s
+            .execute(&t, None, Some(crate::Approval::for_tests()))
+            .await
+            .expect("exec");
         assert_eq!(out.failed[0].error.code, ApiErrorCode::StateChanged);
         assert!(out.failed[0].error.message.contains("ahora está en uso"));
         assert!(removes(&e).is_empty());
@@ -1397,7 +1457,10 @@ mod extra_tests {
         let req = || ActionRequest::RemoveNetwork { id: "n1".into() };
         let t = plan_y_ticket(&s, req()).await;
         e.state().networks[0].connected = vec!["web".into()];
-        let out = s.execute(&t, None, true).await.expect("exec");
+        let out = s
+            .execute(&t, None, Some(crate::Approval::for_tests()))
+            .await
+            .expect("exec");
         assert!(
             out.failed[0]
                 .error
@@ -1407,7 +1470,10 @@ mod extra_tests {
         e.state().networks[0].connected.clear();
         let t = plan_y_ticket(&s, req()).await;
         e.state().networks.clear();
-        let out = s.execute(&t, None, true).await.expect("exec");
+        let out = s
+            .execute(&t, None, Some(crate::Approval::for_tests()))
+            .await
+            .expect("exec");
         assert!(out.failed[0].error.message.contains("ya no existe"));
         assert!(removes(&e).is_empty());
     }
@@ -1429,7 +1495,10 @@ mod extra_tests {
         e.state()
             .fail
             .insert("inspect_volume".into(), EngineError::NotFound("a".into()));
-        let s2 = s.execute(&t, Some("ELIMINAR"), true).await.expect("exec");
+        let s2 = s
+            .execute(&t, Some("ELIMINAR"), Some(crate::Approval::for_tests()))
+            .await
+            .expect("exec");
         // Ninguno se borra y ambos se reportan.
         assert_eq!(s2.failed.len(), 2);
         assert!(
@@ -1463,7 +1532,10 @@ mod extra_tests {
         };
         // Ticket emitido con solo `Confirm`: PruneSystem (Deny) y RemoveVolume (typed) exceden.
         let t = s.broker.issue(payload, Decision::Confirm).expect("cupo");
-        let out = s.execute(&t, None, true).await.expect("exec");
+        let out = s
+            .execute(&t, None, Some(crate::Approval::for_tests()))
+            .await
+            .expect("exec");
         assert_eq!(out.failed.len(), 2);
         assert!(
             out.failed
@@ -1492,15 +1564,48 @@ mod extra_tests {
         assert_eq!(p.decision, PlanDecision::Confirm);
         let t = p.ticket.expect("ticket");
 
-        let err = s.execute(&t, None, false).await.expect_err("sin confirmar");
+        let err = s.execute(&t, None, None).await.expect_err("sin confirmar");
         assert!(matches!(err, ActionError::PolicyDenied(_)));
         assert_eq!(ApiError::from(err).code, ApiErrorCode::PolicyDenied);
         assert!(removes(&e).is_empty(), "no debe llegar al motor");
         assert_eq!(s.pending_tickets(), 1, "el ticket sigue vivo");
 
-        let out = s.execute(&t, None, true).await.expect("confirmado");
+        let out = s
+            .execute(&t, None, Some(crate::Approval::for_tests()))
+            .await
+            .expect("confirmado");
         assert_eq!(out.succeeded.len(), 1);
         assert_eq!(removes(&e), vec!["remove_image:app:1"]);
+    }
+
+    #[tokio::test]
+    async fn approval_prompt_describe_lo_que_se_aprueba() {
+        let e = engine_imagenes();
+        let s = svc(&e);
+        // Sin confirmación no hay diálogo.
+        let allow = s
+            .plan(ActionRequest::RemoveImage {
+                reference: "app:1".into(),
+            })
+            .await
+            .expect("plan");
+        assert!(allow.ticket.is_some());
+        let prompt = s
+            .approval_prompt(allow.ticket.as_deref().expect("t"))
+            .expect("consulta")
+            .expect("exige aprobación");
+        assert!(
+            prompt.lines.iter().any(|l| l.contains("app:1")),
+            "{prompt:?}"
+        );
+        assert_eq!(prompt.typed_hint, None);
+        // Ticket inexistente: error, nunca un diálogo.
+        assert_eq!(
+            s.approval_prompt("no-existe").expect_err("inexistente"),
+            ActionError::TicketInvalid
+        );
+        // El diálogo no consume el ticket.
+        assert_eq!(s.pending_tickets(), 1);
     }
 
     // ---- cancel e invalidate_all
@@ -1515,7 +1620,8 @@ mod extra_tests {
         assert!(s.cancel(&t));
         assert!(!s.cancel(&t));
         assert_eq!(
-            s.execute(&t, None, true).await,
+            s.execute(&t, None, Some(crate::Approval::for_tests()))
+                .await,
             Err(ActionError::TicketInvalid)
         );
         let t1 = plan_y_ticket(&s, req()).await;
@@ -1524,7 +1630,8 @@ mod extra_tests {
         s.invalidate_all();
         assert_eq!(s.pending_tickets(), 0);
         assert_eq!(
-            s.execute(&t1, None, true).await,
+            s.execute(&t1, None, Some(crate::Approval::for_tests()))
+                .await,
             Err(ActionError::TicketInvalid)
         );
     }
@@ -1578,7 +1685,10 @@ mod extra_tests {
         let t = p.ticket.expect("t");
         // b:1 cambia antes de ejecutar: su tamaño no cuenta como liberado.
         e.state().images[2].id = "sha256:zz".into();
-        let out = s.execute(&t, None, true).await.expect("exec");
+        let out = s
+            .execute(&t, None, Some(crate::Approval::for_tests()))
+            .await
+            .expect("exec");
         assert_eq!(out.succeeded.len(), 2);
         assert_eq!(out.failed.len(), 1);
         assert_eq!(out.freed_bytes, Some(100));
@@ -1594,7 +1704,11 @@ mod extra_tests {
             .expect("plan");
         assert_eq!(p.total_size_bytes, None);
         let out = s2
-            .execute(&p.ticket.expect("t"), None, true)
+            .execute(
+                &p.ticket.expect("t"),
+                None,
+                Some(crate::Approval::for_tests()),
+            )
             .await
             .expect("exec");
         assert_eq!(out.freed_bytes, None);
@@ -1619,7 +1733,10 @@ mod extra_tests {
         )
         .await;
         e.state().containers[0].summary.state = ContainerState::Exited;
-        let out = s.execute(&t, None, true).await.expect("exec");
+        let out = s
+            .execute(&t, None, Some(crate::Approval::for_tests()))
+            .await
+            .expect("exec");
         assert_eq!(out.succeeded.len(), 1);
         assert_eq!(removes(&e), vec!["remove_container:aaa:force=true"]);
     }
@@ -1646,12 +1763,18 @@ mod extra_tests {
             {
                 let s = s.clone();
                 let t = t.clone();
-                async move { s.execute(&t, None, true).await }
+                async move {
+                    s.execute(&t, None, Some(crate::Approval::for_tests()))
+                        .await
+                }
             },
             {
                 let s = s.clone();
                 let t = t.clone();
-                async move { s.execute(&t, None, true).await }
+                async move {
+                    s.execute(&t, None, Some(crate::Approval::for_tests()))
+                        .await
+                }
             }
         );
         let oks = [a.is_ok(), b.is_ok()].iter().filter(|x| **x).count();

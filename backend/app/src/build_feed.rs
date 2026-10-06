@@ -6,6 +6,7 @@ use std::sync::Arc;
 use builder::{BuildService, BuildSink, BuildTarget};
 use engine_core::{ApiError, ApiErrorCode, BuildFeed, BuildOutcome, BuildSpec};
 
+use crate::approvals::obtain_approval;
 use crate::state::AppState;
 use crate::streams::{Sink, StreamKind};
 
@@ -71,6 +72,7 @@ pub fn start_build(
     // Destino REAL del subproceso (socket del túnel / TLS con su directorio de certificados),
     // nunca la etiqueta `ssh://` de la conexión.
     let target = target_of(state);
+    let approvals = state.approvals.clone();
     let task_sink = sink.clone();
     let panic_sink = sink;
     state.streams.spawn(
@@ -78,11 +80,21 @@ pub fn start_build(
         StreamKind::Build,
         async move {
             let adapter = SinkAdapter(task_sink.clone());
+            // Aprobación humana (diálogo nativo) solo si el contexto es sensible.
+            let prompt = builds.service.approval_prompt(ticket.as_deref());
+            let approval = match obtain_approval(approvals, prompt).await {
+                Ok(a) => a,
+                Err(e) => {
+                    task_sink.send(ended_error(e));
+                    return;
+                }
+            };
             let r = builds
                 .service
                 .run(
                     &spec,
                     ticket.as_deref(),
+                    approval,
                     &target,
                     &adapter,
                     std::future::pending(),

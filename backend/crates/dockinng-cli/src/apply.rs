@@ -105,7 +105,11 @@ pub async fn apply_checked(
         .ok_or_else(|| "el plan no emitió un ticket de ejecución".to_string())?;
     // `gate` ya pidió la confirmación (o `--yes` la permite): aquí está confirmado.
     let outcome = actions
-        .execute(&ticket, typed.as_deref(), true)
+        .execute(
+            &ticket,
+            typed.as_deref(),
+            Some(engine_core::Approval::from_cli_prompt()),
+        )
         .await
         .map_err(api_msg)?;
     if ctx.json {
