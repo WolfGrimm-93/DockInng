@@ -25,7 +25,9 @@
 //!   list_images() -> Vec<Image> | list_volumes() -> Vec<Volume> | list_networks() -> Vec<Network>
 //!   start_container(id) | stop_container(id) | restart_container(id) -> ()
 //!   plan_action(request: ActionRequest) -> ActionPlan
-//!   execute_action(ticket, typed: Option<String>) -> ActionOutcome
+//!   execute_action(ticket, typed: Option<String>, confirmed: bool) -> ActionOutcome
+//!       `confirmed` = el usuario confirmó en el diálogo; sin él, un ticket con decisión
+//!       `Confirm`/`ConfirmTyped` se rechaza con PolicyDenied (el ticket no se consume).
 //!   cancel_action(ticket) -> ()
 //!   subscribe_engine_events(on_event: Channel<EngineFeed>) -> SubscriptionId
 //!   subscribe_logs(id, tail: Option<u32>, follow, on_event: Channel<LogFeed>) -> SubscriptionId
@@ -236,11 +238,12 @@ pub async fn execute_action(
     state: State<'_, AppState>,
     ticket: String,
     typed: Option<String>,
+    confirmed: bool,
 ) -> ApiResult<ActionOutcome> {
     let _guard = state.action_guard().await?;
     state
         .actions
-        .execute(&ticket, typed.as_deref())
+        .execute(&ticket, typed.as_deref(), confirmed)
         .await
         .map_err(ApiError::from)
 }

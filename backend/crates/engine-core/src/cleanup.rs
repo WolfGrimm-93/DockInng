@@ -658,7 +658,7 @@ mod tests {
         assert_eq!(plan.decision, PlanDecision::Confirm);
         assert_eq!(plan.affected.len(), 4);
         let out = s
-            .execute(plan.ticket.as_deref().expect("ticket"), None)
+            .execute(plan.ticket.as_deref().expect("ticket"), None, true)
             .await
             .expect("execute");
         assert_eq!(out.succeeded.len(), 4, "{:?}", out.failed);
@@ -693,10 +693,13 @@ mod tests {
         );
         let t = plan.ticket.expect("ticket");
         assert!(matches!(
-            s.execute(&t, Some("libre")).await,
+            s.execute(&t, Some("libre"), true).await,
             Err(ActionError::TypedMismatch)
         ));
-        let out = s.execute(&t, Some("ELIMINAR")).await.expect("execute");
+        let out = s
+            .execute(&t, Some("ELIMINAR"), true)
+            .await
+            .expect("execute");
         assert_eq!(out.succeeded.len(), 1);
         assert_eq!(removes(&e), ["remove_volume:libre"]);
     }
@@ -760,7 +763,11 @@ mod tests {
             st.networks[0].connected = vec!["c2".into()];
         }
         let out = s
-            .execute(plan.ticket.as_deref().expect("ticket"), Some("ELIMINAR"))
+            .execute(
+                plan.ticket.as_deref().expect("ticket"),
+                Some("ELIMINAR"),
+                true,
+            )
             .await
             .expect("execute");
         assert!(out.succeeded.is_empty());

@@ -286,7 +286,9 @@ impl BuildService {
                     "el contexto es sensible: hay que confirmar antes de construir",
                 )
             })?;
-            let (payload, _) = self.broker.redeem(t, None).map_err(|e| match e {
+            // Igual que en la creación: la confirmación la aporta la propia llamada `build`
+            // (sin campo `confirmed` en este comando). Pendiente de decisión (ver informe).
+            let (payload, _) = self.broker.redeem(t, None, true).map_err(|e| match e {
                 RedeemError::Expired => {
                     ApiError::new(ApiErrorCode::TicketExpired, "el ticket expiró")
                 }

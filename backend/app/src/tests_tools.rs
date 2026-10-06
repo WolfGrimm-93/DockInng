@@ -125,7 +125,7 @@ fn ipc_de_herramientas_bajo_la_acl_real() {
     assert_eq!(plan["affected"].as_array().unwrap().len(), 3);
     let out = ok(call(
         "execute_action",
-        serde_json::json!({"ticket": plan["ticket"], "typed": null}),
+        serde_json::json!({"ticket": plan["ticket"], "typed": null, "confirmed": true}),
     ));
     assert_eq!(out["succeeded"].as_array().unwrap().len(), 3);
     assert!(out["failed"].as_array().unwrap().is_empty());

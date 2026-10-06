@@ -134,11 +134,15 @@ async fn informe_solo_lectura_y_limpieza_de_recursos_de_prueba() {
         }
         let ticket = plan.ticket.ok_or("sin ticket")?;
         // Confirmación equivocada: no se borra nada.
-        if actions.execute(&ticket, Some("otra cosa")).await.is_ok() {
+        if actions
+            .execute(&ticket, Some("otra cosa"), true)
+            .await
+            .is_ok()
+        {
             return Err("aceptó una confirmación equivocada".into());
         }
         let out = actions
-            .execute(&ticket, Some("ELIMINAR"))
+            .execute(&ticket, Some("ELIMINAR"), true)
             .await
             .map_err(|e| format!("{e:?}"))?;
         if out.succeeded.len() != 3 || !out.failed.is_empty() {

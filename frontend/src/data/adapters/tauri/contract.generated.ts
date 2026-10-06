@@ -1049,6 +1049,7 @@ export const COMMANDS = {
     "subscriptionId": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3c"
   }, resultType: "void", result: result_exec_write },
   execute_action: { args: {
+    "confirmed": true,
     "ticket": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3d",
     "typed": "ELIMINAR"
   }, resultType: "ActionOutcome", result: result_execute_action },

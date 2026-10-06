@@ -443,7 +443,7 @@ async fn live_ciclo_completo_de_un_stack_propio() {
     );
     assert!(
         actions
-            .execute(plan.ticket.as_deref().unwrap(), Some("otro-nombre"))
+            .execute(plan.ticket.as_deref().unwrap(), Some("otro-nombre"), true)
             .await
             .is_err()
     );
@@ -452,7 +452,7 @@ async fn live_ciclo_completo_de_un_stack_propio() {
         .await
         .unwrap();
     let out = actions
-        .execute(plan.ticket.as_deref().unwrap(), Some(p))
+        .execute(plan.ticket.as_deref().unwrap(), Some(p), true)
         .await
         .unwrap();
     assert!(out.failed.is_empty(), "{out:?}");
@@ -470,7 +470,7 @@ async fn live_ciclo_completo_de_un_stack_propio() {
         .await
         .unwrap();
     let out = actions
-        .execute(plan.ticket.as_deref().unwrap(), Some(p))
+        .execute(plan.ticket.as_deref().unwrap(), Some(p), true)
         .await
         .unwrap();
     assert!(out.failed.is_empty(), "{out:?}");
@@ -620,7 +620,7 @@ async fn live_vincular_desvincular_y_stack_descubierto() {
         .await
         .unwrap();
     let out = actions
-        .execute(plan.ticket.as_deref().unwrap(), Some(p))
+        .execute(plan.ticket.as_deref().unwrap(), Some(p), true)
         .await
         .unwrap();
     assert!(out.failed.is_empty(), "{out:?}");
