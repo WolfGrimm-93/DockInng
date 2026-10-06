@@ -24,9 +24,10 @@ use engine_core::{
     Action, ApiError, ApiErrorCode, Decision, EngineError, GroupOp, GroupsSnapshot, Interactivity,
     LegacyGroups, LegacyImportReport, RegistrySummary, Secret, decide,
 };
-use serde_json::Value;
+use serde_json::{Value, json};
 use store::{SecretStore, Store, StoreError};
 use tauri::{AppHandle, Runtime, State};
+use tauri_plugin_dialog::DialogExt;
 
 use crate::state::AppState;
 
@@ -108,6 +109,84 @@ pub async fn groups_load(state: State<'_, AppState>) -> ApiResult<GroupsSnapshot
 #[tauri::command]
 pub async fn groups_mutate(state: State<'_, AppState>, op: GroupOp) -> ApiResult<GroupsSnapshot> {
     with_store(&state, move |s| s.groups_mutate(op)).await
+}
+
+/// Documento de exportación de grupos. Solo grupos, asignaciones y colores: no hay secretos.
+pub fn groups_export_document(snap: &GroupsSnapshot) -> Value {
+    json!({
+        "format": "dockinng-groups",
+        "version": 1,
+        "groups": snap.groups,
+        "assignments": snap.assignments,
+        "stack_hues": snap.stack_hues,
+    })
+}
+
+/// Escribe el export. Se niega a seguir un enlace simbólico (no escribe fuera de lo elegido) y
+/// crea el archivo con permisos 0600 (contiene nombres de conexiones y contenedores).
+fn write_export(path: &std::path::Path, bytes: &[u8]) -> ApiResult<()> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    if std::fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) {
+        return Err(ApiError::new(
+            ApiErrorCode::InvalidInput,
+            "la ruta elegida es un enlace simbólico: no se escribe",
+        ));
+    }
+    let mut f = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(path)
+        .map_err(|_| {
+            ApiError::new(
+                ApiErrorCode::Internal,
+                "no se pudo crear el archivo de exportación",
+            )
+        })?;
+    f.write_all(bytes).map_err(|_| {
+        ApiError::new(
+            ApiErrorCode::Internal,
+            "no se pudo escribir el archivo de exportación",
+        )
+    })
+}
+
+/// `groups_export`: pide la ruta con el diálogo NATIVO (la elige el usuario, no el webview) y
+/// escribe el JSON. `None` = el usuario canceló.
+#[tauri::command]
+pub async fn groups_export<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+) -> ApiResult<Option<String>> {
+    let snap = with_store(&state, |s| s.groups_load()).await?;
+    let texto = serde_json::to_string_pretty(&groups_export_document(&snap))
+        .map_err(|_| ApiError::new(ApiErrorCode::Internal, "no se pudo serializar los grupos"))?;
+    let elegido = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_title("Exportar grupos")
+            .set_file_name("dockinng-grupos.json")
+            .add_filter("JSON", &["json"])
+            .blocking_save_file()
+    })
+    .await
+    .map_err(|_| ApiError::new(ApiErrorCode::Internal, "el diálogo de guardado falló"))?;
+    let Some(ruta) = elegido else {
+        return Ok(None);
+    };
+    let path = ruta
+        .as_path()
+        .map(std::path::Path::to_path_buf)
+        .ok_or_else(|| {
+            ApiError::new(
+                ApiErrorCode::InvalidInput,
+                "la ubicación elegida no es un archivo local",
+            )
+        })?;
+    write_export(&path, texto.as_bytes())?;
+    Ok(Some(path.display().to_string()))
 }
 
 #[tauri::command]
@@ -199,5 +278,55 @@ mod tests_require_typed {
     #[test]
     fn acciones_sin_confirmacion_escrita_no_se_aceptan_por_esta_via() {
         assert!(require_typed(&Action::RemoveConnection, "x").is_err());
+    }
+}
+
+#[cfg(test)]
+mod tests_export {
+    use super::*;
+
+    #[test]
+    fn el_documento_tiene_formato_y_no_incluye_secretos() {
+        let snap = GroupsSnapshot {
+            groups: vec![],
+            assignments: vec![],
+            stack_hues: Default::default(),
+            legacy_imported: true,
+        };
+        let doc = groups_export_document(&snap);
+        assert_eq!(doc["format"], "dockinng-groups");
+        assert_eq!(doc["version"], 1);
+        for k in ["groups", "assignments", "stack_hues"] {
+            assert!(doc.get(k).is_some(), "falta {k}");
+        }
+        assert!(!doc.to_string().to_lowercase().contains("secret"));
+    }
+
+    #[test]
+    fn no_escribe_a_traves_de_un_enlace_simbolico() {
+        let d = std::env::temp_dir().join(format!("dockinng-test-export-{}", uuid::Uuid::now_v7()));
+        std::fs::create_dir_all(&d).unwrap();
+        let objetivo = d.join("objetivo.txt");
+        std::fs::write(&objetivo, b"intacto").unwrap();
+        let enlace = d.join("grupos.json");
+        std::os::unix::fs::symlink(&objetivo, &enlace).unwrap();
+        assert!(write_export(&enlace, b"nuevo").is_err());
+        assert_eq!(std::fs::read(&objetivo).unwrap(), b"intacto");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn escribe_con_permisos_0600() {
+        use std::os::unix::fs::PermissionsExt;
+        let d =
+            std::env::temp_dir().join(format!("dockinng-test-export-p-{}", uuid::Uuid::now_v7()));
+        std::fs::create_dir_all(&d).unwrap();
+        let f = d.join("grupos.json");
+        write_export(&f, b"{}").unwrap();
+        assert_eq!(
+            std::fs::metadata(&f).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        let _ = std::fs::remove_dir_all(&d);
     }
 }

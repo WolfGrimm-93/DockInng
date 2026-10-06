@@ -256,6 +256,7 @@ export const result_gpu_status: GpuInfo[] = [
     "utilization_percent": 0
   }
 ]
+export const result_groups_export: string | null = "/home/usuario/dockinng-grupos.json"
 export const result_groups_import_legacy: GroupsImportResult = {
   "already_imported": false,
   "dropped_assignments": 0,
@@ -1045,6 +1046,7 @@ export const COMMANDS = {
     "typed": "ELIMINAR"
   }, resultType: "ActionOutcome", result: result_execute_action },
   gpu_status: { args: {}, resultType: "GpuInfo[]", result: result_gpu_status },
+  groups_export: { args: {}, resultType: "string | null", result: result_groups_export },
   groups_import_legacy: { args: {
     "payload": {
       "assign": {

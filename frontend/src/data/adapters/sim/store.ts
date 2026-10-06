@@ -263,6 +263,18 @@ export function createSimStore(ctx: SimCtx, getActive: () => string, opts: SimSt
         save()
         return snap()
       },
+      async exportGroups() {
+        // Navegador: la descarga la hace el propio navegador (no hay diálogo nativo).
+        const s = snap()
+        const doc = { format: 'dockinng-groups', version: 1, groups: s.groups, assignments: s.assignments, stack_hues: s.stack_hues }
+        const url = URL.createObjectURL(new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' }))
+        const a = document.createElement('a')
+        a.href = url
+        a.download = 'dockinng-grupos.json'
+        a.click()
+        setTimeout(() => URL.revokeObjectURL(url), 0)
+        return 'dockinng-grupos.json'
+      },
       async importLegacy(payload) {
         if (groups.legacy_imported) return { already_imported: true, imported_groups: 0, imported_assignments: 0, dropped_assignments: 0, snapshot: snap() }
         const clean = sanitizeGroups(payload)

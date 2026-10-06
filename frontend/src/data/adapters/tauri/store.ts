@@ -94,6 +94,7 @@ export function createTauriStore(): {
       load: async () => safeSnapshot(await call<GroupsSnapshot>('groups_load')),
       mutate: async (op) => safeSnapshot(await call<GroupsSnapshot>('groups_mutate', { op })),
       importLegacy: (payload) => call('groups_import_legacy', { payload }),
+      exportGroups: () => call<string | null>('groups_export'),
     },
     prefs: {
       get: (key) => call<unknown>('prefs_get', { key }),
