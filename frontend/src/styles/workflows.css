@@ -1,4 +1,4 @@
-/* Ola 1: stacks, editor, terminal xterm, pull, crear. Solo tokens del tema (var(--…)); sin colores fijos. */
+/* Flujos: stacks, editor, terminal xterm, descarga de imágenes y creación de contenedores. Solo tokens del tema (var(--…)); sin colores fijos. */
 .progress.is-indeterminate i { width: 40%; animation: indet 1.2s ease-in-out infinite; }
 @keyframes indet { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
 @media (prefers-reduced-motion: reduce) { .progress.is-indeterminate i { animation: none; width: 100%; opacity: 0.5; } }

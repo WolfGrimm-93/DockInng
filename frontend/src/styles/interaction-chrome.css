@@ -1,5 +1,5 @@
-/* Ola 3: arrastrar filas a un grupo, ancho de la columna Nombre, chrome de ventana sin marco y ajustes de notificaciones/ventana.
-   Solo tokens del tema (nada de colores fijos): los pares se miden en styles/ola3.contrast.test.ts. */
+/* Interacción y chrome: arrastrar filas a un grupo, ancho de la columna Nombre, chrome de ventana sin marco y ajustes de notificaciones/ventana.
+   Solo tokens del tema (nada de colores fijos): los pares se miden en styles/interaction-chrome.contrast.test.ts. */
 
 /* ---------- Arrastrar filas a un grupo ---------- */
 .check-cell { display: inline-flex; align-items: center; gap: 2px; }

@@ -1,4 +1,4 @@
-/* Ola 2: conexiones remotas, huella de host, registros, build y limpieza guiada. Solo tokens del tema (var(--…)); sin colores fijos. */
+/* Conexiones remotas, huella de host, registros, build y limpieza guiada. Solo tokens del tema (var(--…)); sin colores fijos. */
 .check-row { display: flex; align-items: center; gap: 8px; }
 .tag.risk-low { color: var(--status-running); }
 .tag.risk-medium { color: var(--status-paused); }
