@@ -46,9 +46,8 @@ Lo ya cerrado se retiró de esta lista (2026-10-06); su historial está en la Bi
 
 ## Puertos (rama `feature/containers-ux`)
 
-- [ ] El modal de puertos muestra rangos colapsados (≥ 3 consecutivos) y une IPv4/IPv6; no expande un rango a puertos sueltos ni permite copiar/abrir un puerto en el navegador.
+- [ ] El modal de puertos colapsa los rangos (≥ 3 consecutivos) y une IPv4/IPv6; no expande un rango a puertos sueltos. (Copiar y abrir ya están implementados en el modal y cubiertos por `ola3.ports.test.tsx`.)
 - [ ] Los alias de DNS solo los da `inspect` (el listado no): la pestaña IPs los pide al abrirse (1 llamada); el modal de redes del grupo no los muestra. No hay IPs por proceso/puerto dentro del contenedor (Docker no lo informa; haría falta `exec`).
-- [ ] La línea de puertos de la vista Stacks (simulada) sigue mostrando el texto completo.
 
 ## Riesgos aceptados y decisiones abiertas
 
