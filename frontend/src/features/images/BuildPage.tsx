@@ -91,7 +91,7 @@ export default function BuildPage() {
     if (tag.trim()) { const bad = validateImageRef(tag.trim()); if (bad) e.tag = bad }
     const named = args.filter((a) => a.key.trim() || a.value)
     if (named.some((a) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(a.key.trim()))) e.args = 'Cada argumento necesita un nombre válido (letras, números y _).'
-    else if (named.some((a) => isReservedArgName(a.key.trim()))) e.args = 'Ese nombre está reservado (PATH, HOME, DOCKER_*, LD_*, XDG_*, SSH_*, LC_*, *_PROXY): usa otro.'
+    else if (named.some((a) => isReservedArgName(a.key.trim()))) e.args = 'Ese nombre está reservado por el motor (p. ej. PATH, HOME, DOCKER_HOST, LD_PRELOAD, HTTP_PROXY): usa otro.'
     else if (named.some((a) => /[\r\n]/.test(a.value))) e.args = 'El valor de un argumento no puede tener saltos de línea.'
     if (Object.keys(e).length) return { spec: null, errors: e }
     return { spec: { context_dir: context.trim(), dockerfile: df || null, tag: tag.trim() || null, build_args: named.map((a): [string, string] => [a.key.trim(), a.value]), target: target.trim() || null, no_cache: noCache, pull }, errors: null }
