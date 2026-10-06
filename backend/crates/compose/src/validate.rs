@@ -206,47 +206,103 @@ pub fn infer_lines(yaml: &str, issues: &mut [ValidationIssue]) {
     }
 }
 
-/// Pre-escaneo (sin ejecutar nada) de `include:` remotos (git, OCI, http/https, ssh) que harían
-/// que `docker compose config` use la red. Mejor esfuerzo por líneas; devuelve la línea (1-based).
-pub fn find_remote_include(yaml: &str) -> Option<u32> {
-    let mut inc_indent: Option<usize> = None;
-    for (idx, raw) in yaml.lines().enumerate() {
-        let trimmed = raw.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') {
-            continue;
+/// Resultado del pre-escaneo de los `include:` de nivel superior de un YAML, leído con un parser
+/// (no por líneas), así que cubre cualquier forma que `docker compose config` acepta.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct IncludeScan {
+    /// Línea aproximada (1-based) de un `include` remoto (git, OCI, http, ssh).
+    pub remote_line: Option<u32>,
+    /// Rutas locales declaradas en `include`, tal como están en el YAML.
+    pub local_paths: Vec<String>,
+    /// Forma no verificable (YAML ilegible o `include` con forma desconocida): falla cerrado.
+    pub unverifiable: bool,
+}
+
+/// Escanea los `include` de un documento. Los locales se devuelven para seguirlos, porque
+/// Compose también resuelve los `include` de los archivos incluidos.
+pub fn scan_includes(yaml: &str) -> IncludeScan {
+    let mut scan = IncludeScan::default();
+    let doc: serde_norway::Value = match serde_norway::from_str(yaml) {
+        Ok(doc) => doc,
+        Err(_) => {
+            // Sin parser no se sabe si hay `include`. Una clave solo se puede escribir con
+            // escapes (`\x69nclude`) o con el texto literal: sin ninguno de los dos no hay riesgo.
+            let lower = yaml.to_lowercase();
+            scan.unverifiable = lower.contains("include") || yaml.contains('\\');
+            return scan;
         }
-        let indent = raw.len() - raw.trim_start().len();
-        let is_key = trimmed
-            .trim_start_matches(['"', '\''])
-            .starts_with("include");
-        let key_line = is_key
-            && trimmed.contains("include\"")
-                | trimmed.contains("include'")
-                | trimmed.contains("include:");
-        if let Some(base) = inc_indent {
-            let same_level_item = indent == base && trimmed.starts_with("- ");
-            if indent <= base && !same_level_item && !key_line {
-                inc_indent = None;
+    };
+    let Some(includes) = doc.as_mapping().and_then(|m| m.get("include")) else {
+        return scan;
+    };
+    if includes.is_null() {
+        return scan;
+    }
+    let Some(items) = includes.as_sequence() else {
+        scan.unverifiable = true;
+        return scan;
+    };
+    for item in items {
+        let values: Vec<&serde_norway::Value> = match item {
+            serde_norway::Value::String(_) => vec![item],
+            serde_norway::Value::Mapping(m) => match m.get("path") {
+                Some(p @ serde_norway::Value::String(_)) => vec![p],
+                Some(serde_norway::Value::Sequence(seq)) => seq.iter().collect(),
+                _ => {
+                    scan.unverifiable = true;
+                    continue;
+                }
+            },
+            _ => {
+                scan.unverifiable = true;
+                continue;
             }
-        }
-        if key_line {
-            inc_indent = Some(indent);
-        }
-        if inc_indent.is_some() {
-            let l = trimmed.to_lowercase();
-            if l.contains("://")
-                || l.contains("git@")
-                || l.contains("git+")
-                || l.contains("oci:")
-                || l.contains("*")
-                || l.starts_with("git:")
-                || l.starts_with("- git:")
-            {
-                return u32::try_from(idx + 1).ok();
+        };
+        for value in values {
+            match value.as_str() {
+                Some(s) if is_remote_source(s) => {
+                    scan.remote_line.get_or_insert_with(|| line_of(yaml, s));
+                }
+                Some(s) => scan.local_paths.push(s.to_string()),
+                None => scan.unverifiable = true,
             }
         }
     }
-    None
+    scan
+}
+
+/// Fuente que Compose no resuelve en el disco local (red o servicio externo).
+fn is_remote_source(s: &str) -> bool {
+    let l = s.to_lowercase();
+    l.contains("://")
+        || l.contains("git@")
+        || l.starts_with("git:")
+        || l.starts_with("git+")
+        || l.starts_with("oci:")
+        || l.starts_with("ssh:")
+}
+
+/// Línea (1-based) que contiene `needle`; si no aparece literal (p. ej. escapado), la del `include`.
+fn line_of(yaml: &str, needle: &str) -> u32 {
+    let idx = yaml
+        .lines()
+        .position(|l| l.contains(needle))
+        .or_else(|| {
+            yaml.lines()
+                .position(|l| l.to_lowercase().contains("include"))
+        })
+        .unwrap_or(0);
+    u32::try_from(idx + 1).unwrap_or(1)
+}
+
+/// Pre-escaneo de `include` remotos (o no verificables) antes de ejecutar `config`. Devuelve la
+/// línea aproximada del problema. Los locales no se siguen aquí: ver `scan_includes`.
+pub fn find_remote_include(yaml: &str) -> Option<u32> {
+    let scan = scan_includes(yaml);
+    if scan.unverifiable {
+        return Some(1);
+    }
+    scan.remote_line
 }
 
 /// Valores del YAML cuyo nombre sugiere un secreto (`PASSWORD: x`, `- API_KEY=x`), para redactar.
@@ -388,6 +444,47 @@ mod tests {
             find_remote_include("a: 1\ninclude:\n  - https://x\n"),
             Some(3)
         );
+    }
+
+    /// Formas válidas de YAML que Compose acepta y que el pre-escaneo por líneas debe cubrir.
+    #[test]
+    fn includes_remotos_en_formas_alternativas_de_yaml() {
+        for bad in [
+            // Documento en flow (una sola línea): la clave empieza por `{`.
+            "{include: [https://x/y.yaml]}\n",
+            // Espacio antes de los dos puntos.
+            "include : [https://x/y.yaml]\n",
+            // Clave con comillas y escape hexadecimal: Compose la decodifica.
+            "\"\\x69nclude\": [https://x/y.yaml]\n",
+            // Valor con escape hexadecimal dentro de comillas: `https\x3a//`.
+            "include:\n  - \"https\\x3a//x/y.yaml\"\n",
+            // Clave compleja `? include`.
+            "? include\n: [https://x/y.yaml]\n",
+        ] {
+            assert!(find_remote_include(bad).is_some(), "no detectado: {bad:?}");
+        }
+    }
+
+    #[test]
+    fn include_no_verificable_falla_cerrado() {
+        // YAML ilegible que puede esconder un `include`: se rechaza.
+        assert!(find_remote_include("include: [\n").is_some());
+        assert!(find_remote_include("\"\\x69nclude\": [\n").is_some());
+        // Forma de `include` que no se entiende (ni lista ni mapa con `path`): se rechaza.
+        assert!(find_remote_include("include: ./a.yaml\n").is_some());
+        assert!(find_remote_include("include:\n  - path: 5\n").is_some());
+        // Sin `include` y sin posibilidad de escribirlo: no se bloquea (lo juzga Compose).
+        assert_eq!(find_remote_include("services: [\n"), None);
+    }
+
+    #[test]
+    fn include_locales_se_devuelven_para_seguirlos() {
+        let scan = scan_includes(
+            "include:\n  - ./a.yaml\n  - path: sub/b.yaml\n  - path:\n      - c.yaml\n",
+        );
+        assert_eq!(scan.remote_line, None);
+        assert!(!scan.unverifiable);
+        assert_eq!(scan.local_paths, vec!["./a.yaml", "sub/b.yaml", "c.yaml"]);
     }
 
     #[test]
