@@ -276,6 +276,23 @@
       "result": null,
       "result_type": "void"
     },
+    "connection_forget_host_key": {
+      "args": {
+        "spec": {
+          "host": "10.0.0.5",
+          "identity": {
+            "type": "agent"
+          },
+          "kind": "ssh",
+          "mode": "explicit",
+          "name": "srv",
+          "port": 22,
+          "user": "deploy"
+        }
+      },
+      "result": null,
+      "result_type": "void"
+    },
     "connection_list": {
       "args": {},
       "result": [

@@ -97,7 +97,7 @@ export function createSimApi(opts: SimOptions = {}): SimEngineApi {
   const lazyNs = <K extends keyof StoreApi, M extends keyof StoreApi[K] & string>(ns: K, methods: readonly M[]): Pick<StoreApi[K], M> =>
     Object.fromEntries(methods.map((m) => [m, (...args: unknown[]) => loadStore().then((st) => (st[ns][m] as unknown as (...a: unknown[]) => unknown)(...args))])) as Pick<StoreApi[K], M>
   const storeMod = {
-    connections: lazyNs('connections', ['list', 'probeHostKey', 'trustHostKey', 'test', 'save', 'remove'] as const),
+    connections: lazyNs('connections', ['list', 'probeHostKey', 'trustHostKey', 'forgetHostKey', 'test', 'save', 'remove'] as const),
     registries: lazyNs('registries', ['list', 'save', 'remove', 'test'] as const),
     groups: lazyNs('groups', ['load', 'mutate', 'importLegacy'] as const),
     prefs: lazyNs('prefs', ['get', 'set'] as const),

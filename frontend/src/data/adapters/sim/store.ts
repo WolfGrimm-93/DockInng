@@ -53,6 +53,8 @@ type Stores = { connections: Omit<EngineApi['connections'], 'select'> } & Pick<E
 /** `getActive`: id de la conexión activa (la mantiene index.ts junto con el estado de fallos simulados). */
 export function createSimStore(ctx: SimCtx, getActive: () => string, opts: SimStoreOptions = {}): { api: Stores; controls: SimStoreControls } {
   const trustedHosts = new Map<string, string>()
+  // Hosts «cambiados» de ejemplo que el usuario ya olvidó: a partir de ahí se ven como desconocidos.
+  const olvidados = new Set<string>()
   const prefs = new Map<string, unknown>()
   const registries: RegistrySummary[] = []
 
@@ -135,7 +137,7 @@ export function createSimStore(ctx: SimCtx, getActive: () => string, opts: SimSt
   function probeOf(spec: ConnSpec): HostKeyProbe {
     const fp = fakeFingerprint(spec.host, 'ed25519')
     const known = trustedHosts.get(hostKey(spec))
-    if (/changed|mitm/i.test(spec.host)) return { key_type: 'ssh-ed25519', fingerprint_sha256: fakeFingerprint(spec.host, 'nueva'), state: 'changed', known_fingerprint_sha256: fp }
+    if (/changed|mitm/i.test(spec.host) && !olvidados.has(hostKey(spec))) return { key_type: 'ssh-ed25519', fingerprint_sha256: fakeFingerprint(spec.host, 'nueva'), state: 'changed', known_fingerprint_sha256: fp }
     return { key_type: 'ssh-ed25519', fingerprint_sha256: fp, state: known === fp ? 'trusted' : 'unknown' }
   }
 
@@ -156,6 +158,13 @@ export function createSimStore(ctx: SimCtx, getActive: () => string, opts: SimSt
         if (p.fingerprint_sha256 !== fingerprint) throw apiError('conflict', 'La huella del servidor cambió desde que la viste: vuelve a sondear.')
         trustedHosts.set(hostKey(spec), fingerprint)
         return { ...p, state: 'trusted' }
+      },
+      async forgetHostKey(spec) {
+        await sleep(Math.min(ctx.latency, 200))
+        validateSpec(spec)
+        if (spec.kind !== 'ssh') throw apiError('invalid_input', 'La huella de host solo aplica a SSH.')
+        trustedHosts.delete(hostKey(spec))
+        olvidados.add(hostKey(spec))
       },
       async test(spec): Promise<ConnTestResult> {
         await sleep(Math.min(ctx.latency + 400, 1200))

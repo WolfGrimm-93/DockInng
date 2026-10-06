@@ -50,6 +50,7 @@ pub const COMMAND_NAMES: &[&str] = &[
     "connection_list",
     "connection_probe_host_key",
     "connection_trust_host_key",
+    "connection_forget_host_key",
     "connection_test",
     "connection_save",
     "connection_delete",

@@ -1170,6 +1170,12 @@ fn commands() -> Value {
         probe,
     );
     c.add(
+        "connection_forget_host_key",
+        json!({"spec": spec_ssh}),
+        "void",
+        Value::Null,
+    );
+    c.add(
         "connection_test",
         json!({"spec": spec_ssh}),
         "ConnTestResult",

@@ -9,6 +9,8 @@
 //!   connection_trust_host_key(spec, fingerprint) -> HostKeyProbe
 //!        (re-sondea y escribe en el known_hosts PROPIO solo si la huella coincide con la vista;
 //!         una clave cambiada da `connection` con causa `host_key_changed` y nunca se acepta)
+//!   connection_forget_host_key(spec) -> void                (quita la clave guardada del known_hosts PROPIO;
+//!        no confía en nada: la siguiente conexión vuelve a exigir confirmar la huella)
 //!   connection_test(spec) -> ConnTestResult                   (no activa; el fallo va dentro)
 //!   connection_save(spec, id?) -> ConnectionProfile           (sin `id` CREA: un nombre ya usado da `conflict`;
 //!        con `id` EDITA esa conexión, que no puede ser la activa; el nombre no puede ser el de otra)
@@ -92,6 +94,20 @@ pub async fn connection_trust_host_key(
     // El directorio de datos existe (lo crea el almacén con 0700) antes de escribir.
     keyscan::trust(&target, &kh, &fingerprint)
         .await
+        .map_err(|e| ApiError::from(&e))
+}
+
+/// Olvida la clave guardada del destino (solo el `known_hosts` propio). No confía en la nueva:
+/// la siguiente conexión vuelve a pedir confirmar la huella que presente el servidor.
+#[tauri::command]
+pub async fn connection_forget_host_key(
+    state: State<'_, AppState>,
+    spec: ConnSpec,
+) -> ApiResult<()> {
+    let target = ssh_target(&spec)?;
+    let kh = known_hosts_path(&state)?;
+    keyscan::forget(&kh, &target)
+        .map(|_| ())
         .map_err(|e| ApiError::from(&e))
 }
 
