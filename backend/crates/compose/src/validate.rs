@@ -514,4 +514,41 @@ mod tests {
         let i = parse_issues("go-yaml load error L99999999999999999999.C1");
         assert_eq!(i[0].line, None);
     }
+
+    /// YAML válido y poco común que Compose acepta: ninguno debe marcarse como remoto ni como no verificable.
+    #[test]
+    fn yaml_valido_poco_comun_no_da_falsos_positivos() {
+        for ok in [
+            // Anclas y merge keys en la raíz (sin include).
+            "x-base: &base\n  image: alpine\nservices:\n  a:\n    <<: *base\n",
+            // Include local con clave extra (project_directory) y lista de env_file.
+            "include:\n  - path: ./a/compose.yaml\n    project_directory: ./a\n    env_file:\n      - ./a.env\n",
+            // Include local en bloque con comentarios entre medias.
+            "include:\n  # el primero\n  - ./a.yaml\n  # el segundo\n  - path:\n      - ./b.yaml\n",
+            // Include vacío (lista vacía o null).
+            "include: []\nservices: {}\n",
+            "include:\nservices: {}\n",
+            // Cadena entre comillas con dos puntos que NO es URL.
+            "include:\n  - \"./dir:con-dos-puntos/x.yaml\"\n",
+            // Documento con marcador de inicio y texto literal "include" en un valor (no clave).
+            "---\nservices:\n  a:\n    labels:\n      nota: include de prueba\n",
+            // Tag explícito en la raíz.
+            "!!map\nservices: {}\n",
+            // Varios documentos, BOM, CRLF, tabulación fuera de la sangría y comentario final.
+            "services: {}\n---\nfoo: 1\n",
+            "\u{feff}services: {}\r\n",
+            "services:\n\ta: 1\n",
+            "services: {}\n# fin\n",
+        ] {
+            assert_eq!(
+                scan_includes(ok).remote_line,
+                None,
+                "remoto falso en {ok:?}"
+            );
+            assert!(
+                !scan_includes(ok).unverifiable,
+                "no verificable falso en {ok:?}"
+            );
+        }
+    }
 }
