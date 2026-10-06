@@ -1094,11 +1094,12 @@ async fn include_en_forma_de_flujo_y_anidado_se_rechazan() {
         "include:\n  - oci://registry.example/x:1\n",
     )
     .unwrap();
-    assert!(
-        r.stack_link(proj.join("compose.yaml").to_str().unwrap(), vec![])
-            .await
-            .is_err()
-    );
+    let err = r
+        .stack_link(proj.join("compose.yaml").to_str().unwrap(), vec![])
+        .await
+        .expect_err("el include anidado debe bloquearse");
+    // El mensaje debe nombrar el archivo donde está el `include`, no solo una línea.
+    assert!(format!("{err:?}").contains("base.yaml"), "{err:?}");
     assert!(fake.displays().iter().all(|d| !d.contains("config")));
 }
 
