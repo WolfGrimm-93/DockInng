@@ -60,7 +60,6 @@ Lo ya cerrado se retiró de esta lista (2026-10-06); su historial está en la Bi
 - [ ] Commitear `quality-gate.yaml` y `scripts/dts-quality-gate.py` (sin `__pycache__`) en una rama propia, no en `main`.
 - [ ] Integrar `feature/fix-layout-audit` en `develop` y luego en `main` (flujo del proyecto). Publicada en GitHub sin PR.
 - [ ] Reconciliar los commits citados en las notas con el historial real (`43968de`, `2ca8b81`, `6f3c3ee`, `372d906`, `7b494a9` no existen en el repo).
-- [ ] Test «acción masiva con 1000 contenedores»: falla en `develop` (4 refrescos, se esperaban ≤3); ya corregido en `feature/fix-layout-audit`, falta integrarlo.
 
 ## Calidad y verificación
 
@@ -68,10 +67,10 @@ Lo ya cerrado se retiró de esta lista (2026-10-06); su historial está en la Bi
 - [ ] Probar en WebKitGTK real: `color-mix`/`oklch`, foco e `inert`, lectores de pantalla.
 - [ ] Heurística TTY de bollard falla si la salida empieza con un byte de control ≤2 (caso raro).
 - [ ] `time_nano` (i64) pierde precisión en JS por encima de 2^53; no se usa aún.
+- [ ] `pnpm test` falló una vez con «Errors 1 error» (vitest, sin fallo de tests: 738/738) y no se reprodujo en 3 corridas seguidas; vigilar si reaparece.
 
 ## Deuda técnica
 
-- [ ] 11 avisos de oxlint `only-export-components` (fast refresh) en archivos de componentes compartidos.
 - [ ] Licencia OFL de Geist junto a las fuentes (falta el texto oficial).
 - [ ] Icono provisional (generado); diseñar el definitivo. `wordmark` convertido a trazos, revisar en producción.
 - [ ] Falta `libayatana-appindicator` (solo necesario para tray).
@@ -85,8 +84,5 @@ Detalle, matriz de hallazgos y evidencia en `docs/ENTREGA-WAVE4.md`.
 - [ ] Smoke test con Docker real sobre recursos `dockinng-dev-*` (puertos 54100-54110) no ejecutado.
 - [ ] Tauri/WebKitGTK/AT-SPI y flujos interactivos o diálogos no ejecutados: tag accesible «No conectado aún», cierre con operación en curso, foco con Tab.
 - [ ] Desborde a 420 px verificado solo en containers y stacks; revisar el resto de páginas nuevas.
-- [ ] `engineStore.ts`: se eliminó `resumePrevious` al fallar la conexión; confirmar que ninguna operación previa debía reanudarse.
-- [ ] `runner.rs`: las líneas con `${` se omiten del chequeo de rutas locales; decidir si se rechazan o se resuelven antes.
-- [ ] Reejecutar `pnpm test`, `lint`, `typecheck` y `build` en `wave4` con EXIT registrado; la evidencia de test actual procede de `wave4-contracts`.
 - [ ] Origen del error del wrapper glob citado en el handoff: no aparece en ningún log disponible.
 - [ ] Contrastar el rango 54100-54110 con la nota de Obsidian de nomenclatura y puertos (no localizada en esta sesión).
