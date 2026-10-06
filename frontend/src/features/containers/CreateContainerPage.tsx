@@ -96,7 +96,11 @@ export default function CreateContainerPage() {
   const show = (k: string): string | undefined => (submitted > 0 || touched[k] || backendErrors[k] ? errors[k] : undefined)
   const touch = (k: string) => setTouched((t) => (t[k] ? t : { ...t, [k]: true }))
   const relRemote = conn.profile.remote ? vols.filter((v) => v.source && !v.source.startsWith('/') && /^[.~]/.test(v.source)) : []
-  const binds = vols.map((v) => ({ v, w: sensitiveBind(v.source, v.readOnly) })).filter((x) => x.w)
+  // Montajes con aviso de sensibilidad (sin aserciones `!`: el tipo se estrecha al construir la lista).
+  const binds = vols.flatMap((v) => {
+    const w = sensitiveBind(v.source, v.readOnly)
+    return w ? [{ v, w }] : []
+  })
 
   // La tarjeta de descarga queda al final del formulario: se lleva a la vista cuando empieza (el anuncio aria-live ya está dentro).
   useEffect(() => { if (phase === 'pulling') pullCard.current?.scrollIntoView?.({ block: 'center' }) }, [phase])
@@ -284,7 +288,7 @@ export default function CreateContainerPage() {
               {remoteBind && !relRemote.length ? <AlertBox kind="warn" icon="server" title="Los montajes se resuelven en el servidor remoto" text={`Con «${safeText(conn.profile.name, { singleLine: true })}» activa, las rutas de origen (bind) apuntan al disco del servidor, no al de tu equipo. Comprueba que existan allí o usa un volumen con nombre.`} /> : null}
               {relRemote.length ? <AlertBox kind="warn" icon="warn" title="Ruta relativa en una conexión remota" text={`Con «${safeText(conn.profile.name, { singleLine: true })}» activa, «${safeText(relRemote[0].source, { singleLine: true })}» se resuelve en el servidor, no en tu equipo. Usa una ruta absoluta del servidor o un volumen con nombre.`} /> : null}
               {binds.length ? (
-                <AlertBox kind="warn" icon="warn" title="Montaje sensible" text={<>{binds.map(({ v, w }) => <span key={v.id} style={{ display: 'block' }}>{safeText(w!.text, { singleLine: true })}</span>)}</>} />
+                <AlertBox kind="warn" icon="warn" title="Montaje sensible" text={<>{binds.map(({ v, w }) => <span key={v.id} style={{ display: 'block' }}>{safeText(w.text, { singleLine: true })}</span>)}</>} />
               ) : null}
               {vols.map((v, i) => (
                 <div className="rep vol-row" key={v.id}>
