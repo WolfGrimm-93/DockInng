@@ -286,13 +286,13 @@ describe('sim: limpieza guiada', () => {
     const vol = r.categories.find((c) => c.id === 'unused_volumes')!.items[0].id
     const before = { c: (await api.containers.list()).length, v: (await api.volumes.list()).length, i: (await api.images.list()).length }
     const plan = await api.actions.plan({ type: 'cleanup', selection: { containers: [], images: [], volumes: [vol], networks: [] } })
-    await expect(api.actions.execute(plan.ticket!, 'no', true)).rejects.toMatchObject({ code: 'typed_mismatch' })
-    const out = await api.actions.execute(plan.ticket!, 'ELIMINAR', true)
+    await expect(api.actions.execute(plan.ticket!, 'no')).rejects.toMatchObject({ code: 'typed_mismatch' })
+    const out = await api.actions.execute(plan.ticket!, 'ELIMINAR')
     expect(out.succeeded).toEqual([{ kind: 'volume', id: vol, name: vol }])
     expect((await api.volumes.list()).length).toBe(before.v - 1)
     expect((await api.containers.list()).length).toBe(before.c)
     expect((await api.images.list()).length).toBe(before.i)
-    await expect(api.actions.execute(plan.ticket!, 'ELIMINAR', true)).rejects.toMatchObject({ code: 'ticket_invalid' }) // un solo uso
+    await expect(api.actions.execute(plan.ticket!, 'ELIMINAR')).rejects.toMatchObject({ code: 'ticket_invalid' }) // un solo uso
   })
   it('un elemento que pasó a estar en uso entre el plan y la ejecución se omite y se informa', async () => {
     const api = mk()
@@ -301,7 +301,7 @@ describe('sim: limpieza guiada', () => {
     const minio = stopped.find((i) => i.name === 'minio-dev')!
     const plan = await api.actions.plan({ type: 'cleanup', selection: { containers: [minio.id], images: [], volumes: [], networks: [] } })
     await api.containers.start(minio.id) // cambia el estado tras el plan
-    const out = await api.actions.execute(plan.ticket!, undefined, true)
+    const out = await api.actions.execute(plan.ticket!, undefined)
     expect(out.succeeded).toEqual([])
     expect(out.failed[0]).toMatchObject({ item: { name: 'minio-dev' }, error: { code: 'state_changed' } })
     expect((await api.containers.list()).some((c) => c.names[0] === 'minio-dev')).toBe(true)

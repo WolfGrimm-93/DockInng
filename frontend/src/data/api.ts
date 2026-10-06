@@ -71,8 +71,8 @@ export interface EngineApi {
   /** Política: el frontend NUNCA calcula la decisión. plan -> (diálogo) -> execute. */
   actions: {
     plan(request: ActionRequest): Promise<ActionPlan>
-    /** `confirmed` es `true` SOLO si el usuario confirmó en el diálogo; el backend rechaza un ticket `confirm` sin él. */
-    execute(ticket: string, typed: string | null | undefined, confirmed: boolean): Promise<ActionOutcome>
+    /** La aprobación ya no pasa por el webview: el backend muestra su diálogo nativo antes de canjear el ticket. */
+    execute(ticket: string, typed: string | null | undefined): Promise<ActionOutcome>
     cancel(ticket: string): Promise<void>
   }
   /** `subscribe_engine_events` (incluye cambios de conexión). */

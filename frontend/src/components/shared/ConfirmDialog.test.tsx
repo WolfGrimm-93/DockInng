@@ -133,7 +133,7 @@ async function mountGuard(request: ActionRequest) {
 }
 
 describe('useGuardedAction (plan → diálogo → execute)', () => {
-  it('F-1: execute_action se llama con confirmed=true solo tras confirmar en el diálogo', async () => {
+  it('F-1: execute_action se llama (sin argumento confirmed) solo tras confirmar en el diálogo', async () => {
     const u = userEvent.setup()
     const api = await mountGuard({ type: 'remove_containers', ids: ['minio-dev'] })
     const spy = vi.spyOn(api.actions, 'execute')
@@ -141,7 +141,7 @@ describe('useGuardedAction (plan → diálogo → execute)', () => {
     await u.click(await screen.findByRole('button', { name: 'Eliminar contenedor' }))
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('done'))
     expect(spy).toHaveBeenCalledTimes(1)
-    expect(spy.mock.calls[0][2]).toBe(true)
+    expect(spy.mock.calls[0]).toHaveLength(2)
   })
   it('F-4: sin conexión se avisa con un toast (no se cancela en silencio)', async () => {
     const u = userEvent.setup()

@@ -20,7 +20,7 @@ export type GuardedDescribe = (plan: ActionPlan) => PlanDescription
 
 /**
  * Flujo destructivo completo (el frontend NUNCA calcula la decisión: la da el backend en el plan).
- * plan_action → allow: 'allowed' | confirm/confirm_typed: diálogo → execute_action(ticket, typed, confirmed) | deny forbidden: BlockedDialog |
+ * plan_action → allow: 'allowed' | confirm/confirm_typed: diálogo → execute_action(ticket, typed) (la confirmación real es el diálogo nativo del backend) | deny forbidden: BlockedDialog |
  * deny needs_confirmation_non_interactive: toast persistente (fallo de la app). Cancelar libera el ticket.
  */
 export function useGuardedAction(): (request: ActionRequest, describe?: GuardedDescribe) => Promise<GuardedResult> {
@@ -69,8 +69,7 @@ export function useGuardedAction(): (request: ActionRequest, describe?: GuardedD
         return { status: 'cancelled' }
       }
       try {
-        // `confirmed: true`: llegamos aquí solo porque el usuario confirmó en el diálogo.
-        const outcome = await api.actions.execute(plan.ticket, decision.type === 'confirm_typed' ? decision.expected : null, true)
+        const outcome = await api.actions.execute(plan.ticket, decision.type === 'confirm_typed' ? decision.expected : null)
         if (outcome.succeeded.length) {
           const s = d.success?.(outcome) ?? { msg: `${outcome.succeeded.length} elemento(s) eliminado(s)` }
           toast.ok(s.msg, { sub: s.sub })

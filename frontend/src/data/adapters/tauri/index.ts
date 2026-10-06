@@ -4,7 +4,7 @@
 //  Conexión/motor:  connection_status, reconnect, system_usage, gpu_status, reset_subscriptions, unsubscribe
 //  Contenedores:    list_containers{all}, inspect_container{id}, start_container/stop_container/restart_container{id}, container_stats_snapshot{ids} (máx. 64)
 //  Recursos:        list_images, list_volumes, list_networks, create_volume{spec}, create_network{spec}
-//  Política:        plan_action{request}, execute_action{ticket,typed,confirmed}, cancel_action{ticket}
+//  Política:        plan_action{request}, execute_action{ticket,typed}, cancel_action{ticket}
 //  Streams:         subscribe_engine_events{onEvent}, subscribe_logs{id,tail,follow,onEvent}, subscribe_stats{id,onEvent}
 //  Crear:           plan_create_container{spec}, create_container{spec,start,ticket}
 //  Pull:            subscribe_pull{reference,onEvent}
@@ -128,7 +128,7 @@ export function createTauriApi(): EngineApi {
     networks: { list: () => call<Network[]>('list_networks'), create: (spec) => call<Network>('create_network', { spec }) },
     actions: {
       plan: (request) => call<ActionPlan>('plan_action', { request }),
-      execute: (ticket, typed, confirmed) => call<ActionOutcome>('execute_action', { ticket, typed: typed ?? null, confirmed }),
+      execute: (ticket, typed) => call<ActionOutcome>('execute_action', { ticket, typed: typed ?? null }),
       cancel: (ticket) => call<void>('cancel_action', { ticket }),
     },
     events: {
