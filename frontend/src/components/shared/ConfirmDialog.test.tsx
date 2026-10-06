@@ -7,6 +7,7 @@ import { EngineProvider } from '@/data/EngineProvider'
 import type { ActionRequest } from '@/data/types'
 import { toast } from '@/lib/toastStore'
 import { ConfirmProvider } from './ConfirmDialog'
+import { blockedRequestFor } from './blockedText'
 import { typedMatches, useBlockedDialog, useConfirm, type ConfirmRequest } from './confirmApi'
 import { useGuardedAction, type GuardedResult } from './useGuardedAction'
 
@@ -94,7 +95,7 @@ describe('ConfirmDialog — nivel Bloqueado', () => {
     const u = userEvent.setup()
     function B() {
       const blocked = useBlockedDialog()
-      return <button onClick={() => void blocked()}>abrir</button>
+      return <button onClick={() => void blocked(blockedRequestFor('prune_system'))}>abrir</button>
     }
     render(<ConfirmProvider><B /></ConfirmProvider>)
     await u.click(screen.getByText('abrir'))
@@ -230,5 +231,34 @@ describe('modalidad real del diálogo', () => {
   it('un expected con bidi se muestra saneado pero se compara exacto', () => {
     expect(typedMatches('a‮b', 'a‮b')).toBe(true)
     expect(typedMatches('ab', 'a‮b')).toBe(false)
+  })
+})
+
+describe('ConfirmDialog — bloqueo por tipo (F-3)', () => {
+  it('una acción distinta de «Limpiar todo» muestra su propio título, sin lista de alternativas vacía', async () => {
+    const u = userEvent.setup()
+    function B() {
+      const blocked = useBlockedDialog()
+      return <button onClick={() => void blocked(blockedRequestFor('remove_volume'))}>abrir</button>
+    }
+    render(<ConfirmProvider><B /></ConfirmProvider>)
+    await u.click(screen.getByText('abrir'))
+    const dlg = await screen.findByRole('alertdialog')
+    expect(within(dlg).getByText('Eliminar volumen está bloqueado')).toBeInTheDocument()
+    expect(within(dlg).queryByText('Limpiar todo el sistema está bloqueado')).not.toBeInTheDocument()
+    expect(within(dlg).queryByRole('list')).not.toBeInTheDocument()
+    expect(within(dlg).getByText(/no ejecuta esta acción en ningún caso/)).toBeInTheDocument()
+  })
+  it('sin argumentos muestra un texto genérico, no el de «Limpiar todo el sistema»', async () => {
+    const u = userEvent.setup()
+    function B() {
+      const blocked = useBlockedDialog()
+      return <button onClick={() => void blocked()}>abrir</button>
+    }
+    render(<ConfirmProvider><B /></ConfirmProvider>)
+    await u.click(screen.getByText('abrir'))
+    const dlg = await screen.findByRole('alertdialog')
+    expect(within(dlg).getByText('Acción bloqueada')).toBeInTheDocument()
+    expect(within(dlg).queryByRole('list')).not.toBeInTheDocument()
   })
 })

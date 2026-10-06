@@ -115,18 +115,13 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
               <div className="dlg-body">
                 <span className="dlg-ico blocked"><Icon name="ban" size="lg" /></span>
                 <div>
-                  <AlertDialogTitle>{pending.req.title ?? 'Limpiar todo el sistema está bloqueado'}</AlertDialogTitle>
+                  <AlertDialogTitle>{pending.req.title ?? 'Acción bloqueada'}</AlertDialogTitle>
                   <AlertDialogDescription render={<div />}>
-                    {pending.req.description ?? (
-                      <p>DockInng no ejecuta esta acción, ni siquiera con confirmación. Borraría contenedores detenidos, redes, imágenes sin usar y caché de compilación de una sola vez.</p>
-                    )}
+                    {pending.req.description ?? <p>DockInng no ejecuta esta acción: el motor de seguridad la rechaza.</p>}
                   </AlertDialogDescription>
-                  <ul>
-                    {(pending.req.bullets ?? [
-                      'Para limpiar por partes: elimina imágenes o volúmenes sin usar desde sus vistas, con confirmación.',
-                      'Si de verdad lo necesitas, ejecútalo tú mismo en una terminal.',
-                    ]).map((b) => <li key={b}>{b}</li>)}
-                  </ul>
+                  {pending.req.bullets?.length ? (
+                    <ul>{pending.req.bullets.map((b) => <li key={b}>{b}</li>)}</ul>
+                  ) : null}
                   <LevelNote icon="lock"><b>Nivel Bloqueado.</b> El motor de seguridad rechaza la acción antes de enviarla a Docker.</LevelNote>
                 </div>
               </div>

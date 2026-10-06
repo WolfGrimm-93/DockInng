@@ -7,6 +7,7 @@ import { Suspense, useEffect, useRef, useState } from 'react'
 import { FloatingSidebar } from '@/components/shell/FloatingSidebar'
 import { WindowChrome } from '@/components/shell/WindowChrome'
 import { useBlockedDialog } from '@/components/shared/confirmApi'
+import { blockedRequestFor } from '@/components/shared/blockedText'
 import { policyDenied, toast } from '@/lib/toastStore'
 import { startNotifications } from '@/data/notifications'
 import { useShellPrefs } from '@/data/shellPrefs'
@@ -64,7 +65,7 @@ export function AppShell() {
     startupApplied = true
     const f = getDevFlags()
     if (f.menu) useUiStore.getState().openCtxMenu(true)
-    if (f.dialog === 'blocked') void blocked()
+    if (f.dialog === 'blocked') void blocked(blockedRequestFor('prune_system'))
     if (f.dialog === 'palette') useUiStore.getState().openPalette(true)
     if (f.toast) {
       toast.ok('tienda-api-1 reiniciado')

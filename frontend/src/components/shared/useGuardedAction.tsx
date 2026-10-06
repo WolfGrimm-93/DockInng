@@ -6,6 +6,7 @@ import type { ActionOutcome, ActionPlan, ActionRequest, ApiError, PlanDecision }
 import { policyDenied, toast } from '@/lib/toastStore'
 import { useCtx } from './confirmApi'
 import { RemoteNote } from './ConfirmDialog'
+import { ACTION_LABEL, blockedRequestFor } from './blockedText'
 import { describePlan, type PlanDescription } from './planDescribe'
 
 export type GuardedResult =
@@ -16,11 +17,6 @@ export type GuardedResult =
   | { status: 'error'; error: ApiError }
 
 export type GuardedDescribe = (plan: ActionPlan) => PlanDescription
-
-const LABEL: Record<ActionRequest['type'], string> = {
-  remove_containers: 'Eliminar contenedores', remove_image: 'Eliminar imagen', prune_images: 'Eliminar imágenes sin usar', remove_volume: 'Eliminar volumen',
-  prune_volumes: 'Eliminar volúmenes sin usar', remove_network: 'Eliminar red', stack_down: 'Bajar stack', stack_delete: 'Eliminar stack', prune_system: 'Limpiar todo el sistema', cleanup: 'Limpiar recursos sin usar',
-}
 
 /**
  * Flujo destructivo completo (el frontend NUNCA calcula la decisión: la da el backend en el plan).
@@ -46,9 +42,9 @@ export function useGuardedAction(): (request: ActionRequest, describe?: GuardedD
       const decision: PlanDecision = plan.decision
       if (decision.type === 'deny') {
         if (decision.reason === 'forbidden') {
-          await blocked(request.type === 'prune_system' ? {} : { title: `${LABEL[request.type]} está bloqueado`, bullets: [] })
+          await blocked(blockedRequestFor(request.type))
         } else {
-          policyDenied(LABEL[request.type], 'La política exigió una confirmación que la aplicación no puede pedir. Es un fallo de la aplicación, no tuyo.')
+          policyDenied(ACTION_LABEL[request.type], 'La política exigió una confirmación que la aplicación no puede pedir. Es un fallo de la aplicación, no tuyo.')
         }
         return { status: 'blocked' }
       }
@@ -81,7 +77,7 @@ export function useGuardedAction(): (request: ActionRequest, describe?: GuardedD
         return { status: 'done', plan, outcome }
       } catch (e) {
         const err = toApiError(e)
-        if (err.code === 'policy_denied') policyDenied(LABEL[request.type], err.message)
+        if (err.code === 'policy_denied') policyDenied(ACTION_LABEL[request.type], err.message)
         else {
           const m = apiErrorMessage(err)
           toast.err(m.title, { sub: m.detail })
