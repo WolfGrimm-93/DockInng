@@ -184,7 +184,14 @@ pub fn reserved_arg_name(name: &str) -> bool {
         "SSH_",
         "LC_",
     ];
-    const EXACT: [&str; 14] = [
+    // Variables que cambian el resultado o la red del build (certificados, temporales, runtime).
+    const EXACT: [&str; 20] = [
+        "SSL_CERT_FILE",
+        "SSL_CERT_DIR",
+        "TMPDIR",
+        "GODEBUG",
+        "GOFLAGS",
+        "NODE_OPTIONS",
         "PATH",
         "HOME",
         "USER",
@@ -464,5 +471,20 @@ mod tests {
         );
         let s = serde_json::to_value(spec()).unwrap();
         assert_eq!(s["build_args"], serde_json::json!([["VERSION", "1.2"]]));
+    }
+
+    #[test]
+    fn variables_de_certificados_temporales_y_runtime_son_reservadas() {
+        for n in [
+            "SSL_CERT_FILE",
+            "ssl_cert_dir",
+            "TMPDIR",
+            "GODEBUG",
+            "GOFLAGS",
+            "NODE_OPTIONS",
+        ] {
+            assert!(reserved_arg_name(n), "{n} debe estar reservada");
+        }
+        assert!(!reserved_arg_name("VERSION"));
     }
 }
