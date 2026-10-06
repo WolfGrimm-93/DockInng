@@ -195,12 +195,7 @@ mod tests {
     fn columnas_alineadas_aunque_la_imagen_sea_larga() {
         let largo = "clamav/clamav:stable@sha256:0e31ce089574268aefa0b543767d66b70240ab51ed49eec53e07f18d5629d817";
         let lines = format_containers(&[
-            c(
-                "8d8ab4a11854aaaa",
-                "proyecto-clamav-1",
-                largo,
-                "Up 5 hours",
-            ),
+            c("8d8ab4a11854aaaa", "proyecto-clamav-1", largo, "Up 5 hours"),
             c("b7e0", "", "nginx", "Exited"),
         ]);
         assert_eq!(lines.len(), 3);
