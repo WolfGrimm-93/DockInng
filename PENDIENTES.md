@@ -8,14 +8,14 @@ Lo ya cerrado se retiró de esta lista (2026-10-06); su historial está en la Bi
 
 Pendientes que quedaron abiertos tras las correcciones de la auditoría completa:
 
-- [ ] Creación de contenedor y construcción canjean su ticket con `confirmed=true` fijo: no pasan por confirmación en el núcleo. Añadir `confirmed` a `create_container` y `build` exige cambio de contrato.
-- [ ] `context rm` de la CLI no pasa por el broker de tickets (usa `decide()` y `gate()` del núcleo). Requiere `ActionRequest::RemoveConnection` y un `ItemKind` nuevo, que viajan al contrato TS.
+- [x] Creación de contenedor y construcción canjean su ticket con `confirmed=true` fijo. Cerrado en la segunda ronda de correcciones (backend): exigen `Approval` del diálogo nativo cuando la decisión lo pide.
+- [x] `context rm` de la CLI pasa por el broker de tickets (`ActionRequest::RemoveConnection`, `ItemKind::Connection`). Cerrado en la segunda ronda de correcciones (backend).
 - [ ] `F-9`: quedan unos 110 `style={{...}}` inline fuera de los cuatro archivos migrados.
 - [ ] `F-12`: `CreateContainerPage.tsx` sigue en ~377 líneas (faltan puertos, entorno, red y grupo).
 - [ ] Revisión visual en la app de los cambios de estilo (`--row-h`/`--head-h` en capa, tokens `--z-*`, renombrado a `workflows.css`, `connections-ops.css`, `interaction-chrome.css`, `ports-actions.css`). Solo se verificó build y tests.
 - [ ] Decidir: `truncate` de `compose` (cuenta bytes) y el de la CLI (caracteres) no se unifican porque cambiaría salidas; `is_remote` son cuatro cosas distintas.
 - [ ] Reglas de argumentos de build y longitud de nombres: la lista de reservados y la validación están igualadas a mano entre frontend y backend (tests de paridad). Falta una fuente única vía contrato.
-- [ ] Riesgo de la línea del webview: el flag `confirmed` lo envía el propio webview, así que un webview comprometido puede confirmarse a sí mismo. Solo se cierra si la confirmación pasa a un canal que el webview no controle.
+- [ ] Riesgo de la línea del webview: `execute_action` ya NO recibe `confirmed`; la aprobación la da un diálogo nativo (Tauri). PENDIENTE: `registry_delete`, `connection_delete` y `quit_app` siguen recibiendo `confirmed: bool` del webview (mismo bypass). Migrarlos al mismo `Approval` nativo. Límite aceptado: quien acepta el diálogo sin leerlo aprueba igualmente.
 
 ## Ola 3: empaquetado
 
