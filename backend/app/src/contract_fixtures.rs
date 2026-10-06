@@ -1172,6 +1172,12 @@ fn commands() -> Value {
         probe,
     );
     c.add(
+        "groups_export",
+        json!({}),
+        "string | null",
+        json!("/home/usuario/dockinng-grupos.json"),
+    );
+    c.add(
         "connection_forget_host_key",
         json!({"spec": spec_ssh, "confirmedHost": "srv.example"}),
         "void",

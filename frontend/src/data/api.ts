@@ -132,6 +132,8 @@ export interface EngineApi {
     load(): Promise<GroupsSnapshot>
     mutate(op: GroupOp): Promise<GroupsSnapshot>
     importLegacy(payload: LegacyGroupsPayload): Promise<GroupsImportResult>
+    /** Exporta grupos, asignaciones y colores (sin secretos). El backend pide la ruta con el diálogo nativo; devuelve la ruta escrita o `null` si se canceló. */
+    exportGroups(): Promise<string | null>
   }
   /** Bandeja, notificaciones nativas, ventana propia (sin marco) y cierre controlado (Ola 3). En el navegador/simulado los comandos de ventana no hacen nada. */
   window: {

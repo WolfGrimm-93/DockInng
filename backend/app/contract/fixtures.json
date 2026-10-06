@@ -668,6 +668,11 @@
       ],
       "result_type": "GpuInfo[]"
     },
+    "groups_export": {
+      "args": {},
+      "result": "/home/usuario/dockinng-grupos.json",
+      "result_type": "string | null"
+    },
     "groups_import_legacy": {
       "args": {
         "payload": {

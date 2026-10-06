@@ -101,6 +101,7 @@ pub fn run() {
             commands_engine::create_network,
             commands_store::groups_load,
             commands_store::groups_mutate,
+            commands_store::groups_export,
             commands_store::groups_import_legacy,
             commands_store::prefs_get,
             commands_store::prefs_set,

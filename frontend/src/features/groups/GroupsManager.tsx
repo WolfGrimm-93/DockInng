@@ -3,7 +3,8 @@
 import { useMemo, useState } from 'react'
 import { Icon } from '@/components/shared/Icon'
 import { Button } from '@/components/ui/button'
-import { useContainers, useConnection } from '@/data/store/hooks'
+import { apiErrorMessage } from '@/data/errors'
+import { useContainers, useConnection, useEngineApi } from '@/data/store/hooks'
 import { containerName } from '@/data/store/engineStore'
 import { safeText } from '@/lib/safeText'
 import { toast } from '@/lib/toastStore'
@@ -67,7 +68,21 @@ export function GroupsManager() {
   const stackHue = useGroupsStore((s) => s.stackHue)
   const setStackHue = useGroupsStore((s) => s.setStackHue)
   const pruneOrphans = useGroupsStore((s) => s.pruneOrphans)
+  const api = useEngineApi()
+  const [exportando, setExportando] = useState(false)
   const [creating, setCreating] = useState(false)
+  const exportar = async () => {
+    setExportando(true)
+    try {
+      const ruta = await api.groups.exportGroups()
+      if (ruta) toast.ok('Grupos exportados', { sub: ruta })
+    } catch (ex) {
+      const m = apiErrorMessage(ex)
+      toast.err('No se pudieron exportar los grupos', { sub: m.detail || m.title })
+    } finally {
+      setExportando(false)
+    }
+  }
   const liveNames = useMemo(() => list.map((c) => containerName(c)), [list])
   // Solo se calcula con el listado completo: con una lista incompleta se quitarían asignaciones válidas.
   const listo = status === 'ready'
@@ -102,6 +117,10 @@ export function GroupsManager() {
           <div className="setting-row">
             <div className="grow"><small>Los grupos se guardan solo en esta app y por conexión; no cambian nada en Docker.</small></div>
             <Button variant="primary" size="sm" onClick={() => setCreating(true)}><Icon name="folder-plus" size="sm" />Nuevo grupo</Button>
+          </div>
+          <div className="setting-row">
+            <div className="grow"><b>Exportar grupos</b><small>Guarda grupos, asignaciones y colores en un archivo JSON. No incluye secretos.</small></div>
+            <Button variant="secondary" size="sm" disabled={exportando} onClick={() => void exportar()}><Icon name="download" size="sm" />Exportar…</Button>
           </div>
           <div className="setting-row">
             <div className="grow">

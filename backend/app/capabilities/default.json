@@ -55,6 +55,7 @@
     "allow-connection-probe-host-key",
     "allow-connection-trust-host-key",
     "allow-connection-forget-host-key",
+    "allow-groups-export",
     "allow-connection-test",
     "allow-connection-save",
     "allow-connection-delete",
