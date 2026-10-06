@@ -21,8 +21,9 @@
 use std::sync::Arc;
 
 use engine_core::{
-    Action, ApiError, ApiErrorCode, Decision, EngineError, GroupOp, GroupsSnapshot, Interactivity,
-    LegacyGroups, LegacyImportReport, RegistrySummary, Secret, decide,
+    Action, ApiError, ApiErrorCode, Decision, EngineError, ExportImportReport, GroupOp,
+    GroupsSnapshot, Interactivity, LegacyGroups, LegacyImportReport, RegistrySummary, Secret,
+    decide,
 };
 use serde_json::{Value, json};
 use store::{SecretStore, Store, StoreError};
@@ -151,6 +152,73 @@ fn write_export(path: &std::path::Path, bytes: &[u8]) -> ApiResult<()> {
             "no se pudo escribir el archivo de exportación",
         )
     })
+}
+
+/// Tope del archivo de importación de grupos (un export real pesa unos KB).
+const MAX_IMPORT_BYTES: u64 = 1024 * 1024;
+
+/// Lee un export de grupos elegido por el usuario: solo archivos regulares (sin enlaces
+/// simbólicos) de hasta `MAX_IMPORT_BYTES`, con JSON válido.
+pub fn read_groups_import(path: &std::path::Path) -> ApiResult<Value> {
+    let meta = std::fs::symlink_metadata(path).map_err(|_| {
+        ApiError::new(
+            ApiErrorCode::InvalidInput,
+            "no se pudo leer el archivo elegido",
+        )
+    })?;
+    if !meta.file_type().is_file() {
+        return Err(ApiError::new(
+            ApiErrorCode::InvalidInput,
+            "el archivo elegido no es un archivo regular",
+        ));
+    }
+    if meta.len() > MAX_IMPORT_BYTES {
+        return Err(ApiError::new(
+            ApiErrorCode::InvalidInput,
+            "el archivo es demasiado grande para ser un export de grupos",
+        ));
+    }
+    let texto = std::fs::read_to_string(path)
+        .map_err(|_| ApiError::new(ApiErrorCode::InvalidInput, "el archivo no es texto UTF-8"))?;
+    serde_json::from_str(&texto).map_err(|_| {
+        ApiError::new(
+            ApiErrorCode::InvalidInput,
+            "el archivo no es un JSON válido",
+        )
+    })
+}
+
+/// `groups_import_file`: pide el archivo con el diálogo NATIVO (lo elige el usuario, no el
+/// webview), lo valida y lo fusiona en el almacén. `None` = el usuario canceló.
+#[tauri::command]
+pub async fn groups_import_file<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+) -> ApiResult<Option<ExportImportReport>> {
+    let elegido = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_title("Importar grupos")
+            .add_filter("JSON", &["json"])
+            .blocking_pick_file()
+    })
+    .await
+    .map_err(|_| ApiError::new(ApiErrorCode::Internal, "el diálogo de apertura falló"))?;
+    let Some(ruta) = elegido else {
+        return Ok(None);
+    };
+    let path = ruta
+        .as_path()
+        .map(std::path::Path::to_path_buf)
+        .ok_or_else(|| {
+            ApiError::new(
+                ApiErrorCode::InvalidInput,
+                "la ubicación elegida no es un archivo local",
+            )
+        })?;
+    let doc = read_groups_import(&path)?;
+    let rep = with_store(&state, move |s| s.groups_import_export(&doc)).await?;
+    Ok(Some(rep))
 }
 
 /// `groups_export`: pide la ruta con el diálogo NATIVO (la elige el usuario, no el webview) y
@@ -327,6 +395,51 @@ mod tests_export {
             std::fs::metadata(&f).unwrap().permissions().mode() & 0o777,
             0o600
         );
+        let _ = std::fs::remove_dir_all(&d);
+    }
+}
+
+#[cfg(test)]
+mod tests_import {
+    use super::*;
+
+    fn tmp(tag: &str) -> std::path::PathBuf {
+        let d =
+            std::env::temp_dir().join(format!("dockinng-test-imp-{tag}-{}", uuid::Uuid::now_v7()));
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn lee_un_export_valido() {
+        let d = tmp("ok");
+        let f = d.join("grupos.json");
+        std::fs::write(
+            &f,
+            r#"{"format":"dockinng-groups","version":1,"groups":[]}"#,
+        )
+        .unwrap();
+        assert_eq!(read_groups_import(&f).unwrap()["format"], "dockinng-groups");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn rechaza_enlaces_simbolicos_archivos_grandes_y_json_roto() {
+        let d = tmp("bad");
+        let real = d.join("real.json");
+        std::fs::write(&real, b"{}").unwrap();
+        let enlace = d.join("enlace.json");
+        std::os::unix::fs::symlink(&real, &enlace).unwrap();
+        assert!(read_groups_import(&enlace).is_err());
+        let grande = d.join("grande.json");
+        std::fs::File::create(&grande)
+            .unwrap()
+            .set_len(MAX_IMPORT_BYTES + 1)
+            .unwrap();
+        assert!(read_groups_import(&grande).is_err());
+        let roto = d.join("roto.json");
+        std::fs::write(&roto, b"{no es json").unwrap();
+        assert!(read_groups_import(&roto).is_err());
         let _ = std::fs::remove_dir_all(&d);
     }
 }

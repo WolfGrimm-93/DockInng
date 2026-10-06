@@ -263,6 +263,10 @@ export function createSimStore(ctx: SimCtx, getActive: () => string, opts: SimSt
         save()
         return snap()
       },
+      async importFile() {
+        // El navegador no puede abrir un archivo elegido con diálogo nativo: la importación es de la app de escritorio.
+        throw apiError('not_implemented', 'Importar grupos requiere la app de escritorio.')
+      },
       async exportGroups() {
         // Navegador: la descarga la hace el propio navegador (no hay diálogo nativo).
         const s = snap()

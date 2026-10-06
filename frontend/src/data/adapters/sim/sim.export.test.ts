@@ -20,4 +20,8 @@ describe('sim: exportar grupos', () => {
     expect(doc.groups.map((g: { name: string }) => g.name)).toEqual(['API'])
     vi.unstubAllGlobals()
   })
+  it('importar en el navegador devuelve not_implemented con un mensaje claro', async () => {
+    const api = createSimApi({ latency: 0, tick: 1 })
+    await expect(api.groups.importFile()).rejects.toMatchObject({ code: 'not_implemented' })
+  })
 })

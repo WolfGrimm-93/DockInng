@@ -1172,6 +1172,13 @@ fn commands() -> Value {
         probe,
     );
     c.add(
+        "groups_import_file",
+        json!({}),
+        "ExportImportReport | null",
+        json!({"groups_created": 1, "groups_reused": 0, "assignments_imported": 1,
+            "assignments_skipped": 0, "stack_hues_imported": 1}),
+    );
+    c.add(
         "groups_export",
         json!({}),
         "string | null",

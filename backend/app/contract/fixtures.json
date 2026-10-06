@@ -673,6 +673,17 @@
       "result": "/home/usuario/dockinng-grupos.json",
       "result_type": "string | null"
     },
+    "groups_import_file": {
+      "args": {},
+      "result": {
+        "assignments_imported": 1,
+        "assignments_skipped": 0,
+        "groups_created": 1,
+        "groups_reused": 0,
+        "stack_hues_imported": 1
+      },
+      "result_type": "ExportImportReport | null"
+    },
     "groups_import_legacy": {
       "args": {
         "payload": {

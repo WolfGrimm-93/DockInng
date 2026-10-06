@@ -45,6 +45,7 @@ pub const COMMAND_NAMES: &[&str] = &[
     "groups_load",
     "groups_mutate",
     "groups_export",
+    "groups_import_file",
     "groups_import_legacy",
     "prefs_get",
     "prefs_set",

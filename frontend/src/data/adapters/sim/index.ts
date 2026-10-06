@@ -99,7 +99,7 @@ export function createSimApi(opts: SimOptions = {}): SimEngineApi {
   const storeMod = {
     connections: lazyNs('connections', ['list', 'probeHostKey', 'trustHostKey', 'forgetHostKey', 'test', 'save', 'remove'] as const),
     registries: lazyNs('registries', ['list', 'save', 'remove', 'test'] as const),
-    groups: lazyNs('groups', ['load', 'mutate', 'importLegacy', 'exportGroups'] as const),
+    groups: lazyNs('groups', ['load', 'mutate', 'importLegacy', 'exportGroups', 'importFile'] as const),
     prefs: lazyNs('prefs', ['get', 'set'] as const),
   }
   // `build` es síncrono (devuelve la baja): se carga el módulo y se arranca; cancelar antes de que cargue lo evita.
