@@ -23,6 +23,7 @@ import { sensitiveBind } from '@/lib/sensitiveBind'
 import { toast } from '@/lib/toastStore'
 import { uuidv7 } from '@/lib/uuid7'
 import { NewGroupDialog } from '../groups/NewGroupDialog'
+import { VolumesSection } from './VolumesSection'
 import { useGroupsStore } from '../groups/groupsStore'
 import { useStartupOnce } from '../common/devOnce'
 import { useViewGate } from '../common/gate'
@@ -282,27 +283,18 @@ export default function CreateContainerPage() {
             </div>
           </section>
 
-          <section className="card form-section">
-            <h2>Volúmenes</h2>
-            <div className="form-body">
-              {remoteBind && !relRemote.length ? <AlertBox kind="warn" icon="server" title="Los montajes se resuelven en el servidor remoto" text={`Con «${safeText(conn.profile.name, { singleLine: true })}» activa, las rutas de origen (bind) apuntan al disco del servidor, no al de tu equipo. Comprueba que existan allí o usa un volumen con nombre.`} /> : null}
-              {relRemote.length ? <AlertBox kind="warn" icon="warn" title="Ruta relativa en una conexión remota" text={`Con «${safeText(conn.profile.name, { singleLine: true })}» activa, «${safeText(relRemote[0].source, { singleLine: true })}» se resuelve en el servidor, no en tu equipo. Usa una ruta absoluta del servidor o un volumen con nombre.`} /> : null}
-              {binds.length ? (
-                <AlertBox kind="warn" icon="warn" title="Montaje sensible" text={<>{binds.map(({ v, w }) => <span key={v.id} style={{ display: 'block' }}>{safeText(w.text, { singleLine: true })}</span>)}</>} />
-              ) : null}
-              {vols.map((v, i) => (
-                <div className="rep vol-row" key={v.id}>
-                  <div><label className="sr-only" htmlFor={`vH${i}`}>Origen (volumen o ruta) {i + 1}</label><Input className="mono" id={`vH${i}`} value={v.source} placeholder="datos-pg o /srv/datos" aria-invalid={!!fe(`vols.${v.id}.source`)} aria-describedby={fe(`vols.${v.id}.source`) ? `eVH${i}` : undefined} onBlur={() => touch(`vols.${v.id}.source`)} onChange={(e) => upd(setVols, v.id, { source: e.target.value })} /></div>
-                  <div><label className="sr-only" htmlFor={`vC${i}`}>Ruta en el contenedor {i + 1}</label><Input className="mono" id={`vC${i}`} value={v.target} placeholder="/var/lib/postgresql/data" aria-invalid={!!fe(`vols.${v.id}.target`)} aria-describedby={fe(`vols.${v.id}.target`) ? `eVC${i}` : undefined} onBlur={() => touch(`vols.${v.id}.target`)} onChange={(e) => upd(setVols, v.id, { target: e.target.value })} /></div>
-                  <label className="ro-check"><input type="checkbox" checked={v.readOnly} onChange={(e) => upd(setVols, v.id, { readOnly: e.target.checked })} /> Solo lectura<span className="sr-only"> (volumen {i + 1})</span></label>
-                  <Button type="button" variant="ghost" size="icon" aria-label={`Quitar volumen ${i + 1}`} onClick={() => rm(setVols, v.id)}><Icon name="x" /></Button>
-                  {fe(`vols.${v.id}.source`) ? <span className="f-error" id={`eVH${i}`} style={{ gridColumn: '1/-1' }}><Icon name="alert" size="sm" />{fe(`vols.${v.id}.source`)}</span> : null}
-                  {fe(`vols.${v.id}.target`) ? <span className="f-error" id={`eVC${i}`} style={{ gridColumn: '1/-1' }}><Icon name="alert" size="sm" />{fe(`vols.${v.id}.target`)}</span> : null}
-                </div>
-              ))}
-              <div><Button type="button" variant="secondary" size="sm" onClick={() => setVols((p) => [...p, { id: uuidv7(), source: '', target: '', readOnly: false }])}><Icon name="plus" size="sm" />Añadir volumen</Button></div>
-            </div>
-          </section>
+          <VolumesSection
+            vols={vols}
+            connName={conn.profile.name}
+            remoteBind={remoteBind}
+            relRemote={relRemote}
+            binds={binds}
+            fieldError={fe}
+            onPatch={(id, patch) => upd(setVols, id, patch)}
+            onRemove={(id) => rm(setVols, id)}
+            onAdd={() => setVols((p) => [...p, { id: uuidv7(), source: '', target: '', readOnly: false }])}
+            onTouch={touch}
+          />
 
           <section className="card form-section">
             <h2>Variables de entorno</h2>
