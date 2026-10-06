@@ -4,7 +4,7 @@
 import type {
   ActionOutcome, ActionPlan, ActionRequest, BuildFeed, BuildPlan, BuildSpec, CleanupReport, ComposeInfo, ConnSpec, ConnTestResult,
   ConnectionProfile, ConnectionStatus, Container, ContainerDetail, ContainerStats, CreateContainerSpec, CreateNetworkSpec, CreatePlan,
-  CreateResult, CreateVolumeSpec, EngineFeed, ExecOptions, ExecSession, GpuInfo, GroupOp, GroupsImportResult, GroupsSnapshot, HostKeyProbe,
+  CreateResult, CreateVolumeSpec, EngineFeed, ExecOptions, ExecSession, GpuInfo, GroupOp, ExportImportReport, GroupsImportResult, GroupsSnapshot, HostKeyProbe,
   Image, LegacyGroupsPayload, LogFeed, Network, PodmanCandidate, PrefKey, PullFeed, RegistrySummary, RegistryTestResult, StackFiles,
   StackOpFeed, StackOpRequest, StackSummary, StackValidation, StatsSnapshotItem, SystemUsage, Unsubscribe, Volume,
   BusySummary, NotifyRequest, OpenPortScheme, TrayStatus, WindowEdge,
@@ -134,6 +134,8 @@ export interface EngineApi {
     importLegacy(payload: LegacyGroupsPayload): Promise<GroupsImportResult>
     /** Exporta grupos, asignaciones y colores (sin secretos). El backend pide la ruta con el diálogo nativo; devuelve la ruta escrita o `null` si se canceló. */
     exportGroups(): Promise<string | null>
+    /** Importa un archivo de «Exportar grupos» (diálogo nativo en el backend). `null` si se canceló. Fusiona: no duplica grupos. */
+    importFile(): Promise<ExportImportReport | null>
   }
   /** Bandeja, notificaciones nativas, ventana propia (sin marco) y cierre controlado (Ola 3). En el navegador/simulado los comandos de ventana no hacen nada. */
   window: {

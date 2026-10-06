@@ -38,6 +38,8 @@ export interface GroupsState extends GroupsData {
   setStackHue(project: string, hue: number | null): void
   /** Quita las asignaciones de la conexión cuyo contenedor ya no está en `liveNames` (lista COMPLETA). Devuelve cuántas quitó. */
   pruneOrphans(profileId: string, liveNames: readonly string[]): number
+  /** Vuelve a leer el estado del backend (tras importar un archivo). No hace nada sin backend. */
+  reloadFromBackend(): Promise<void>
 }
 
 export const assignKey = (profileId: string, containerName: string): string => `${profileId}\u0000${containerName}`
@@ -189,6 +191,11 @@ export const useGroupsStore = create<GroupsState>()((set, get) => {
       if (hue === null) delete next[project]
       else next[project] = clampHue(hue)
       commit({ stackHue: next }, { type: 'set_stack_hue', project, hue: hue === null ? null : clampHue(hue) })
+    },
+    async reloadFromBackend() {
+      const a = backend
+      if (!a) return
+      apply(snapshotToData(await a.groups.load()))
     },
     pruneOrphans(profileId, liveNames) {
       const huerfanos = orphanNames(get().assign, profileId, liveNames)

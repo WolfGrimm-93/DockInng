@@ -421,6 +421,16 @@ export type GroupOp =
   | { type: 'prune_assignments'; connection_id: string; live_names: string[] }
 /** Carga útil de `groups_import_legacy` = lo que produce `loadGroups()` de `dockinng.groups.v1`. */
 export interface LegacyGroupsPayload { v: 1; groups: StoredGroup[]; assign: Record<string, string>; stackHue: Record<string, number> }
+/** `ExportImportReport` de engine-core: resultado de importar un archivo de «Exportar grupos». */
+export interface ExportImportReport {
+  groups_created: number
+  /** Grupos que ya existían con ese nombre (se reutilizan). */
+  groups_reused: number
+  assignments_imported: number
+  /** Asignaciones descartadas: conexión inexistente aquí, grupo sin correspondencia o nombre inválido. */
+  assignments_skipped: number
+  stack_hues_imported: number
+}
 /** `LegacyImportReport` de engine-core: con `already_imported:true` no se escribió nada. */
 export interface GroupsImportResult { already_imported: boolean; imported_groups: number; imported_assignments: number; dropped_assignments: number; snapshot: GroupsSnapshot }
 /** Claves permitidas de `prefs_get/prefs_set` (lista blanca validada también en Rust). */

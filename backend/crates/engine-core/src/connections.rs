@@ -373,6 +373,18 @@ pub struct LegacyGroups {
     pub stack_hue: BTreeMap<String, i64>,
 }
 
+/// Resultado de importar un archivo exportado con «Exportar grupos».
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct ExportImportReport {
+    pub groups_created: u32,
+    /// Grupos del archivo que ya existían con ese nombre (se reutilizan, no se duplican).
+    pub groups_reused: u32,
+    pub assignments_imported: u32,
+    /// Asignaciones descartadas: conexión que no existe aquí, grupo sin correspondencia o nombre inválido.
+    pub assignments_skipped: u32,
+    pub stack_hues_imported: u32,
+}
+
 /// Resultado de la migración de grupos.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct LegacyImportReport {

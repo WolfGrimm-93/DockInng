@@ -102,6 +102,7 @@ pub fn run() {
             commands_store::groups_load,
             commands_store::groups_mutate,
             commands_store::groups_export,
+            commands_store::groups_import_file,
             commands_store::groups_import_legacy,
             commands_store::prefs_get,
             commands_store::prefs_set,

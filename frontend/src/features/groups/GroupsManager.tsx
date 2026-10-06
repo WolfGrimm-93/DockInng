@@ -70,6 +70,22 @@ export function GroupsManager() {
   const pruneOrphans = useGroupsStore((s) => s.pruneOrphans)
   const api = useEngineApi()
   const [exportando, setExportando] = useState(false)
+  const [importando, setImportando] = useState(false)
+  const reloadFromBackend = useGroupsStore((s) => s.reloadFromBackend)
+  const importar = async () => {
+    setImportando(true)
+    try {
+      const r = await api.groups.importFile()
+      if (!r) return
+      await reloadFromBackend()
+      toast.ok('Grupos importados', { sub: `${r.groups_created} nuevos, ${r.groups_reused} ya existían, ${r.assignments_imported} asignaciones (${r.assignments_skipped} descartadas)` })
+    } catch (ex) {
+      const m = apiErrorMessage(ex)
+      toast.err('No se pudieron importar los grupos', { sub: m.detail || m.title })
+    } finally {
+      setImportando(false)
+    }
+  }
   const [creating, setCreating] = useState(false)
   const exportar = async () => {
     setExportando(true)
@@ -119,8 +135,9 @@ export function GroupsManager() {
             <Button variant="primary" size="sm" onClick={() => setCreating(true)}><Icon name="folder-plus" size="sm" />Nuevo grupo</Button>
           </div>
           <div className="setting-row">
-            <div className="grow"><b>Exportar grupos</b><small>Guarda grupos, asignaciones y colores en un archivo JSON. No incluye secretos.</small></div>
-            <Button variant="secondary" size="sm" disabled={exportando} onClick={() => void exportar()}><Icon name="download" size="sm" />Exportar…</Button>
+            <div className="grow"><b>Exportar e importar grupos</b><small>Guarda grupos, asignaciones y colores en un archivo JSON (sin secretos). Al importar se fusiona: los grupos con el mismo nombre se reutilizan.</small></div>
+            <Button variant="secondary" size="sm" disabled={exportando || importando} onClick={() => void exportar()}><Icon name="download" size="sm" />Exportar…</Button>
+            <Button variant="secondary" size="sm" disabled={exportando || importando} onClick={() => void importar()}><Icon name="folder" size="sm" />Importar…</Button>
           </div>
           <div className="setting-row">
             <div className="grow">
