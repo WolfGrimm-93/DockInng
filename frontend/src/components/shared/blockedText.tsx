@@ -5,7 +5,7 @@ import type { BlockedRequest } from './confirmApi'
 /** Nombre visible de cada acción (también en el título del bloqueo). */
 export const ACTION_LABEL: Record<ActionRequest['type'], string> = {
   remove_containers: 'Eliminar contenedores', remove_image: 'Eliminar imagen', prune_images: 'Eliminar imágenes sin usar', remove_volume: 'Eliminar volumen',
-  prune_volumes: 'Eliminar volúmenes sin usar', remove_network: 'Eliminar red', stack_down: 'Bajar stack', stack_delete: 'Eliminar stack', prune_system: 'Limpiar todo el sistema', cleanup: 'Limpiar recursos sin usar',
+  prune_volumes: 'Eliminar volúmenes sin usar', remove_network: 'Eliminar red', stack_down: 'Bajar stack', stack_delete: 'Eliminar stack', prune_system: 'Limpiar todo el sistema', cleanup: 'Limpiar recursos sin usar', remove_connection: 'Eliminar conexión',
 }
 
 /**

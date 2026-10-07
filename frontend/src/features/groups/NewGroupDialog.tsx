@@ -36,7 +36,7 @@ export function NewGroupDialog({ open, onClose, onCreated }: { open: boolean; on
               <AlertDialogDescription render={<div />}>
                 <p>Los grupos son solo de esta app: no cambian nada en Docker ni en tus contenedores.</p>
               </AlertDialogDescription>
-              <div className="typed" style={{ marginTop: 12 }}>
+              <div className="typed mt-3" >
                 <label htmlFor="ngName">Nombre</label>
                 <input
                   ref={nameRef}
@@ -52,8 +52,8 @@ export function NewGroupDialog({ open, onClose, onCreated }: { open: boolean; on
                 />
                 <small id="ngErr" role="status" aria-live="polite" className={shown ? 'field-error' : 'muted'}>{shown ?? `Hasta ${MAX_GROUP_NAME} caracteres.`}</small>
               </div>
-              <div style={{ marginTop: 12 }}>
-                <b style={{ fontSize: 'var(--text-sm)' }}>Color</b>
+              <div className="mt-3">
+                <b className="text-[length:var(--text-sm)]">Color</b>
                 <HuePicker value={effectiveHue} onChange={setHue} label="Color del grupo nuevo" />
               </div>
             </div>

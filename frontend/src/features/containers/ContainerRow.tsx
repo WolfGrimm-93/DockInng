@@ -84,7 +84,7 @@ function ContainerRowImpl({ c, selected, locked, href, index, measure, groupHue,
           {op.error ? (
             <small className="row-error" role="alert">
               <Icon name="alert" size="sm" /> {safeText(op.error)}{' '}
-              <button type="button" className="link" style={{ color: 'var(--foreground)', textDecoration: 'underline' }} onClick={() => onOp(c, op.failedOp ?? 'start')}>Reintentar</button>
+              <button type="button" className="link text-foreground underline"  onClick={() => onOp(c, op.failedOp ?? 'start')}>Reintentar</button>
             </small>
           ) : (
             <small>{statusTextEs(c.status, c.state)}</small>

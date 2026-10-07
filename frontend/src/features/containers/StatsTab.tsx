@@ -46,14 +46,14 @@ export function StatsTab({ c, detail }: { c: Container; detail: ContainerDetail 
         </div>
         <div className="card stat">
           <div className="stat-head"><Icon name="network" /><span>Red (entrada / salida)</span></div>
-          <dl className="kv" style={{ gridTemplateColumns: 'auto 1fr', marginBlock: '1em' }}>
+          <dl className="kv [grid-template-columns:auto_1fr] my-[1em]" >
             <dt>Recibido</dt><dd className="mono">{last ? `${formatBytesSI(last.net_rx_bytes)} · ${formatBytesSI(last.net_rx_bytes_per_sec)}/s` : '—'}</dd>
             <dt>Enviado</dt><dd className="mono">{last ? `${formatBytesSI(last.net_tx_bytes)} · ${formatBytesSI(last.net_tx_bytes_per_sec)}/s` : '—'}</dd>
           </dl>
         </div>
         <div className="card stat">
           <div className="stat-head"><Icon name="disk" /><span>Disco (lectura / escritura)</span></div>
-          <dl className="kv" style={{ gridTemplateColumns: 'auto 1fr', marginBlock: '1em' }}>
+          <dl className="kv [grid-template-columns:auto_1fr] my-[1em]" >
             <dt>Leído</dt><dd className="mono">{last ? formatBytesSI(last.block_read_bytes) : '—'}</dd>
             <dt>Escrito</dt><dd className="mono">{last ? formatBytesSI(last.block_write_bytes) : '—'}</dd>
             <dt>Procesos</dt><dd className="mono">{last ? last.pids : '—'}</dd>

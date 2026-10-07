@@ -174,7 +174,7 @@ export default function BuildPage() {
                 <Input ref={firstField} className="mono" id="bCtx" value={context} placeholder="/home/tu-usuario/proyectos/mi-app" disabled={running} {...inv('context', 'eCtx')} onChange={(e) => setContext(e.target.value)} />
                 {err('context', 'eCtx')}
                 <span className="f-hint">Ruta absoluta en ESTE equipo: <code>docker build</code> corre aquí y sube el contenido de la carpeta al motor{remoteName ? <> de <b>{remoteName}</b></> : ''}.</span>
-                {remoteName ? <span className="f-hint" role="note" style={{ color: 'var(--status-paused)' }}><Icon name="server" size="sm" /> El contenido de esta carpeta se enviará al servidor <b>{remoteName}</b>.</span> : null}
+                {remoteName ? <span className="f-hint text-status-paused" role="note" ><Icon name="server" size="sm" /> El contenido de esta carpeta se enviará al servidor <b>{remoteName}</b>.</span> : null}
               </div>
               <div className="f-cols">
                 <div className="f-row"><label htmlFor="bDf">Dockerfile <span className="muted">(opcional)</span></label><Input className="mono" id="bDf" value={dockerfile} placeholder="Dockerfile" disabled={running} {...inv('dockerfile', 'eDf')} onChange={(e) => setDockerfile(e.target.value)} />{err('dockerfile', 'eDf')}</div>
@@ -206,7 +206,7 @@ export default function BuildPage() {
             </div>
           </section>
 
-          {warnings.length && !running ? <AlertBox kind="warn" icon="warn" title="Avisos de la construcción" text={<>{warnings.map((w, i) => <span key={i} style={{ display: 'block' }}>{warningText(w)}</span>)}</>} /> : null}
+          {warnings.length && !running ? <AlertBox kind="warn" icon="warn" title="Avisos de la construcción" text={<>{warnings.map((w, i) => <span key={i} className="block">{warningText(w)}</span>)}</>} /> : null}
 
           <div className="form-actions">
             {running ? (
@@ -221,16 +221,16 @@ export default function BuildPage() {
         <div className="sr-only" role="status" aria-live="polite">{announce}</div>
         {run ? (
           <section className="card" aria-label="Progreso de la construcción">
-            <header style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+            <header className="flex items-center gap-3 px-4 py-3 border-b border-border">
               <b>{running ? 'Construyendo…' : run.state === 'done' ? 'Construcción terminada' : run.state === 'canceled' ? 'Construcción cancelada' : 'La construcción falló'}</b>
-              <span className="muted" style={{ marginLeft: 'auto' }}>{run.step ? `Paso ${run.step.n} de ${run.step.total}` : running ? 'Enviando el contexto…' : ''}</span>
+              <span className="muted ml-auto" >{run.step ? `Paso ${run.step.n} de ${run.step.total}` : running ? 'Enviando el contexto…' : ''}</span>
             </header>
-            <div style={{ padding: '8px 16px' }}>
+            <div className="py-2 px-4">
               <Progress value={run.state === 'done' ? 100 : pct} label="Progreso de pasos" indeterminate={running && !run.step} />
             </div>
-            {run.state === 'error' ? <div style={{ padding: '0 16px 8px' }}><AlertBox kind="error" icon="alert" title="No se pudo construir la imagen" text={safeText(run.error?.message ?? 'Error desconocido')} /></div> : null}
-            {run.state === 'done' ? <div style={{ padding: '0 16px 8px' }}><AlertBox kind="info" icon="check" title="Imagen construida" text={`${run.imageId ? `ID ${safeText(run.imageId.replace('sha256:', '').slice(0, 12))}. ` : ''}${tag.trim() ? `Etiqueta ${safeText(tag.trim(), { singleLine: true })}.` : 'Sin etiqueta (aparecerá como imagen colgada).'}`} actions={<LinkButton variant="primary" size="sm" href={route.href('images')}><Icon name="layers" size="sm" />Ver imágenes</LinkButton>} /></div> : null}
-            <div style={{ padding: '0 16px 16px' }}><LogViewer lines={logLines} follow={running} label="Salida de la construcción" /></div>
+            {run.state === 'error' ? <div className="px-4 pb-2"><AlertBox kind="error" icon="alert" title="No se pudo construir la imagen" text={safeText(run.error?.message ?? 'Error desconocido')} /></div> : null}
+            {run.state === 'done' ? <div className="px-4 pb-2"><AlertBox kind="info" icon="check" title="Imagen construida" text={`${run.imageId ? `ID ${safeText(run.imageId.replace('sha256:', '').slice(0, 12))}. ` : ''}${tag.trim() ? `Etiqueta ${safeText(tag.trim(), { singleLine: true })}.` : 'Sin etiqueta (aparecerá como imagen colgada).'}`} actions={<LinkButton variant="primary" size="sm" href={route.href('images')}><Icon name="layers" size="sm" />Ver imágenes</LinkButton>} /></div> : null}
+            <div className="px-4 pb-4"><LogViewer lines={logLines} follow={running} label="Salida de la construcción" /></div>
           </section>
         ) : null}
       </div>

@@ -32,7 +32,7 @@ export function VolumesSection({ vols, connName, remoteBind, relRemote, binds, f
         {remoteBind && !relRemote.length ? <AlertBox kind="warn" icon="server" title="Los montajes se resuelven en el servidor remoto" text={`Con «${safeText(connName, { singleLine: true })}» activa, las rutas de origen (bind) apuntan al disco del servidor, no al de tu equipo. Comprueba que existan allí o usa un volumen con nombre.`} /> : null}
         {relRemote.length ? <AlertBox kind="warn" icon="warn" title="Ruta relativa en una conexión remota" text={`Con «${safeText(connName, { singleLine: true })}» activa, «${safeText(relRemote[0].source, { singleLine: true })}» se resuelve en el servidor, no en tu equipo. Usa una ruta absoluta del servidor o un volumen con nombre.`} /> : null}
         {binds.length ? (
-          <AlertBox kind="warn" icon="warn" title="Montaje sensible" text={<>{binds.map(({ v, w }) => <span key={v.id} style={{ display: 'block' }}>{safeText(w.text, { singleLine: true })}</span>)}</>} />
+          <AlertBox kind="warn" icon="warn" title="Montaje sensible" text={<>{binds.map(({ v, w }) => <span key={v.id} className="block">{safeText(w.text, { singleLine: true })}</span>)}</>} />
         ) : null}
         {vols.map((v, i) => (
           <div className="rep vol-row" key={v.id}>
@@ -40,8 +40,8 @@ export function VolumesSection({ vols, connName, remoteBind, relRemote, binds, f
             <div><label className="sr-only" htmlFor={`vC${i}`}>Ruta en el contenedor {i + 1}</label><Input className="mono" id={`vC${i}`} value={v.target} placeholder="/var/lib/postgresql/data" aria-invalid={!!fieldError(`vols.${v.id}.target`)} aria-describedby={fieldError(`vols.${v.id}.target`) ? `eVC${i}` : undefined} onBlur={() => onTouch(`vols.${v.id}.target`)} onChange={(e) => onPatch(v.id, { target: e.target.value })} /></div>
             <label className="ro-check"><input type="checkbox" checked={v.readOnly} onChange={(e) => onPatch(v.id, { readOnly: e.target.checked })} /> Solo lectura<span className="sr-only"> (volumen {i + 1})</span></label>
             <Button type="button" variant="ghost" size="icon" aria-label={`Quitar volumen ${i + 1}`} onClick={() => onRemove(v.id)}><Icon name="x" /></Button>
-            {fieldError(`vols.${v.id}.source`) ? <span className="f-error" id={`eVH${i}`} style={{ gridColumn: '1/-1' }}><Icon name="alert" size="sm" />{fieldError(`vols.${v.id}.source`)}</span> : null}
-            {fieldError(`vols.${v.id}.target`) ? <span className="f-error" id={`eVC${i}`} style={{ gridColumn: '1/-1' }}><Icon name="alert" size="sm" />{fieldError(`vols.${v.id}.target`)}</span> : null}
+            {fieldError(`vols.${v.id}.source`) ? <span className="f-error col-[1/-1]" id={`eVH${i}`} ><Icon name="alert" size="sm" />{fieldError(`vols.${v.id}.source`)}</span> : null}
+            {fieldError(`vols.${v.id}.target`) ? <span className="f-error col-[1/-1]" id={`eVC${i}`} ><Icon name="alert" size="sm" />{fieldError(`vols.${v.id}.target`)}</span> : null}
           </div>
         ))}
         <div><Button type="button" variant="secondary" size="sm" onClick={onAdd}><Icon name="plus" size="sm" />Añadir volumen</Button></div>

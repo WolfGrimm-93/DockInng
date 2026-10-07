@@ -43,8 +43,8 @@ describe('adaptador Tauri (contrato IPC del backend)', () => {
     await api.volumes.list()
     await api.networks.list()
     await api.actions.plan({ type: 'remove_volume', name: 'v' })
-    await api.actions.execute('tk', 'v', true)
-    await api.actions.execute('tk2', undefined, false)
+    await api.actions.execute('tk', 'v')
+    await api.actions.execute('tk2', undefined)
     await api.actions.cancel('tk')
     expect(calls).toEqual([
       { cmd: 'list_containers', args: { all: true } },
@@ -56,15 +56,16 @@ describe('adaptador Tauri (contrato IPC del backend)', () => {
       { cmd: 'list_volumes', args: undefined },
       { cmd: 'list_networks', args: undefined },
       { cmd: 'plan_action', args: { request: { type: 'remove_volume', name: 'v' } } },
-      { cmd: 'execute_action', args: { ticket: 'tk', typed: 'v', confirmed: true } },
-      { cmd: 'execute_action', args: { ticket: 'tk2', typed: null, confirmed: false } },
+      { cmd: 'execute_action', args: { ticket: 'tk', typed: 'v' } },
+      { cmd: 'execute_action', args: { ticket: 'tk2', typed: null } },
       { cmd: 'cancel_action', args: { ticket: 'tk' } },
     ])
   })
-  it('el destructivo NO envía objetivos: solo ticket, typed y confirmed', async () => {
+  it('el destructivo NO envía objetivos ni confirmed: solo ticket y typed', async () => {
     const api = createTauriApi()
-    await api.actions.execute('tk', 'ELIMINAR', true)
-    expect(Object.keys(calls[0].args!).sort()).toEqual(['confirmed', 'ticket', 'typed'])
+    await api.actions.execute('tk', 'ELIMINAR')
+    expect(Object.keys(calls[0].args!).sort()).toEqual(['ticket', 'typed'])
+    expect(calls[0].args).not.toHaveProperty('confirmed')
   })
   it('normaliza errores: ApiError tal cual, String antiguo -> internal', async () => {
     const api = createTauriApi()

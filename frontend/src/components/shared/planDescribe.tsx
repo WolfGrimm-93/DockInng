@@ -63,11 +63,11 @@ export function describePlan(plan: ActionPlan, request: ActionRequest, ctx: { vo
             ) : null}
             {vols.length ? (
               <>
-                <p style={{ marginTop: 10 }}>Volúmenes montados (<b>no se eliminan</b>, quedarán sin usar):</p>
+                <p className="mt-2.5">Volúmenes montados (<b>no se eliminan</b>, quedarán sin usar):</p>
                 <DialogList label="Volúmenes montados" items={vols.map((v) => ({ key: v, icon: 'database', text: v, end: ctx.volumeSize?.(v) }))} />
               </>
             ) : (
-              <p style={{ marginTop: 10 }}>No tiene volúmenes con nombre.{single && binds.length ? ` Los bind mounts (${binds.join(', ')}) tampoco se tocan.` : ''}</p>
+              <p className="mt-2.5">No tiene volúmenes con nombre.{single && binds.length ? ` Los bind mounts (${binds.join(', ')}) tampoco se tocan.` : ''}</p>
             )}
           </>
         ),
@@ -145,13 +145,23 @@ export function describePlan(plan: ActionPlan, request: ActionRequest, ctx: { vo
         success: (o) => ({ msg: `Stack ${safeText(request.project, { singleLine: true })} bajado`, sub: `${o.succeeded.filter((x) => x.kind === 'container').length} contenedores eliminados` }),
       }
     }
+    case 'remove_connection':
+      return {
+        title: 'Eliminar conexión guardada',
+        description: (
+          <p>Se borra el perfil de conexión guardado en DockInng. <b>No se toca el servidor remoto</b> ni sus contenedores.</p>
+        ),
+        levelNote: <><b>Nivel Confirmar.</b> Solo afecta al perfil guardado.</>,
+        okLabel: 'Eliminar conexión',
+        success: () => ({ msg: 'Conexión eliminada' }),
+      }
     case 'stack_delete':
       return {
         title: `Eliminar stack ${safeText(request.name, { singleLine: true })}`,
         description: (
           <>
             <p>Se borrarán los archivos <code>compose.yaml</code> y <code>.env</code> del stack propio <b><SafeName mono>{request.name}</SafeName></b>.</p>
-            <p style={{ marginTop: 8 }}>El <code>.env</code> puede contener secretos: <b>no se puede recuperar</b>.</p>
+            <p className="mt-2">El <code>.env</code> puede contener secretos: <b>no se puede recuperar</b>.</p>
           </>
         ),
         levelNote: <><b>Nivel Confirmar con nombre.</b> No toca contenedores, imágenes ni volúmenes.</>,

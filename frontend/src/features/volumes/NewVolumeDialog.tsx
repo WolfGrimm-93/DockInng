@@ -72,7 +72,7 @@ export function NewVolumeDialog({ open, existing, onClose, onCreated }: { open: 
             <div><label className="sr-only" htmlFor={`nvK${i}`}>Clave de la etiqueta {i + 1}</label><Input id={`nvK${i}`} className="mono" value={l.key} placeholder="proyecto" aria-invalid={touched && labelErrs[i] ? true : undefined} aria-describedby={touched && labelErrs[i] ? `nvKE${i}` : undefined} onChange={(e) => setLabels((p) => p.map((x) => (x.id === l.id ? { ...x, key: e.target.value } : x)))} /></div>
             <div><label className="sr-only" htmlFor={`nvV${i}`}>Valor de la etiqueta {i + 1}</label><Input id={`nvV${i}`} className="mono" value={l.value} placeholder="valor" onChange={(e) => setLabels((p) => p.map((x) => (x.id === l.id ? { ...x, value: e.target.value } : x)))} /></div>
             <Button type="button" variant="ghost" size="icon" aria-label={`Quitar etiqueta ${i + 1}`} onClick={() => setLabels((p) => p.filter((x) => x.id !== l.id))}><Icon name="x" /></Button>
-            {touched && labelErrs[i] ? <span className="f-error" id={`nvKE${i}`} style={{ gridColumn: '1/-1' }}><Icon name="alert" size="sm" />{labelErrs[i]}</span> : null}
+            {touched && labelErrs[i] ? <span className="f-error col-[1/-1]" id={`nvKE${i}`} ><Icon name="alert" size="sm" />{labelErrs[i]}</span> : null}
           </div>
         ))}
         {labels.length < MAX_LABELS ? <div><Button type="button" variant="secondary" size="sm" onClick={() => setLabels((p) => [...p, { id: uuidv7(), key: '', value: '' }])}><Icon name="plus" size="sm" />Añadir etiqueta</Button></div> : <span className="f-hint">Máximo {MAX_LABELS} etiquetas.</span>}

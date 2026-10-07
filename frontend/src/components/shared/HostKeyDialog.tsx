@@ -47,7 +47,7 @@ export function HostKeyDialog({ probe, host, port, busy, simulated, onTrust, onF
           <>
             <div className="dlg-body">
               <span className={`dlg-ico${changed ? ' blocked' : ''}`}><Icon name={changed ? 'ban' : 'lock'} size="lg" /></span>
-              <div style={{ minWidth: 0, flex: 1 }}>
+              <div className="min-w-0 flex-1">
                 <AlertDialogTitle>{changed ? 'La clave del host cambió' : probe.state === 'trusted' ? 'Huella ya confiable' : 'Confirmar la huella del host'}</AlertDialogTitle>
                 <AlertDialogDescription render={<div />}>
                   {changed ? (
@@ -68,9 +68,9 @@ export function HostKeyDialog({ probe, host, port, busy, simulated, onTrust, onF
                     </>
                   ) : null}
                 </dl>
-                {simulated ? <p className="f-hint" style={{ marginTop: 8 }}><Icon name="flask" size="sm" /> Huella de ejemplo (modo simulado).</p> : null}
+                {simulated ? <p className="f-hint mt-2" ><Icon name="flask" size="sm" /> Huella de ejemplo (modo simulado).</p> : null}
                 {changed ? (
-                  <div className="alert alert-error" role="alert" style={{ marginTop: 12 }}>
+                  <div className="alert alert-error mt-3" role="alert" >
                     <Icon name="alert" />
                     <div>
                       <b>Conexión bloqueada.</b>
@@ -79,7 +79,7 @@ export function HostKeyDialog({ probe, host, port, busy, simulated, onTrust, onF
                   </div>
                 ) : null}
                 {changed && onForget ? (
-                  <div style={{ marginTop: 12 }}>
+                  <div className="mt-3">
                     <label className="f-label" htmlFor="forget-host-confirm">Para olvidar la clave guardada, escribe el nombre del host: <b className="mono">{safeText(host, { singleLine: true })}</b></label>
                     <Input id="forget-host-confirm" value={typed} onChange={(e) => setTyped(e.target.value)} disabled={busy} autoComplete="off" spellCheck={false} />
                   </div>
