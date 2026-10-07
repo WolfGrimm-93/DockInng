@@ -10,12 +10,12 @@ Pendientes que quedaron abiertos tras las correcciones de la auditoría completa
 
 - [x] Creación de contenedor y construcción canjean su ticket con `confirmed=true` fijo. Cerrado en la segunda ronda de correcciones (backend): exigen `Approval` del diálogo nativo cuando la decisión lo pide.
 - [x] `context rm` de la CLI pasa por el broker de tickets (`ActionRequest::RemoveConnection`, `ItemKind::Connection`). Cerrado en la segunda ronda de correcciones (backend).
-- [ ] `F-9`: quedan unos 110 `style={{...}}` inline fuera de los cuatro archivos migrados.
-- [ ] `F-12`: `CreateContainerPage.tsx` sigue en ~377 líneas (faltan puertos, entorno, red y grupo).
-- [ ] Revisión visual en la app de los cambios de estilo (`--row-h`/`--head-h` en capa, tokens `--z-*`, renombrado a `workflows.css`, `connections-ops.css`, `interaction-chrome.css`, `ports-actions.css`). Solo se verificó build y tests.
+- [x] `F-9`: inline styles, de 114 a 16. Los 16 que quedan son valores calculados en runtime (alturas de virtualización, porcentajes, colores de grupo/servicio, anchos de skeleton); no son candidatos a clase fija. Cerrado en la segunda ronda (frontend).
+- [x] `F-12`: `CreateContainerPage.tsx` de 377 a 86 líneas; puertos, entorno, red y grupo pasaron a componentes propios y a `useCreateContainerForm.tsx`. Cerrado en la segunda ronda (frontend).
+- [ ] Revisión visual en la app de los cambios de estilo (`--row-h`/`--head-h` en capa, tokens `--z-*`, renombrado a `workflows.css`, `connections-ops.css`, `interaction-chrome.css`, `ports-actions.css`) y de la nueva `CreateContainerPage` dividida. Solo se verificó build y tests, nunca en pantalla.
 - [ ] Decidir: `truncate` de `compose` (cuenta bytes) y el de la CLI (caracteres) no se unifican porque cambiaría salidas; `is_remote` son cuatro cosas distintas.
 - [ ] Reglas de argumentos de build y longitud de nombres: la lista de reservados y la validación están igualadas a mano entre frontend y backend (tests de paridad). Falta una fuente única vía contrato.
-- [ ] Riesgo de la línea del webview: `execute_action` ya NO recibe `confirmed`; la aprobación la da un diálogo nativo (Tauri). PENDIENTE: `registry_delete`, `connection_delete` y `quit_app` siguen recibiendo `confirmed: bool` del webview (mismo bypass). Migrarlos al mismo `Approval` nativo. Límite aceptado: quien acepta el diálogo sin leerlo aprueba igualmente.
+- [ ] Riesgo de la línea del webview: `execute_action` ya NO recibe `confirmed`; la aprobación la da un diálogo nativo (Tauri), construido solo por el adaptador de la app (`Approval::from_native_dialog()`) o el prompt de la CLI (`from_cli_prompt()`). PENDIENTE: `registry_delete`, `connection_delete` y `quit_app` siguen recibiendo `confirmed: bool` del webview (mismo bypass). Migrarlos al mismo `Approval` nativo. El diálogo nativo en sí no se probó en una ventana Tauri real (solo con un `ApprovalSource` falso en tests); falta esa prueba manual. Límite aceptado: quien acepta el diálogo sin leerlo aprueba igualmente.
 
 ## Ola 3: empaquetado
 
