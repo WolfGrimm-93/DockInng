@@ -35,6 +35,9 @@ Rust reales. No se edita a mano.
 
 - El backend NO emite eventos de Tauri (`listen` exigiría permisos `core:event:*`): los avisos
   de la app llegan por el canal de `subscribe_app_events` (`AppFeed`).
+- `execute_action(ticket, typed)`: NO recibe confirmación del webview. Si el ticket la exige, la
+  app muestra un diálogo NATIVO (`approvals.rs`); sin aceptación responde `policy_denied` y el
+  ticket sigue vivo. Con `ConfirmTyped` el texto va en `typed` y se valida después del diálogo.
 - `AppFeed = {type:"quit_requested", summary:{stacks,pulls,builds,terminals}} |
   {type:"window_visibility", visible:boolean}`. Ante `quit_requested` la UI confirma y llama
   `quit_app({confirmed:true})`.

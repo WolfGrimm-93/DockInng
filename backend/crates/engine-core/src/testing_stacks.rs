@@ -145,7 +145,8 @@ mod tests {
         let ticket = plan.ticket.unwrap();
         // Confirmación incorrecta / ausente.
         assert!(matches!(
-            svc.execute(&ticket, Some("Tienda"), true).await,
+            svc.execute(&ticket, Some("Tienda"), Some(crate::Approval::for_tests()))
+                .await,
             Err(ActionError::TypedMismatch)
         ));
         // Un fallo de confirmación no gasta el ticket? Se reemite el plan para el caso feliz.
@@ -156,7 +157,11 @@ mod tests {
             .await
             .unwrap();
         let out = svc
-            .execute(plan.ticket.as_deref().unwrap(), Some("tienda"), true)
+            .execute(
+                plan.ticket.as_deref().unwrap(),
+                Some("tienda"),
+                Some(crate::Approval::for_tests()),
+            )
             .await
             .unwrap();
         assert_eq!(out.succeeded.len(), 1);
@@ -166,8 +171,12 @@ mod tests {
         assert!(engine.calls().iter().all(|c| !c.starts_with("remove_")));
         // Un solo uso.
         assert!(matches!(
-            svc.execute(plan.ticket.as_deref().unwrap(), Some("tienda"), true)
-                .await,
+            svc.execute(
+                plan.ticket.as_deref().unwrap(),
+                Some("tienda"),
+                Some(crate::Approval::for_tests())
+            )
+            .await,
             Err(ActionError::TicketInvalid)
         ));
     }
@@ -185,7 +194,11 @@ mod tests {
         // Aparece un contenedor nuevo entre plan y ejecución.
         add_container(&engine, "c2", "tienda", ContainerState::Running);
         let out = svc
-            .execute(plan.ticket.as_deref().unwrap(), Some("tienda"), true)
+            .execute(
+                plan.ticket.as_deref().unwrap(),
+                Some("tienda"),
+                Some(crate::Approval::for_tests()),
+            )
             .await
             .unwrap();
         assert!(out.succeeded.is_empty());
@@ -200,7 +213,11 @@ mod tests {
             .unwrap();
         engine.state().containers.clear();
         let out = svc
-            .execute(plan.ticket.as_deref().unwrap(), Some("tienda"), true)
+            .execute(
+                plan.ticket.as_deref().unwrap(),
+                Some("tienda"),
+                Some(crate::Approval::for_tests()),
+            )
             .await
             .unwrap();
         assert_eq!(out.failed[0].error.code, ApiErrorCode::StateChanged);
@@ -275,8 +292,12 @@ mod tests {
             }
         );
         assert!(matches!(
-            svc.execute(plan.ticket.as_deref().unwrap(), Some("otro"), true)
-                .await,
+            svc.execute(
+                plan.ticket.as_deref().unwrap(),
+                Some("otro"),
+                Some(crate::Approval::for_tests())
+            )
+            .await,
             Err(ActionError::TypedMismatch)
         ));
         let plan = svc
@@ -288,7 +309,11 @@ mod tests {
         // Entre plan y ejecución aparecen contenedores: no se borra.
         add_container(&engine, "c9", "propio", ContainerState::Exited);
         let out = svc
-            .execute(plan.ticket.as_deref().unwrap(), Some("propio"), true)
+            .execute(
+                plan.ticket.as_deref().unwrap(),
+                Some("propio"),
+                Some(crate::Approval::for_tests()),
+            )
             .await
             .unwrap();
         assert_eq!(out.failed[0].error.code, ApiErrorCode::StateChanged);
@@ -301,7 +326,11 @@ mod tests {
             .await
             .unwrap();
         let out = svc
-            .execute(plan.ticket.as_deref().unwrap(), Some("propio"), true)
+            .execute(
+                plan.ticket.as_deref().unwrap(),
+                Some("propio"),
+                Some(crate::Approval::for_tests()),
+            )
             .await
             .unwrap();
         assert_eq!(out.succeeded.len(), 1);

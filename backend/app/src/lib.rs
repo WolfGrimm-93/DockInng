@@ -1,6 +1,7 @@
 //! Shell de escritorio (Tauri): expone el núcleo al frontend mediante comandos IPC.
 //! No contiene lógica de negocio; solo traduce entre la UI y `EngineClient`.
 
+mod approvals;
 mod build_feed;
 mod commands;
 mod commands_engine;
@@ -25,6 +26,8 @@ mod window_ctl;
 
 #[cfg(test)]
 mod contract_fixtures;
+#[cfg(test)]
+mod tests_approval;
 #[cfg(test)]
 mod tests_engine;
 #[cfg(test)]
@@ -54,6 +57,10 @@ pub fn run() {
     }
     // Sockets de túneles huérfanos de una ejecución anterior (p. ej. tras un cierre brusco).
     state.remote.purge_stale();
+
+    // Diálogo nativo de aprobación: se enlaza a la ventana en `setup` (antes no aprueba nada).
+    let native = std::sync::Arc::new(approvals::NativeApprovals::default());
+    state.approvals = native.clone();
 
     let built = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -136,7 +143,8 @@ pub fn run() {
             commands_window::window_start_resize,
         ])
         // Bandeja, preferencias de ventana y notificaciones (nada de esto es fatal si falla).
-        .setup(|app| {
+        .setup(move |app| {
+            native.attach(app.handle().clone());
             window_ctl::init_shell(app.handle());
             Ok(())
         })

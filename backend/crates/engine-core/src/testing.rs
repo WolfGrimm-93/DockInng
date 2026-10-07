@@ -385,7 +385,11 @@ mod actions_tests {
                 .contains(&PlanWarning::RunningForce { count: 1 })
         );
         let out = s
-            .execute(plan.ticket.as_deref().expect("ticket"), None, true)
+            .execute(
+                plan.ticket.as_deref().expect("ticket"),
+                None,
+                Some(crate::Approval::for_tests()),
+            )
             .await
             .expect("exec");
         assert_eq!(out.succeeded.len(), 2);
@@ -406,9 +410,12 @@ mod actions_tests {
             ids: vec!["aaa".into()],
         };
         let t = s.plan(req.clone()).await.expect("plan").ticket.expect("t");
-        s.execute(&t, None, true).await.expect("primera");
+        s.execute(&t, None, Some(crate::Approval::for_tests()))
+            .await
+            .expect("primera");
         assert_eq!(
-            s.execute(&t, None, true).await,
+            s.execute(&t, None, Some(crate::Approval::for_tests()))
+                .await,
             Err(ActionError::TicketInvalid)
         );
         let e2 = engine_con_contenedores();
@@ -416,7 +423,8 @@ mod actions_tests {
         let t2 = s2.plan(req).await.expect("plan").ticket.expect("t");
         clock2.advance(Duration::from_secs(121));
         assert_eq!(
-            s2.execute(&t2, None, true).await,
+            s2.execute(&t2, None, Some(crate::Approval::for_tests()))
+                .await,
             Err(ActionError::TicketExpired)
         );
         assert!(removes(&e2).is_empty());
@@ -428,7 +436,8 @@ mod actions_tests {
         let e = engine_con_contenedores();
         let (s, _) = svc(&e);
         assert_eq!(
-            s.execute("no-existe", None, true).await,
+            s.execute("no-existe", None, Some(crate::Approval::for_tests()))
+                .await,
             Err(ActionError::TicketInvalid)
         );
         assert!(removes(&e).is_empty());
@@ -447,7 +456,10 @@ mod actions_tests {
             .ticket
             .expect("t");
         e.state().containers[0].created_at = "2026-06-06T00:00:00Z".into();
-        let out = s.execute(&t, None, true).await.expect("exec");
+        let out = s
+            .execute(&t, None, Some(crate::Approval::for_tests()))
+            .await
+            .expect("exec");
         assert!(out.succeeded.is_empty());
         assert_eq!(out.failed[0].error.code, ApiErrorCode::StateChanged);
         assert!(removes(&e).is_empty());
@@ -466,7 +478,10 @@ mod actions_tests {
             .ticket
             .expect("t");
         e.state().containers[0].summary.state = ContainerState::Running;
-        let out = s.execute(&t, None, true).await.expect("exec");
+        let out = s
+            .execute(&t, None, Some(crate::Approval::for_tests()))
+            .await
+            .expect("exec");
         assert_eq!(out.failed[0].error.code, ApiErrorCode::StateChanged);
         assert!(removes(&e).is_empty(), "{:?}", e.calls());
     }
@@ -494,10 +509,14 @@ mod actions_tests {
         e.state().volumes[0].created_at = Some("t2".into());
         // Sin texto correcto no se consume; con texto correcto, la huella falla.
         assert_eq!(
-            s.execute(&t, Some("otro"), true).await,
+            s.execute(&t, Some("otro"), Some(crate::Approval::for_tests()))
+                .await,
             Err(ActionError::TypedMismatch)
         );
-        let out = s.execute(&t, Some("datos"), true).await.expect("exec");
+        let out = s
+            .execute(&t, Some("datos"), Some(crate::Approval::for_tests()))
+            .await
+            .expect("exec");
         assert_eq!(out.failed[0].error.code, ApiErrorCode::StateChanged);
         assert!(removes(&e).is_empty());
     }
@@ -523,10 +542,14 @@ mod actions_tests {
         assert_eq!(plan.total_size_bytes, Some(20));
         let t = plan.ticket.expect("t");
         assert_eq!(
-            s.execute(&t, Some("eliminar"), true).await,
+            s.execute(&t, Some("eliminar"), Some(crate::Approval::for_tests()))
+                .await,
             Err(ActionError::TypedMismatch)
         );
-        let out = s.execute(&t, Some("ELIMINAR"), true).await.expect("exec");
+        let out = s
+            .execute(&t, Some("ELIMINAR"), Some(crate::Approval::for_tests()))
+            .await
+            .expect("exec");
         assert_eq!(out.succeeded.len(), 2);
         assert_eq!(out.freed_bytes, Some(20));
         assert_eq!(removes(&e), vec!["remove_volume:a", "remove_volume:b"]);
@@ -549,7 +572,11 @@ mod actions_tests {
         assert_eq!(plan.decision, PlanDecision::Confirm);
         assert_eq!(plan.affected.len(), 2);
         let out = s
-            .execute(plan.ticket.as_deref().expect("t"), None, true)
+            .execute(
+                plan.ticket.as_deref().expect("t"),
+                None,
+                Some(crate::Approval::for_tests()),
+            )
             .await
             .expect("exec");
         assert_eq!(out.failed.len(), 2);
@@ -613,7 +640,10 @@ mod actions_tests {
             st.volumes[0].mountpoint = "/otro/_data".into();
             st.volumes[0].labels.insert("nuevo".into(), "1".into());
         }
-        let out = s.execute(&t, Some("datos"), true).await.expect("exec");
+        let out = s
+            .execute(&t, Some("datos"), Some(crate::Approval::for_tests()))
+            .await
+            .expect("exec");
         assert_eq!(out.failed[0].error.code, ApiErrorCode::StateChanged);
         assert!(removes(&e).is_empty());
         // Sin cambios: se borra.
@@ -634,7 +664,7 @@ mod actions_tests {
             .ticket
             .expect("t");
         assert_eq!(
-            s2.execute(&t2, Some("datos"), true)
+            s2.execute(&t2, Some("datos"), Some(crate::Approval::for_tests()))
                 .await
                 .expect("exec")
                 .succeeded
@@ -659,7 +689,11 @@ mod actions_tests {
         assert_eq!(err, ActionError::TooManyPending);
         assert_eq!(ApiError::from(err).code, ApiErrorCode::Conflict);
         // El ticket legítimo del principio sigue siendo canjeable.
-        assert!(s.execute(&first, None, true).await.is_ok());
+        assert!(
+            s.execute(&first, None, Some(crate::Approval::for_tests()))
+                .await
+                .is_ok()
+        );
     }
 
     #[tokio::test]
@@ -711,7 +745,10 @@ mod actions_tests {
             .expect("plan")
             .ticket
             .expect("t");
-        let out = s.execute(&t, None, true).await.expect("exec");
+        let out = s
+            .execute(&t, None, Some(crate::Approval::for_tests()))
+            .await
+            .expect("exec");
         assert_eq!(out.succeeded.len(), 1);
     }
 

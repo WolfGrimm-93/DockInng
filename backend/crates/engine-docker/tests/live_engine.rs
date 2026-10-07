@@ -408,7 +408,10 @@ async fn live_crear_contenedor_completo_y_errores() {
         assert_eq!(plan.decision, PlanDecision::Allow);
         assert!(plan.ticket.is_none());
         // Volumen con nombre inexistente: Docker lo crea al crear el contenedor (se registró para limpiar).
-        let res = svc.create(spec.clone(), false, None).await.expect("crear");
+        let res = svc
+            .create(spec.clone(), false, None, None)
+            .await
+            .expect("crear");
         assert_eq!(res.name, name);
         assert!(!res.started && res.start_error.is_none());
 
@@ -457,7 +460,7 @@ async fn live_crear_contenedor_completo_y_errores() {
 
         // Nombre duplicado => Conflict.
         let e = svc
-            .create(spec.clone(), false, None)
+            .create(spec.clone(), false, None, None)
             .await
             .expect_err("duplicado");
         assert_eq!(e.code, ApiErrorCode::Conflict);
@@ -469,7 +472,10 @@ async fn live_crear_contenedor_completo_y_errores() {
             target: "/x".into(),
             read_only: false,
         }];
-        let e = svc.create(s2.clone(), false, None).await.expect_err("bind");
+        let e = svc
+            .create(s2.clone(), false, None, None)
+            .await
+            .expect_err("bind");
         assert_eq!(e.code, ApiErrorCode::InvalidInput);
         assert!(
             env.docker
@@ -481,7 +487,7 @@ async fn live_crear_contenedor_completo_y_errores() {
         // Imagen ausente: NUNCA hace pull, devuelve image_missing.
         let mut s3 = base_spec(Some(env.name("noimg")));
         s3.image = "dockinng-test-eng-no-existe:1".into();
-        let e = svc.create(s3, false, None).await.expect_err("imagen");
+        let e = svc.create(s3, false, None, None).await.expect_err("imagen");
         assert_eq!(e.code, ApiErrorCode::ImageMissing);
 
         // Ruta relativa y red inexistente: errores de campo, sin tocar el daemon.
@@ -502,7 +508,7 @@ async fn live_crear_contenedor_completo_y_errores() {
         let n2 = env.name("run");
         env.containers.lock().expect("lock").push(n2.clone());
         let r = svc
-            .create(base_spec(Some(n2.clone())), true, None)
+            .create(base_spec(Some(n2.clone())), true, None, None)
             .await
             .expect("crear e iniciar");
         assert!(r.started && r.start_error.is_none());
@@ -526,7 +532,7 @@ async fn live_crear_contenedor_completo_y_errores() {
             protocol: PortProtocol::Tcp,
         }];
         let r = svc
-            .create(s6, true, None)
+            .create(s6, true, None, None)
             .await
             .expect("crea aunque no arranque");
         assert!(!r.started);
@@ -550,7 +556,7 @@ async fn live_crear_con_riesgos_exige_ticket_del_mismo_spec() {
         assert_eq!(plan.decision, PlanDecision::Confirm);
         let ticket = plan.ticket.expect("ticket");
         let e = svc
-            .create(spec.clone(), false, None)
+            .create(spec.clone(), false, None, None)
             .await
             .expect_err("sin ticket");
         assert_eq!(e.code, ApiErrorCode::TicketInvalid);
@@ -558,7 +564,12 @@ async fn live_crear_con_riesgos_exige_ticket_del_mismo_spec() {
         let mut otra = spec.clone();
         otra.name = Some(env.name("otra"));
         let e = svc
-            .create(otra, false, Some(&ticket))
+            .create(
+                otra,
+                false,
+                Some(&ticket),
+                Some(engine_core::Approval::for_tests()),
+            )
             .await
             .expect_err("otra spec");
         assert_eq!(e.code, ApiErrorCode::TicketInvalid);
@@ -575,13 +586,23 @@ async fn live_crear_con_riesgos_exige_ticket_del_mismo_spec() {
             .expect("plan")
             .ticket
             .expect("t");
-        svc.create(spec.clone(), false, Some(&ticket))
-            .await
-            .expect("crea");
+        svc.create(
+            spec.clone(),
+            false,
+            Some(&ticket),
+            Some(engine_core::Approval::for_tests()),
+        )
+        .await
+        .expect("crea");
         let mut again = spec.clone();
         again.name = Some(env.name("again"));
         let e = svc
-            .create(again, false, Some(&ticket))
+            .create(
+                again,
+                false,
+                Some(&ticket),
+                Some(engine_core::Approval::for_tests()),
+            )
             .await
             .expect_err("reuso");
         assert_eq!(e.code, ApiErrorCode::TicketInvalid);

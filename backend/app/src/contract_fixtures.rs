@@ -274,7 +274,7 @@ fn enums() -> Map<String, Value> {
     );
     put(
         "ItemKind",
-        names(&unit_enum!(ItemKind: Container, Image, Volume, Network, Stack)),
+        names(&unit_enum!(ItemKind: Container, Image, Volume, Network, Stack, Connection)),
     );
     put(
         "PlanDenyReason",
@@ -419,6 +419,7 @@ fn types() -> Map<String, Value> {
             ActionRequest::Cleanup { .. } => json!({"type": "cleanup", "selection":
                 {"containers": ["b2"], "images": [], "volumes": ["data"], "networks": []}}),
             ActionRequest::PruneSystem => json!({"type": "prune_system"}),
+            ActionRequest::RemoveConnection { .. } => json!({"type": "remove_connection", "id": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3e"}),
         ),
     );
     put(
@@ -927,7 +928,7 @@ fn commands() -> Value {
     );
     c.add(
         "execute_action",
-        json!({"ticket": TICKET, "typed": "ELIMINAR", "confirmed": true}),
+        json!({"ticket": TICKET, "typed": "ELIMINAR"}),
         "ActionOutcome",
         typed::<engine_core::ActionOutcome>(json!({
             "succeeded": [{"kind": "container", "id": CID, "name": "web"}],

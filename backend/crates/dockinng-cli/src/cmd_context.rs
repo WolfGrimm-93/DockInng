@@ -2,13 +2,16 @@
 //! `context add` solo guarda metadatos y rutas; la conexión remota se prepara al ejecutar otro
 //! comando con `--context` o con la selección predeterminada.
 
+use std::sync::Arc;
+
 use crate::error::CliError;
 use engine_core::connections::{SshIdentity, SshMode};
-use engine_core::{Action, ConnSpec, PlanDecision, decide};
+use engine_core::{ActionRequest, ConnSpec, ConnectionControl, EngineError};
 use store::Store;
 
+use crate::apply::apply_checked;
 use crate::cli::Confirm;
-use crate::confirm::{Stdin, gate, interactivity};
+use crate::confirm::{Asker, Stdin};
 use crate::ctx::Ctx;
 use crate::output::{print_json, print_lines, table};
 
@@ -121,28 +124,177 @@ pub fn ls(ctx: &Ctx) -> Result<(), CliError> {
     Ok(())
 }
 
-/// Borra un perfil guardado (por nombre o id) tras confirmar. No toca el servidor remoto.
-pub fn rm(ctx: &Ctx, target: &str, confirm: Confirm) -> Result<(), CliError> {
-    let store = open_store()?;
-    let profiles = store.connection_list().map_err(|e| e.to_string())?;
-    let p = profiles
-        .iter()
-        .find(|p| p.id == target || p.spec.name() == target)
-        .ok_or_else(|| format!("no existe la conexión {target}"))?;
-    let decision = PlanDecision::from(&decide(
-        &Action::RemoveConnection,
-        interactivity(),
-        confirm.yes,
-    ));
-    gate(
-        &decision,
-        confirm.yes,
-        &format!("¿Eliminar la conexión guardada {}?", p.spec.name()),
-        &mut Stdin,
-    )?;
-    store.connection_delete(&p.id).map_err(|e| e.to_string())?;
-    if !ctx.json {
-        println!("{}", p.spec.name());
+/// Adaptador de perfiles sobre el almacén de la CLI: el núcleo no conoce SQLite.
+struct StoreProfiles(Arc<Store>);
+
+#[async_trait::async_trait]
+impl ConnectionControl for StoreProfiles {
+    async fn profile_name(&self, id: &str) -> Result<Option<String>, EngineError> {
+        let profiles = self.0.connection_list()?;
+        Ok(profiles
+            .into_iter()
+            .find(|p| p.id == id)
+            .map(|p| p.spec.name().to_string()))
     }
+
+    async fn delete_profile(&self, id: &str) -> Result<(), EngineError> {
+        self.0.connection_delete(id)?;
+        Ok(())
+    }
+}
+
+/// Borra un perfil guardado (por nombre o id). Pasa por el broker de acciones: plan, ticket,
+/// confirmación del usuario y, solo entonces, borrado. No toca el servidor remoto.
+pub async fn rm(ctx: &Ctx, target: &str, confirm: Confirm) -> Result<(), CliError> {
+    rm_with(ctx, Arc::new(open_store()?), target, confirm, &mut Stdin).await
+}
+
+/// Igual que [`rm`] con el almacén y la pregunta inyectados (tests).
+pub async fn rm_with(
+    ctx: &Ctx,
+    store: Arc<Store>,
+    target: &str,
+    confirm: Confirm,
+    asker: &mut dyn Asker,
+) -> Result<(), CliError> {
+    let profiles = store.connection_list().map_err(|e| e.to_string())?;
+    let p = find_profile(&profiles, target)?;
+    let name = p.spec.name().to_string();
+    let id = p.id.clone();
+    let svc = ctx.actions_with_connections(Arc::new(StoreProfiles(store)));
+    apply_checked(
+        ctx,
+        &svc,
+        ActionRequest::RemoveConnection { id },
+        confirm.yes,
+        &format!("¿Eliminar la conexión guardada {name}?"),
+        asker,
+        |_| Ok(()),
+    )
+    .await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::confirm::tests::Script;
+    use engine_core::Interactivity;
+
+    /// Almacén temporal con un perfil SSH guardado. Devuelve (directorio, almacén, id).
+    fn almacen_con_perfil() -> (std::path::PathBuf, Arc<Store>, String) {
+        let dir = std::env::temp_dir().join(format!("dockinng-ctx-rm-{}", uuid::Uuid::now_v7()));
+        let store = Arc::new(Store::open(&dir).expect("almacén"));
+        let spec = ConnSpec::Ssh {
+            name: "prod".into(),
+            host: "srv.example".into(),
+            port: 22,
+            user: "deploy".into(),
+            mode: SshMode::Explicit,
+            identity: SshIdentity::Agent,
+        };
+        let p = store.connection_save(&spec, None).expect("guardar");
+        (dir, store, p.id)
+    }
+
+    fn ctx_interactivo() -> Ctx {
+        let mut ctx = Ctx::new(true);
+        ctx.interactivity = Interactivity::Interactive;
+        ctx
+    }
+
+    fn sigue(store: &Store, id: &str) -> bool {
+        store
+            .connection_list()
+            .expect("lista")
+            .iter()
+            .any(|p| p.id == id)
+    }
+
+    /// `context rm` sin aprobación del usuario NO borra el perfil: el ticket nunca se canjea.
+    #[tokio::test]
+    async fn context_rm_no_borra_sin_ticket_aprobado() {
+        let (dir, store, id) = almacen_con_perfil();
+        let mut asker = Script {
+            yes: false,
+            ..Default::default()
+        };
+        let r = rm_with(
+            &ctx_interactivo(),
+            store.clone(),
+            "prod",
+            Confirm { yes: false },
+            &mut asker,
+        )
+        .await;
+        assert!(r.is_err(), "el usuario dijo que no");
+        assert_eq!(asker.asked, 1, "se preguntó una vez");
+        assert!(sigue(&store, &id), "sin aprobación el perfil se conserva");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Con la aprobación del usuario, el perfil se borra al ejecutar el ticket.
+    #[tokio::test]
+    async fn context_rm_con_aprobacion_borra_el_perfil() {
+        let (dir, store, id) = almacen_con_perfil();
+        let mut asker = Script {
+            yes: true,
+            ..Default::default()
+        };
+        rm_with(
+            &ctx_interactivo(),
+            store.clone(),
+            "prod",
+            Confirm { yes: false },
+            &mut asker,
+        )
+        .await
+        .expect("borra");
+        assert!(!sigue(&store, &id));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// `--yes` cuenta como aprobación del gate de la CLI (sin preguntar).
+    #[tokio::test]
+    async fn context_rm_con_yes_no_pregunta_y_borra() {
+        let (dir, store, id) = almacen_con_perfil();
+        let mut asker = Script::default();
+        rm_with(
+            &ctx_interactivo(),
+            store.clone(),
+            "prod",
+            Confirm { yes: true },
+            &mut asker,
+        )
+        .await
+        .expect("borra");
+        assert_eq!(asker.asked, 0);
+        assert!(!sigue(&store, &id));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Sin TTY y sin `--yes` la política deniega: no hay ticket y no se borra nada.
+    #[tokio::test]
+    async fn context_rm_no_interactivo_sin_yes_no_borra() {
+        let (dir, store, id) = almacen_con_perfil();
+        let mut ctx = Ctx::new(true);
+        ctx.interactivity = Interactivity::NonInteractive;
+        let mut asker = Script {
+            yes: true,
+            ..Default::default()
+        };
+        assert!(
+            rm_with(
+                &ctx,
+                store.clone(),
+                "prod",
+                Confirm { yes: false },
+                &mut asker
+            )
+            .await
+            .is_err()
+        );
+        assert!(sigue(&store, &id));
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }

@@ -1049,7 +1049,6 @@ export const COMMANDS = {
     "subscriptionId": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3c"
   }, resultType: "void", result: result_exec_write },
   execute_action: { args: {
-    "confirmed": true,
     "ticket": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3d",
     "typed": "ELIMINAR"
   }, resultType: "ActionOutcome", result: result_execute_action },
@@ -1941,7 +1940,7 @@ export const ENUM_HostKeyState: Record<HostKeyState, true> = { "unknown": true, 
 export const ENUM_IssueKind: Record<ValidationKind, true> = { "syntax": true, "schema": true, "interpolation": true, "other": true }
 
 /** Variantes de AffectedKind en Rust (exhaustivo en ambos sentidos). */
-export const ENUM_ItemKind: Record<AffectedKind, true> = { "container": true, "image": true, "volume": true, "network": true, "stack": true }
+export const ENUM_ItemKind: Record<AffectedKind, true> = { "container": true, "image": true, "volume": true, "network": true, "stack": true, "connection": true }
 
 /** Variantes de LayerPhase en Rust (exhaustivo en ambos sentidos). */
 export const ENUM_LayerPhase: Record<LayerPhase, true> = { "waiting": true, "downloading": true, "downloaded": true, "extracting": true, "complete": true }
@@ -2040,6 +2039,10 @@ export const TYPE_ActionRequest: ActionRequest[] = [
   },
   {
     "type": "prune_system"
+  },
+  {
+    "id": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3e",
+    "type": "remove_connection"
   }
 ]
 

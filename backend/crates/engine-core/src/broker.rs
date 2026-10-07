@@ -16,6 +16,7 @@ use std::time::{Duration, Instant};
 
 use uuid::Uuid;
 
+use crate::approval::Approval;
 use crate::policy::Decision;
 
 /// Tiempo de vida de un ticket.
@@ -121,13 +122,14 @@ impl<P> Broker<P> {
 
     /// Canjea el ticket: lo consume atómicamente si la confirmación es válida.
     ///
-    /// `confirmed` es la confirmación explícita del usuario (diálogo o pregunta de la CLI).
-    /// Si la decisión la exige y `confirmed` es `false`, se rechaza SIN consumir el ticket.
+    /// `approval` es la aprobación humana (diálogo nativo o pregunta de la CLI). Si la decisión
+    /// la exige y llega `None`, se rechaza SIN consumir el ticket. Un `Approval` se consume aquí
+    /// aunque después falle la confirmación escrita: hace falta otra aprobación para reintentar.
     pub fn redeem(
         &self,
         ticket: &str,
         typed: Option<&str>,
-        confirmed: bool,
+        approval: Option<Approval>,
     ) -> Result<(P, Decision), RedeemError> {
         let now = self.clock.now();
         let mut g = self.lock();
@@ -138,7 +140,7 @@ impl<P> Broker<P> {
             g.map.remove(ticket);
             return Err(RedeemError::Expired);
         }
-        if entry.decision.needs_confirmation() && !confirmed {
+        if entry.decision.needs_confirmation() && approval.is_none() {
             return Err(RedeemError::NotConfirmed);
         }
         if !entry.decision.accepts(typed) {
@@ -152,6 +154,24 @@ impl<P> Broker<P> {
             Some(e) => Ok((e.payload, e.decision)),
             None => Err(RedeemError::Invalid),
         }
+    }
+
+    /// Lee un ticket vigente SIN consumirlo (para construir el texto del diálogo de aprobación).
+    pub fn peek<R>(
+        &self,
+        ticket: &str,
+        f: impl FnOnce(&P, &Decision) -> R,
+    ) -> Result<R, RedeemError> {
+        let now = self.clock.now();
+        let mut g = self.lock();
+        let Some(entry) = g.map.get(ticket) else {
+            return Err(RedeemError::Invalid);
+        };
+        if entry.expires <= now {
+            g.map.remove(ticket);
+            return Err(RedeemError::Expired);
+        }
+        Ok(f(&entry.payload, &entry.decision))
     }
 
     /// Devuelve al broker un ticket recién canjeado cuya operación NO llegó a ejecutarse
@@ -206,6 +226,11 @@ pub(crate) mod tests {
         }
     }
 
+    /// Aprobación falsa (la de un diálogo que el usuario acepta).
+    pub fn ap() -> Option<Approval> {
+        Some(Approval::for_tests())
+    }
+
     fn broker() -> (Broker<u32>, Arc<FakeClock>) {
         let c = Arc::new(FakeClock::default());
         (Broker::new(c.clone()), c)
@@ -215,8 +240,8 @@ pub(crate) mod tests {
     fn un_solo_uso() {
         let (b, _) = broker();
         let t = b.issue(7, Decision::Confirm).expect("cupo");
-        assert_eq!(b.redeem(&t, None, true).map(|(p, _)| p), Ok(7));
-        assert_eq!(b.redeem(&t, None, true).err(), Some(RedeemError::Invalid));
+        assert_eq!(b.redeem(&t, None, ap()).map(|(p, _)| p), Ok(7));
+        assert_eq!(b.redeem(&t, None, ap()).err(), Some(RedeemError::Invalid));
     }
 
     #[test]
@@ -225,10 +250,10 @@ pub(crate) mod tests {
         let t = b.issue(1, Decision::Confirm).expect("cupo");
         c.advance(Duration::from_secs(119));
         let t2 = b.issue(2, Decision::Confirm).expect("cupo");
-        assert!(b.redeem(&t, None, true).is_ok());
+        assert!(b.redeem(&t, None, ap()).is_ok());
         c.advance(Duration::from_secs(121));
-        assert_eq!(b.redeem(&t2, None, true).err(), Some(RedeemError::Expired));
-        assert_eq!(b.redeem(&t2, None, true).err(), Some(RedeemError::Invalid));
+        assert_eq!(b.redeem(&t2, None, ap()).err(), Some(RedeemError::Expired));
+        assert_eq!(b.redeem(&t2, None, ap()).err(), Some(RedeemError::Invalid));
     }
 
     #[test]
@@ -240,21 +265,21 @@ pub(crate) mod tests {
         let t = b.issue(1, dec.clone()).expect("cupo");
         for _ in 0..4 {
             assert_eq!(
-                b.redeem(&t, Some("x"), true).err(),
+                b.redeem(&t, Some("x"), ap()).err(),
                 Some(RedeemError::TypedMismatch)
             );
         }
         // Aún vivo: la confirmación correcta funciona.
-        assert!(b.redeem(&t, Some("datos"), true).is_ok());
+        assert!(b.redeem(&t, Some("datos"), ap()).is_ok());
         let t = b.issue(1, dec).expect("cupo");
         for _ in 0..5 {
             assert_eq!(
-                b.redeem(&t, None, true).err(),
+                b.redeem(&t, None, ap()).err(),
                 Some(RedeemError::TypedMismatch)
             );
         }
         assert_eq!(
-            b.redeem(&t, Some("datos"), true).err(),
+            b.redeem(&t, Some("datos"), ap()).err(),
             Some(RedeemError::Invalid)
         );
     }
@@ -270,7 +295,7 @@ pub(crate) mod tests {
         // Lleno: el plan nuevo se rechaza y el ticket más viejo sigue vivo.
         assert_eq!(b.issue(99, Decision::Confirm), Err(BrokerFull));
         assert_eq!(b.pending(), MAX_PENDING);
-        assert!(b.redeem(&first, None, true).is_ok());
+        assert!(b.redeem(&first, None, ap()).is_ok());
         // Al liberar un cupo (o expirar) vuelve a aceptar.
         assert!(b.issue(100, Decision::Confirm).is_ok());
         c.advance(Duration::from_secs(121));
@@ -302,10 +327,10 @@ pub(crate) mod tests {
         let (b, c) = broker();
         let t = b.issue(1, Decision::Confirm).expect("cupo");
         c.advance(Duration::from_millis(119_999));
-        assert!(b.redeem(&t, None, true).is_ok());
+        assert!(b.redeem(&t, None, ap()).is_ok());
         let t = b.issue(1, Decision::Confirm).expect("cupo");
         c.advance(TICKET_TTL);
-        assert_eq!(b.redeem(&t, None, true).err(), Some(RedeemError::Expired));
+        assert_eq!(b.redeem(&t, None, ap()).err(), Some(RedeemError::Expired));
     }
 
     #[test]
@@ -325,11 +350,11 @@ pub(crate) mod tests {
         let (b, _) = broker();
         let t = b.issue(7, Decision::Confirm).expect("cupo");
         assert_eq!(
-            b.redeem(&t, None, false).err(),
+            b.redeem(&t, None, None).err(),
             Some(RedeemError::NotConfirmed)
         );
         assert_eq!(b.pending(), 1, "el ticket no se consume al rechazarlo");
-        assert_eq!(b.redeem(&t, None, true).map(|(p, _)| p), Ok(7));
+        assert_eq!(b.redeem(&t, None, ap()).map(|(p, _)| p), Ok(7));
     }
 
     #[test]
@@ -340,17 +365,53 @@ pub(crate) mod tests {
         };
         let t = b.issue(1, dec).expect("cupo");
         assert_eq!(
-            b.redeem(&t, Some("datos"), false).err(),
+            b.redeem(&t, Some("datos"), None).err(),
             Some(RedeemError::NotConfirmed)
         );
-        assert!(b.redeem(&t, Some("datos"), true).is_ok());
+        assert!(b.redeem(&t, Some("datos"), ap()).is_ok());
+    }
+
+    #[test]
+    fn peek_lee_sin_consumir_y_respeta_la_caducidad() {
+        let (b, c) = broker();
+        let t = b.issue(9, Decision::Confirm).expect("cupo");
+        assert_eq!(
+            b.peek(&t, |p, d| (*p, d.needs_confirmation())),
+            Ok((9, true))
+        );
+        assert_eq!(b.pending(), 1, "peek no consume");
+        assert!(b.redeem(&t, None, ap()).is_ok());
+        let t = b.issue(1, Decision::Confirm).expect("cupo");
+        c.advance(TICKET_TTL);
+        assert_eq!(b.peek(&t, |_, _| ()).err(), Some(RedeemError::Expired));
+    }
+
+    #[test]
+    fn approval_se_consume_aunque_falle_la_confirmacion_escrita() {
+        // Sin aprobación no hay canje; con aprobación pero texto malo, la aprobación se gasta y
+        // el ticket sigue vivo: hace falta otra aprobación para reintentar.
+        let (b, _) = broker();
+        let dec = Decision::ConfirmTyped {
+            expected: "datos".into(),
+        };
+        let t = b.issue(1, dec).expect("cupo");
+        assert_eq!(
+            b.redeem(&t, Some("x"), None).err(),
+            Some(RedeemError::NotConfirmed)
+        );
+        assert_eq!(
+            b.redeem(&t, Some("x"), ap()).err(),
+            Some(RedeemError::TypedMismatch)
+        );
+        assert_eq!(b.pending(), 1);
+        assert!(b.redeem(&t, Some("datos"), ap()).is_ok());
     }
 
     #[test]
     fn allow_no_exige_confirmacion() {
         let (b, _) = broker();
         let t = b.issue(1, Decision::Allow).expect("cupo");
-        assert!(b.redeem(&t, None, false).is_ok());
+        assert!(b.redeem(&t, None, None).is_ok());
     }
 
     #[test]
@@ -361,11 +422,11 @@ pub(crate) mod tests {
             .expect("cupo");
         for _ in 0..5 {
             assert_eq!(
-                b.redeem(&t, Some("x"), true).err(),
+                b.redeem(&t, Some("x"), ap()).err(),
                 Some(RedeemError::TypedMismatch)
             );
         }
-        assert_eq!(b.redeem(&t, None, true).err(), Some(RedeemError::Invalid));
+        assert_eq!(b.redeem(&t, None, ap()).err(), Some(RedeemError::Invalid));
     }
 
     #[test]
@@ -380,7 +441,7 @@ pub(crate) mod tests {
         .join();
         assert!(b.inner.is_poisoned());
         let t = b.issue(1, Decision::Confirm).expect("cupo");
-        assert!(b.redeem(&t, None, true).is_ok());
+        assert!(b.redeem(&t, None, ap()).is_ok());
     }
 
     #[test]
@@ -392,7 +453,7 @@ pub(crate) mod tests {
             let handles: Vec<_> = (0..4)
                 .map(|_| {
                     let (b, t) = (b.clone(), t.clone());
-                    std::thread::spawn(move || b.redeem(&t, None, true).is_ok())
+                    std::thread::spawn(move || b.redeem(&t, None, ap()).is_ok())
                 })
                 .collect();
             let wins = handles

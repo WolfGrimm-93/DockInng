@@ -420,6 +420,17 @@ pub const BOOL_PREF_KEYS: &[&str] = &[
 /// Eventos notificables de `notify_events` (objeto con estas claves booleanas, todas opcionales).
 pub const NOTIFY_EVENT_KEYS: &[&str] = &["die", "oom", "unhealthy", "op_done"];
 
+/// Acceso a los perfiles guardados para las acciones (p. ej. `context rm`). El núcleo no conoce
+/// el almacén: el adaptador (CLI o app) implementa el trait sobre `store::Store`. Borrar un perfil
+/// no toca el servidor remoto.
+#[async_trait::async_trait]
+pub trait ConnectionControl: Send + Sync {
+    /// Nombre del perfil si existe; `None` si no.
+    async fn profile_name(&self, id: &str) -> Result<Option<String>, crate::error::EngineError>;
+    /// Borra el perfil guardado (ya aprobado por el ticket).
+    async fn delete_profile(&self, id: &str) -> Result<(), crate::error::EngineError>;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -85,6 +85,14 @@ impl Ctx {
         ))
     }
 
+    /// Acciones con acceso a los perfiles guardados (`context rm`).
+    pub fn actions_with_connections(
+        &self,
+        profiles: Arc<dyn engine_core::ConnectionControl>,
+    ) -> ActionService {
+        ActionService::with_connections(self.engine.clone(), profiles)
+    }
+
     /// Acciones con control de stacks (`stacks down`).
     pub fn actions_with_stacks(&self) -> ActionService {
         let control: Arc<dyn StackControl> = self.runner();

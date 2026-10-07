@@ -998,7 +998,10 @@ async fn flujo_plan_ejecutar_contra_docker_real() {
         assert_eq!(plan.decision, PlanDecision::Confirm);
         assert_eq!(plan.affected.len(), 1);
         let t = plan.ticket.expect("ticket");
-        let out = svc.execute(&t, None, true).await.expect("execute");
+        let out = svc
+            .execute(&t, None, Some(engine_core::Approval::for_tests()))
+            .await
+            .expect("execute");
         assert_eq!(out.succeeded.len(), 1, "{out:?}");
         assert!(matches!(
             env.engine.inspect_container(&name).await,
@@ -1007,7 +1010,11 @@ async fn flujo_plan_ejecutar_contra_docker_real() {
         // El volumen sobrevive (no se envía v=true).
         assert!(env.engine.inspect_volume(&vol).await.is_ok());
         // Segundo uso del ticket: rechazado.
-        assert!(svc.execute(&t, None, true).await.is_err());
+        assert!(
+            svc.execute(&t, None, Some(engine_core::Approval::for_tests()))
+                .await
+                .is_err()
+        );
 
         // Prune de volúmenes: SOLO se planifica (lectura) y se cancela; jamás se ejecuta aquí
         // porque el daemon tiene volúmenes de otros proyectos.

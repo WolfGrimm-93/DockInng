@@ -75,6 +75,7 @@ async fn construye_una_imagen_scratch_y_la_borra() {
         .run(
             &spec(&dir, &tag),
             None,
+            None,
             &target,
             &sink,
             std::future::pending(),
@@ -140,6 +141,7 @@ async fn cancelar_a_mitad_termina_como_canceled() {
     let r = svc
         .run(
             &spec(&dir, &tag),
+            None,
             None,
             &target,
             &sink,

@@ -25,6 +25,7 @@ uuid.workspace = true
 libc.workspace = true
 futures-util.workspace = true
 thiserror.workspace = true
+async-trait.workspace = true
 
 [dev-dependencies]
 uuid.workspace = true
