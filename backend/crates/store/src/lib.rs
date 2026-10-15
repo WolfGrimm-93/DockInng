@@ -10,9 +10,11 @@ mod connections;
 mod db;
 mod error;
 mod groups;
+pub mod password;
 mod prefs;
 mod registries;
 pub mod secrets;
+mod users;
 
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
@@ -21,6 +23,7 @@ use rusqlite::Connection;
 
 pub use error::StoreError;
 pub use secrets::{KeyringSecrets, MemorySecrets, SecretStore, default_builder_is_mock};
+pub use users::UserRecord;
 
 /// Nombre del archivo de la base de datos dentro del directorio de datos.
 pub const DB_FILE: &str = "store.db";

@@ -83,6 +83,11 @@
         "code": "engine",
         "message": "mensaje de Engine"
       },
+      "forbidden": {
+        "cause": null,
+        "code": "forbidden",
+        "message": "mensaje de Forbidden"
+      },
       "image_missing": {
         "cause": null,
         "code": "image_missing",
@@ -152,6 +157,11 @@
         "cause": null,
         "code": "typed_mismatch",
         "message": "mensaje de TypedMismatch"
+      },
+      "unauthenticated": {
+        "cause": null,
+        "code": "unauthenticated",
+        "message": "mensaje de Unauthenticated"
       }
     },
     "quiesced": {
@@ -1691,7 +1701,9 @@
       "image_missing",
       "auth_required",
       "registry_unreachable",
-      "no_shell"
+      "no_shell",
+      "unauthenticated",
+      "forbidden"
     ],
     "BuildOutcome": [
       "ok",

@@ -36,6 +36,8 @@ const TITLE: Record<ApiErrorCode, string> = {
   auth_required: 'El registro pidió autenticación',
   registry_unreachable: 'No se pudo contactar con el registro de imágenes',
   no_shell: 'El contenedor no tiene una shell disponible',
+  unauthenticated: 'Hace falta iniciar sesión',
+  forbidden: 'Tu usuario no tiene permiso para esto',
 }
 
 export function apiErrorTitle(e: ApiError): string {

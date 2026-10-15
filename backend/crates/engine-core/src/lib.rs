@@ -29,6 +29,7 @@ pub mod policy;
 pub mod pull;
 pub mod registry;
 pub mod resources;
+pub mod role;
 pub mod stacks;
 pub mod stats;
 pub mod system;
@@ -85,6 +86,7 @@ pub use policy::{
 pub use pull::{LayerPhase, LayerProgress, PullEngine, PullEvent, PullSnapshot, PullTracker};
 pub use registry::{DOCKER_HUB_SERVER, RegistryAuth, RegistrySummary, Secret};
 pub use resources::{Image, Network, Volume};
+pub use role::Role;
 pub use stacks::{
     CancelSignal, ComposeContainer, ComposeFlavor, ComposeInfo, IssueKind, ProgressItem,
     ProgressKind, ProgressStatus, ServicePhase, ServiceProgress, StackControl, StackDiscovery,

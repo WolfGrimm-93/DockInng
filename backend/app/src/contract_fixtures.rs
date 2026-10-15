@@ -372,7 +372,7 @@ fn api_error_codes() -> Vec<ApiErrorCode> {
     unit_enum!(ApiErrorCode: Connection, NotFound, Conflict, InvalidInput, Engine, Timeout,
         PolicyDenied, TicketInvalid, TicketExpired, TypedMismatch, StateChanged, NotImplemented,
         Internal, ComposeMissing, ComposeFailed, InvalidCompose, ImageMissing, AuthRequired,
-        RegistryUnreachable, NoShell)
+        RegistryUnreachable, NoShell, Unauthenticated, Forbidden)
 }
 
 fn connection_causes() -> Vec<ConnectionCause> {
@@ -1540,9 +1540,9 @@ mod tests {
     }
 
     #[test]
-    fn los_errores_cubren_los_veinte_codigos_y_la_forma_de_cause_y_quiesced() {
+    fn los_errores_cubren_los_veintidos_codigos_y_la_forma_de_cause_y_quiesced() {
         let e = api_errors();
-        assert_eq!(e["by_code"].as_object().unwrap().len(), 20);
+        assert_eq!(e["by_code"].as_object().unwrap().len(), 22);
         assert_eq!(e["by_cause"].as_object().unwrap().len(), 10);
         // `cause` va siempre (null si no aplica); `quiesced` solo cuando es verdadero.
         assert!(e["by_code"]["conflict"]["cause"].is_null());

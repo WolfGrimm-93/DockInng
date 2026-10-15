@@ -1,0 +1,29 @@
+[package]
+name = "server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "dockinng-server"
+path = "src/main.rs"
+
+[dependencies]
+engine-core = { path = "../crates/engine-core" }
+engine-docker = { path = "../crates/engine-docker" }
+store = { path = "../crates/store" }
+axum = { workspace = true, features = ["macros"] }
+# "v4" además de la "v7" del workspace: solo para el token de sesión (ver session.rs), que es un
+# secreto efímero, no un id de recurso — la regla de UUID v7 del proyecto no le aplica.
+uuid = { workspace = true, features = ["v4"] }
+tokio = { workspace = true, features = ["net", "macros", "rt-multi-thread", "signal"] }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+futures-util.workspace = true
+
+[dev-dependencies]
+engine-core = { path = "../crates/engine-core", features = ["testing"] }
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"

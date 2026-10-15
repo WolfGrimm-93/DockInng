@@ -23,6 +23,9 @@ pub enum StoreError {
     /// El llavero del sistema no está disponible o falló.
     #[error("llavero del sistema: {0}")]
     Keyring(String),
+    /// Hash de contraseña (servidor web, usuarios): no debería fallar con parámetros válidos.
+    #[error("hash de contraseña: {0}")]
+    Hash(String),
 }
 
 /// Códigos extendidos de SQLite: UNIQUE (2067) y PRIMARY KEY (1555).
