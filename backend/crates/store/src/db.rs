@@ -11,7 +11,7 @@ use crate::error::StoreError;
 use engine_core::LOCAL_CONNECTION_ID;
 
 /// Versión de esquema que entiende este binario.
-pub const SCHEMA_VERSION: u32 = 2;
+pub const SCHEMA_VERSION: u32 = 3;
 
 /// Función SQL con la misma minúscula que la comparación de nombres de grupo en Rust
 /// (`to_lowercase`). `lower()` de SQLite solo cubre ASCII: sobre ella no se puede hacer un
@@ -177,8 +177,29 @@ fn migrate(conn: &mut Connection, from: u32) -> Result<(), StoreError> {
         tx.pragma_update(None, "user_version", 2)?;
         tx.commit()?;
     }
+    if from < 3 {
+        let tx = conn.transaction()?;
+        // Usuarios del servidor web (modo multiusuario). La app de escritorio y la CLI no
+        // tocan esta tabla: corren con la confianza del usuario del sistema operativo.
+        tx.execute_batch(SCHEMA_V3)?;
+        tx.pragma_update(None, "user_version", 3)?;
+        tx.commit()?;
+    }
     Ok(())
 }
+
+/// Esquema v3: usuarios del servidor web. `password_hash` es el string autodescriptivo de
+/// Argon2 (algoritmo, sal y parámetros incluidos); nunca se guarda la contraseña ni una sal
+/// separada.
+const SCHEMA_V3: &str = "
+CREATE TABLE users (
+    id TEXT PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('admin','operator','viewer')),
+    created_at INTEGER NOT NULL
+);
+";
 
 /// Registra `dockinng_lower` (determinista) en la conexión.
 fn registrar_funciones(conn: &Connection) -> Result<(), StoreError> {
@@ -342,6 +363,37 @@ mod tests {
         assert!(
             t.0.join("store.db.bak-v1").exists(),
             "la copia previa se conserva"
+        );
+    }
+
+    #[test]
+    fn tabla_de_usuarios_rechaza_nombre_duplicado_y_rol_invalido() {
+        let t = TempDir::new("usersmig");
+        let path = t.0.join("store.db");
+        let c = open_and_migrate(&path).unwrap();
+        c.execute(
+            "INSERT INTO users (id, username, password_hash, role, created_at) \
+             VALUES ('a', 'ana', 'x', 'admin', 0)",
+            [],
+        )
+        .unwrap();
+        // Mismo nombre, otra mayúscula: rechazado (COLLATE NOCASE).
+        assert!(
+            c.execute(
+                "INSERT INTO users (id, username, password_hash, role, created_at) \
+                 VALUES ('b', 'ANA', 'x', 'viewer', 0)",
+                [],
+            )
+            .is_err()
+        );
+        // Rol fuera del CHECK: rechazado.
+        assert!(
+            c.execute(
+                "INSERT INTO users (id, username, password_hash, role, created_at) \
+                 VALUES ('c', 'beto', 'x', 'superadmin', 0)",
+                [],
+            )
+            .is_err()
         );
     }
 }

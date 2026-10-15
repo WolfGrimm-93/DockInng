@@ -187,6 +187,8 @@ export type ApiErrorCode =
   | 'ticket_invalid' | 'ticket_expired' | 'typed_mismatch' | 'state_changed' | 'not_implemented' | 'internal'
   // Ola 1 (contrato canónico del backend): Compose, imágenes y exec.
   | 'compose_missing' | 'compose_failed' | 'invalid_compose' | 'image_missing' | 'auth_required' | 'registry_unreachable' | 'no_shell'
+  // Servidor web (modo multiusuario): la app de escritorio y la CLI nunca los emiten.
+  | 'unauthenticated' | 'forbidden'
 /** `cause` siempre viaja (null salvo code = 'connection'). */
 export interface ApiError {
   code: ApiErrorCode; message: string; cause?: ConnectionCause | null

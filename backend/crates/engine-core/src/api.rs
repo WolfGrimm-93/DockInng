@@ -36,6 +36,10 @@ pub enum ApiErrorCode {
     RegistryUnreachable,
     /// El contenedor no tiene shell utilizable.
     NoShell,
+    /// Falta sesión válida (servidor web, modo multiusuario).
+    Unauthenticated,
+    /// Hay sesión, pero el rol no alcanza para la acción.
+    Forbidden,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

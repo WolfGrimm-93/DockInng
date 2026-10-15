@@ -4,6 +4,57 @@ Ver detalle y contexto en Obsidian: `Proyectos/DockInng/DockInng - Pendientes.md
 
 Lo ya cerrado se retiró de esta lista (2026-10-06); su historial está en la Bitácora de Obsidian.
 
+## Servidor web (`backend/server`), rama `feature/web-server` — primera versión (2026-10-13)
+
+Nuevo adaptador HTTP (`axum`), igual nivel que `dockinng-cli` y la app de escritorio: habla
+contra `engine-core`/`engine-docker`, no reimplementa nada de Docker. Pensado para correr en
+un contenedor y servirse por red, en dos modos:
+
+- **`DOCKINNG_AUTH_MODE=single`**: sin login, todo pedido entra como admin sintético (mismo
+  supuesto de confianza que hoy la app/CLI: red ya confiable). Sin esa variable, o con
+  `multi`, el servidor exige sesión — **seguro por defecto**, hay que pedir `single` a propósito.
+- **`multi`**: usuarios y roles (`Admin`/`Operator`/`Viewer`, nuevo enum `Role` en
+  `engine-core`), persistidos en `store` (tabla `users`, esquema v3, contraseña con Argon2).
+  Sesión por cookie `HttpOnly`/`Secure`/`SameSite=Strict`, en memoria del proceso (ver
+  pendiente abajo). Primer admin: `DOCKINNG_BOOTSTRAP_ADMIN_USER`/`_PASSWORD` al arrancar sin
+  usuarios.
+
+Endpoints: `/healthz`, `/api/auth/{login,logout,me}`, `/api/users` (CRUD, solo `admin`, no
+deja borrar/degradar al último admin ni al propio usuario logueado), `/api/containers`
+(prueba de concepto de lectura contra el motor real).
+
+**Verificado, no solo compilado:** `cargo test --workspace` y
+`cargo clippy --workspace --all-targets` limpios; además arranqué el binario real
+(`target/debug/dockinng-server`) en ambos modos — en `single` devolvió los contenedores reales
+del Docker de esta máquina por `/api/containers`; en `multi` con admin inicial por variables
+de entorno, hice login real, confirmé la cookie en `/api/auth/me` y listé el usuario por
+`/api/users`. Server y Store corrieron contra un socket Docker y un SQLite reales, no mocks.
+
+**Pendiente — no es "terminado", falta para tener paridad o quedar listo para producción:**
+- [ ] Solo hay un endpoint de lectura (`/api/containers`). No hay ninguna acción que modifique
+  el motor todavía: falta conectar `Role::can_act()` con `ConfirmationPolicy` para exponer
+  start/stop/remove/etc. por HTTP.
+- [ ] Sin streaming: logs, stats y terminal (`exec`) no están portados. `backend/app` ya tiene
+  la lógica de *backpressure*/*coalescing* desacoplada de Tauri detrás de un trait `Sink<T>`
+  (`streams.rs`, `exec_sessions.rs`); portarla a WebSocket es el camino más corto, no reescribir.
+- [ ] **Las sesiones viven en memoria del proceso: reiniciar el servidor desconecta a todos.**
+  No hay persistencia de sesiones entre reinicios.
+- [ ] No existe cliente web: el `frontend/` actual solo habla con Tauri. Falta una UI (o
+  reutilizar la actual con una capa de transporte HTTP/WebSocket en vez de `invoke`).
+- [ ] Sin containerización: no hay `Dockerfile`/compose para desplegar `dockinng-server` en un
+  contenedor (que es el objetivo final pedido).
+- [ ] `/api/auth/login` no tiene límite de intentos (solo mitiga el canal lateral de tiempo
+  con un hash señuelo); falta *rate limiting* contra fuerza bruta.
+- [ ] No hay registro de auditoría de acciones de administración (alta/baja/cambio de rol).
+- [ ] El administrador inicial se crea desde variables de entorno con la contraseña en claro
+  al arrancar; no hay una vía más segura (ej. prompt interactivo o rotación obligatoria).
+- [ ] Decisión de diseño documentada, no bloqueante: el token de sesión usa UUID v4, no v7
+  (excepción a la regla global, igual que `LOCAL_CONNECTION_ID` en `store`: es un secreto
+  efímero, no un id de recurso — ver comentario en `server/src/session.rs`).
+- [ ] Faltan pruebas de integración de los últimos dos endpoints de permiso fino que no llegué
+  a cubrir con Docker real (solo con `MockEngine`): ningún endpoint de acción existe aún, así
+  que esto se retoma junto con el ítem de arriba.
+
 ## Auditoría de correcciones (2026-10-06, integrada en develop)
 
 Pendientes que quedaron abiertos tras las correcciones de la auditoría completa:
