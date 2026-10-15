@@ -1323,6 +1323,11 @@ export const API_ERRORS_BY_CODE: Record<ApiErrorCode, ApiError> = {
     "code": "engine",
     "message": "mensaje de Engine"
   },
+  "forbidden": {
+    "cause": null,
+    "code": "forbidden",
+    "message": "mensaje de Forbidden"
+  },
   "image_missing": {
     "cause": null,
     "code": "image_missing",
@@ -1392,6 +1397,11 @@ export const API_ERRORS_BY_CODE: Record<ApiErrorCode, ApiError> = {
     "cause": null,
     "code": "typed_mismatch",
     "message": "mensaje de TypedMismatch"
+  },
+  "unauthenticated": {
+    "cause": null,
+    "code": "unauthenticated",
+    "message": "mensaje de Unauthenticated"
   }
 }
 export const API_ERRORS_BY_CAUSE: Record<ConnectionCause, ApiError> = {
@@ -1898,7 +1908,7 @@ export const FEED_StatsFeed: StatsFeed[] = [
 ]
 
 /** Variantes de ApiErrorCode en Rust (exhaustivo en ambos sentidos). */
-export const ENUM_ApiErrorCode: Record<ApiErrorCode, true> = { "connection": true, "not_found": true, "conflict": true, "invalid_input": true, "engine": true, "timeout": true, "policy_denied": true, "ticket_invalid": true, "ticket_expired": true, "typed_mismatch": true, "state_changed": true, "not_implemented": true, "internal": true, "compose_missing": true, "compose_failed": true, "invalid_compose": true, "image_missing": true, "auth_required": true, "registry_unreachable": true, "no_shell": true }
+export const ENUM_ApiErrorCode: Record<ApiErrorCode, true> = { "connection": true, "not_found": true, "conflict": true, "invalid_input": true, "engine": true, "timeout": true, "policy_denied": true, "ticket_invalid": true, "ticket_expired": true, "typed_mismatch": true, "state_changed": true, "not_implemented": true, "internal": true, "compose_missing": true, "compose_failed": true, "invalid_compose": true, "image_missing": true, "auth_required": true, "registry_unreachable": true, "no_shell": true, "unauthenticated": true, "forbidden": true }
 
 /** Variantes de BuildOutcome en Rust (exhaustivo en ambos sentidos). */
 export const ENUM_BuildOutcome: Record<BuildOutcome, true> = { "ok": true, "failed": true, "canceled": true }
@@ -1940,7 +1950,7 @@ export const ENUM_HostKeyState: Record<HostKeyState, true> = { "unknown": true, 
 export const ENUM_IssueKind: Record<ValidationKind, true> = { "syntax": true, "schema": true, "interpolation": true, "other": true }
 
 /** Variantes de AffectedKind en Rust (exhaustivo en ambos sentidos). */
-export const ENUM_ItemKind: Record<AffectedKind, true> = { "container": true, "image": true, "volume": true, "network": true, "stack": true }
+export const ENUM_ItemKind: Record<AffectedKind, true> = { "container": true, "image": true, "volume": true, "network": true, "stack": true, "connection": true }
 
 /** Variantes de LayerPhase en Rust (exhaustivo en ambos sentidos). */
 export const ENUM_LayerPhase: Record<LayerPhase, true> = { "waiting": true, "downloading": true, "downloaded": true, "extracting": true, "complete": true }
@@ -2039,6 +2049,10 @@ export const TYPE_ActionRequest: ActionRequest[] = [
   },
   {
     "type": "prune_system"
+  },
+  {
+    "id": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3e",
+    "type": "remove_connection"
   }
 ]
 

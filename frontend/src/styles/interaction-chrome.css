@@ -1,5 +1,5 @@
-/* Ola 3: arrastrar filas a un grupo, ancho de la columna Nombre, chrome de ventana sin marco y ajustes de notificaciones/ventana.
-   Solo tokens del tema (nada de colores fijos): los pares se miden en styles/ola3.contrast.test.ts. */
+/* Interacción y chrome: arrastrar filas a un grupo, ancho de la columna Nombre, chrome de ventana sin marco y ajustes de notificaciones/ventana.
+   Solo tokens del tema (nada de colores fijos): los pares se miden en styles/interaction-chrome.contrast.test.ts. */
 
 /* ---------- Arrastrar filas a un grupo ---------- */
 .check-cell { display: inline-flex; align-items: center; gap: 2px; }
@@ -12,13 +12,13 @@ body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user
 /* Cabecera de grupo como destino: contorno del color del grupo; stack = destino no válido (borde punteado + cursor bloqueado, no solo color). */
 body.is-row-dragging tr.group-row[data-drop-key][data-drop="over"] td { outline: 2px solid var(--grp); outline-offset: -2px; }
 body.is-row-dragging tr.group-row[data-drop-key][data-drop="deny"] td { outline: 2px dashed var(--destructive); outline-offset: -2px; cursor: not-allowed; }
-.drag-tray { position: fixed; z-index: 60; left: 50%; bottom: 20px; transform: translateX(-50%); display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; max-width: min(760px, calc(100vw - 32px)); padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--popover); color: var(--popover-foreground); box-shadow: 0 8px 28px color-mix(in oklch, black 28%, transparent); }
+.drag-tray { position: fixed; z-index: var(--z-menu); left: 50%; bottom: 20px; transform: translateX(-50%); display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; max-width: min(760px, calc(100vw - 32px)); padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--popover); color: var(--popover-foreground); box-shadow: 0 8px 28px color-mix(in oklch, black 28%, transparent); }
 .drag-tray-label { font-size: var(--text-xs); color: var(--muted-foreground); }
 .drag-chip { --grp: oklch(var(--grp-l) var(--grp-c) var(--grp-h, 175)); display: inline-flex; align-items: center; gap: 6px; max-width: 220px; padding: 6px 12px; border: 1px dashed var(--border); border-radius: 999px; background: var(--card); font-size: var(--text-sm); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .drag-chip .grp-swatch { background: var(--grp); }
 .drag-chip[data-drop="over"] { border: 2px solid var(--grp); padding: 5px 11px; background: color-mix(in oklch, var(--grp) 14%, var(--card)); }
 .drag-chip[data-drop-key="none"][data-drop="over"] { --grp: var(--ring); }
-.drag-ghost { position: fixed; z-index: 61; left: 0; top: 0; pointer-events: none; padding: 4px 10px; border-radius: var(--radius-md); background: var(--primary); color: var(--primary-foreground); font-size: var(--text-xs); font-weight: 600; box-shadow: 0 4px 14px color-mix(in oklch, black 30%, transparent); }
+.drag-ghost { position: fixed; z-index: var(--z-drag-ghost); left: 0; top: 0; pointer-events: none; padding: 4px 10px; border-radius: var(--radius-md); background: var(--primary); color: var(--primary-foreground); font-size: var(--text-xs); font-weight: 600; box-shadow: 0 4px 14px color-mix(in oklch, black 30%, transparent); }
 @media (prefers-reduced-motion: reduce) { .drag-tray, .drag-chip, .row-grip { transition: none; animation: none; } }
 
 /* ---------- Ancho de la columna Nombre ---------- */
@@ -27,7 +27,7 @@ th.col-fill, td.col-fill { display: none; padding: 0; }
 /* min = width = max: en auto-layout un `width` en px es solo una sugerencia y se comprime; así el ancho elegido es EXACTO (si no cabe, la vista hace scroll horizontal). */
 .table-wrap.name-fixed td.cell-name, .table-wrap.name-fixed th.cell-name { width: var(--name-w); min-width: var(--name-w); max-width: var(--name-w); }
 th.cell-name { position: sticky; }
-.name-resizer { position: absolute; top: 0; bottom: 0; right: 0; width: 8px; cursor: col-resize; touch-action: none; z-index: 3; display: flex; justify-content: center; }
+.name-resizer { position: absolute; top: 0; bottom: 0; right: 0; width: 8px; cursor: col-resize; touch-action: none; z-index: var(--z-resizer); display: flex; justify-content: center; }
 .name-resizer::before { content: ""; width: 2px; height: 60%; align-self: center; border-radius: 1px; background: var(--border); }
 .name-resizer:hover::before, .name-resizer.is-active::before { background: var(--ring); }
 .name-resizer:focus-visible { outline: 2px solid var(--ring); outline-offset: -1px; }
@@ -42,7 +42,7 @@ body.is-col-resizing, body.is-col-resizing * { cursor: col-resize !important; us
 .window-chrome .wc-btn:hover { background: color-mix(in oklch, var(--accent) 80%, transparent); }
 .window-chrome .wc-btn:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 .window-chrome .wc-btn.wc-close:hover { background: var(--destructive); color: var(--destructive-foreground); }
-.win-edge { position: fixed; z-index: 80; }
+.win-edge { position: fixed; z-index: var(--z-win-edge); }
 .win-edge[data-edge="north"], .win-edge[data-edge="south"] { left: 8px; right: 8px; height: 5px; cursor: ns-resize; }
 .win-edge[data-edge="east"], .win-edge[data-edge="west"] { top: 8px; bottom: 8px; width: 5px; cursor: ew-resize; }
 .win-edge[data-edge="north"] { top: 0; } .win-edge[data-edge="south"] { bottom: 0; }

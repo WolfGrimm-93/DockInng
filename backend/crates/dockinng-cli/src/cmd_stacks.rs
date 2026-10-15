@@ -1,5 +1,6 @@
 //! `stacks ls|up|down|restart|stop|start|pull`. Reutiliza el ejecutor de Compose de la GUI.
 
+use crate::error::CliError;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -14,7 +15,7 @@ use crate::confirm::Stdin;
 use crate::ctx::{Ctx, ctrl_c};
 use crate::output::{print_json, print_lines, print_ndjson, table};
 
-pub async fn ls(ctx: &Ctx) -> Result<(), String> {
+pub async fn ls(ctx: &Ctx) -> Result<(), CliError> {
     let containers = ctx
         .engine
         .list_compose_containers()
@@ -88,7 +89,7 @@ pub async fn run_op(
     ctx: &Ctx,
     t: StackTarget,
     op: fn(Option<Vec<String>>) -> StackOp,
-) -> Result<(), String> {
+) -> Result<(), CliError> {
     let services = (!t.services.is_empty()).then_some(t.services);
     let runner = ctx.runner();
     let prepared = runner
@@ -117,14 +118,14 @@ pub async fn run_op(
         Some(StackOpFeed::Ended { outcome, error, .. }) => Err(match (outcome, error) {
             (StackOutcome::Canceled, _) => "operación cancelada".into(),
             (StackOutcome::Timeout, _) => "la operación superó el tiempo máximo".into(),
-            (_, Some(e)) => e.message,
+            (_, Some(e)) => e.message.into(),
             _ => "la operación falló".into(),
         }),
         _ => Err("la operación terminó sin resultado".into()),
     }
 }
 
-pub async fn down(ctx: &Ctx, name: &str) -> Result<(), String> {
+pub async fn down(ctx: &Ctx, name: &str) -> Result<(), CliError> {
     // Confirmación escrita (el nombre del stack): nunca se salta con `--yes`. Sin `-v`.
     apply(
         ctx,

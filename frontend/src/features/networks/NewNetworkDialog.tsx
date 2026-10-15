@@ -69,7 +69,7 @@ export function NewNetworkDialog({ open, existing, onClose, onCreated }: { open:
         <label htmlFor="nnDriver">Driver</label>
         <Select id="nnDriver" value="bridge" disabled><option value="bridge">bridge</option></Select>
       </div>
-      <label className="ro-check" style={{ whiteSpace: 'normal' }}>
+      <label className="ro-check whitespace-normal" >
         <input type="checkbox" role="switch" checked={internal} onChange={(x) => setInternal(x.target.checked)} />
         <span>Red interna (sin salida a internet)</span>
       </label>

@@ -1,5 +1,6 @@
 //! Formato de salida: tablas puras (sin TTY: la misma salida en modo no interactivo) y JSON.
 
+use crate::error::CliError;
 use std::io::{self, Write};
 
 use engine_core::{Container, Image, Network, Volume};
@@ -142,7 +143,7 @@ pub fn print_lines(lines: &[String]) {
 }
 
 /// JSON con sangría (listados y planes).
-pub fn print_json<T: Serialize>(v: &T) -> Result<(), String> {
+pub fn print_json<T: Serialize>(v: &T) -> Result<(), CliError> {
     let s = serde_json::to_string_pretty(v).map_err(|e| e.to_string())?;
     print_lines(&[s]);
     Ok(())

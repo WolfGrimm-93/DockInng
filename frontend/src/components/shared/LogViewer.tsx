@@ -41,7 +41,7 @@ export function LogViewer({ lines, follow, level = 'all', query = '', label }: {
   return (
     <div className="logs-wrap">
       <div className="console" ref={parentRef} tabIndex={0} role="log" aria-live="off" aria-label={label}>
-        <div style={{ height: virt.getTotalSize(), position: 'relative', width: '100%' }}>
+        <div className="relative w-full" style={{ height: virt.getTotalSize() }}>
           {virt.getVirtualItems().map((v) => {
             const l = rows[v.index]
             return (
@@ -49,8 +49,8 @@ export function LogViewer({ lines, follow, level = 'all', query = '', label }: {
                 key={v.key}
                 data-index={v.index}
                 ref={virt.measureElement}
-                className={`log-line ${l.level === 'ERROR' ? 'is-error' : l.level === 'WARN' ? 'is-warn' : ''}`}
-                style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${v.start}px)` }}
+                className={`log-line absolute top-0 left-0 w-full ${l.level === 'ERROR' ? 'is-error' : l.level === 'WARN' ? 'is-warn' : ''}`}
+                style={{ transform: `translateY(${v.start}px)` }}
               >
                 <span className="log-ts">{l.ts}</span>
                 <span className={`log-lvl ${logLevelClass(l.level)}`}>{l.level}</span>

@@ -62,7 +62,7 @@ describe('contrato IPC: comandos y argumentos del adaptador frente a Rust', () =
     await api.connections.trustHostKey(spec, 'SHA256:x')
     await api.actions.plan({ type: 'prune_images' })
     await api.actions.execute('tk', 'typed')
-    await api.actions.execute('tk')
+    await api.actions.execute('tk', undefined)
     await api.actions.cancel('tk')
     await api.containers.list(true)
     await api.containers.inspect('x')

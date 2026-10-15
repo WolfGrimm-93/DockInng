@@ -79,7 +79,7 @@ export function RegistriesSection({ presetServer }: { presetServer?: string | nu
   return (
     <section aria-labelledby="sReg">
       <h2 className="section-title" id="sReg">Registros de imágenes {simulated ? <SimulatedTag /> : null}</h2>
-      <p className="muted" style={{ fontSize: 'var(--text-xs)', marginBottom: 8 }}>Credenciales para descargar imágenes privadas. La contraseña o el token se guarda en el llavero del sistema, entra una sola vez y <b>no se vuelve a mostrar</b>. «Probar» se hace con el motor activo: con una conexión TLS directa solo funciona con el socket local o un túnel SSH.</p>
+      <p className="muted text-[length:var(--text-xs)] mb-2" >Credenciales para descargar imágenes privadas. La contraseña o el token se guarda en el llavero del sistema, entra una sola vez y <b>no se vuelve a mostrar</b>. «Probar» se hace con el motor activo: con una conexión TLS directa solo funciona con el socket local o un túnel SSH.</p>
       {loadError ? <AlertBox kind="error" icon="alert" title="No se pudieron leer los registros" text={loadError} actions={<Button variant="secondary" size="sm" onClick={load}><Icon name="refresh" size="sm" />Reintentar</Button>} /> : null}
       <div className="card">
         {rows === null && !loadError ? <div className="setting-row"><span className="muted">Cargando…</span></div> : null}
@@ -91,8 +91,8 @@ export function RegistriesSection({ presetServer }: { presetServer?: string | nu
               <div className="grow">
                 <b className="mono"><SafeName ellipsis>{r.server}</SafeName></b>
                 <small>Usuario <SafeName>{r.username}</SafeName> · contraseña en el llavero</small>
-                {t?.state === 'ok' ? <small role="status" style={{ color: 'var(--status-running)' }}><Icon name="check" size="sm" /> Credenciales válidas</small> : null}
-                {t?.state === 'fail' ? <small role="status" style={{ color: 'var(--status-dead)' }}><Icon name="alert" size="sm" /> {safeText(t.text, { singleLine: true })}</small> : null}
+                {t?.state === 'ok' ? <small role="status" className="text-status-running"><Icon name="check" size="sm" /> Credenciales válidas</small> : null}
+                {t?.state === 'fail' ? <small role="status" className="text-status-dead"><Icon name="alert" size="sm" /> {safeText(t.text, { singleLine: true })}</small> : null}
               </div>
               <Button variant="secondary" size="sm" disabled={t?.state === 'testing'} onClick={() => void test(r)}><Icon name={t?.state === 'testing' ? 'loader' : 'zap'} size="sm" spin={t?.state === 'testing'} />Probar</Button>
               <Button variant="outline-destructive" size="sm" aria-label={`Eliminar las credenciales de ${safeText(r.server, { singleLine: true })}`} onClick={() => void remove(r)}><Icon name="trash" size="sm" />Eliminar</Button>
@@ -100,7 +100,7 @@ export function RegistriesSection({ presetServer }: { presetServer?: string | nu
           )
         })}
       </div>
-      <div style={{ marginTop: 10 }}><Button variant="primary" onClick={() => setOpen(true)}><Icon name="plus" />Añadir registro</Button></div>
+      <div className="mt-2.5"><Button variant="primary" onClick={() => setOpen(true)}><Icon name="plus" />Añadir registro</Button></div>
 
       <FormDialog open={open} onClose={close} title="Añadir registro" icon="lock" submitLabel="Guardar en el llavero" submitIcon="lock" busy={busy} formError={formError} initialFocus={first} onSubmit={() => void submit()}
         description={<p>El secreto se envía una sola vez al llavero del sistema y no se puede volver a ver.</p>}>

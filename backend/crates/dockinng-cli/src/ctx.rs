@@ -1,5 +1,6 @@
 //! Contexto de ejecución de los comandos: motor, servicios y modo de salida.
 
+use crate::error::CliError;
 use std::sync::Arc;
 
 use compose::ComposeRunner;
@@ -34,7 +35,7 @@ impl Ctx {
         &self,
         store: &Store,
         profile: &ConnectionProfile,
-    ) -> Result<(), String> {
+    ) -> Result<(), CliError> {
         let prepared = self
             .remote
             .prepare(&profile.spec, &store.known_hosts_path())
@@ -84,6 +85,14 @@ impl Ctx {
         ))
     }
 
+    /// Acciones con acceso a los perfiles guardados (`context rm`).
+    pub fn actions_with_connections(
+        &self,
+        profiles: Arc<dyn engine_core::ConnectionControl>,
+    ) -> ActionService {
+        ActionService::with_connections(self.engine.clone(), profiles)
+    }
+
     /// Acciones con control de stacks (`stacks down`).
     pub fn actions_with_stacks(&self) -> ActionService {
         let control: Arc<dyn StackControl> = self.runner();
@@ -101,8 +110,8 @@ impl Ctx {
 }
 
 /// Convierte un error de la API en el texto que ve la persona.
-pub fn api_msg(e: impl Into<engine_core::ApiError>) -> String {
-    e.into().message
+pub fn api_msg(e: impl Into<engine_core::ApiError>) -> CliError {
+    CliError::from(e.into())
 }
 
 /// Se completa al pulsar Ctrl-C (cancelación limpia de operaciones largas).

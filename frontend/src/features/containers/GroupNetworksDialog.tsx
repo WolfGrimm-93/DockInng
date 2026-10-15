@@ -23,7 +23,7 @@ function Body({ group, closeRef, onClose }: { group: NetworksTarget; closeRef: R
     <>
       <div className="dlg-body">
         <span className="dlg-ico"><Icon name="network" size="lg" /></span>
-        <div style={{ minWidth: 0 }}>
+        <div className="min-w-0">
           <DialogTitle>Redes de {kind} {label}</DialogTitle>
           <DialogDescription render={<p />}>{plural(nets.length, 'red', 'redes')} · {plural(group.containers.length, 'contenedor', 'contenedores')} en el grupo</DialogDescription>
           <div className="net-scroll" tabIndex={0} role="region" aria-label={`Redes de ${label}`}>
@@ -56,7 +56,7 @@ function Body({ group, closeRef, onClose }: { group: NetworksTarget; closeRef: R
               </section>
             ))}
           </div>
-          <p className="muted" style={{ fontSize: 'var(--text-xs)', marginTop: 8 }}>No se muestran las redes del sistema (bridge, host, none).</p>
+          <p className="muted text-[length:var(--text-xs)] mt-2" >No se muestran las redes del sistema (bridge, host, none).</p>
         </div>
       </div>
       <div className="dlg-foot"><Button ref={closeRef} variant="secondary" onClick={onClose}>Cerrar</Button></div>

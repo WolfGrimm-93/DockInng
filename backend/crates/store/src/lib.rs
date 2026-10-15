@@ -10,9 +10,11 @@ mod connections;
 mod db;
 mod error;
 mod groups;
+pub mod password;
 mod prefs;
 mod registries;
 pub mod secrets;
+mod users;
 
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
@@ -21,6 +23,7 @@ use rusqlite::Connection;
 
 pub use error::StoreError;
 pub use secrets::{KeyringSecrets, MemorySecrets, SecretStore, default_builder_is_mock};
+pub use users::UserRecord;
 
 /// Nombre del archivo de la base de datos dentro del directorio de datos.
 pub const DB_FILE: &str = "store.db";
@@ -89,13 +92,8 @@ impl Store {
     }
 }
 
-/// Segundos desde la época Unix.
-pub(crate) fn now_secs() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
-}
+/// Segundos desde la época Unix: la misma función que el resto de la base (`engine_core`).
+pub(crate) use engine_core::now_unix_secs as now_secs;
 
 /// Id nuevo (UUID v7).
 pub(crate) fn new_id() -> String {

@@ -9,6 +9,7 @@ use engine_docker::DockerEngine;
 use store::{KeyringSecrets, SecretStore, Store};
 use transport::RemoteManager;
 
+use crate::approvals::{ApprovalSource, DenyApprovals};
 use crate::build_feed::BuildGuards;
 use crate::exec_sessions::ExecSessions;
 use crate::pull_feed::PullGuards;
@@ -49,6 +50,9 @@ pub struct AppState {
     pub switch_lock: tokio::sync::RwLock<()>,
     /// Bandeja, notificaciones, preferencias de ventana y estado de cierre.
     pub shell: ShellState,
+    /// Origen de la aprobación humana de acciones que exigen confirmación. En la app es el
+    /// diálogo nativo; por defecto (tests, arranque) nunca aprueba.
+    pub approvals: Arc<dyn ApprovalSource>,
 }
 
 impl AppState {
@@ -155,6 +159,7 @@ impl AppState {
             secrets: Arc::new(KeyringSecrets::default()),
             switch_lock: tokio::sync::RwLock::new(()),
             shell: ShellState::new(),
+            approvals: Arc::new(DenyApprovals),
         }
     }
 }

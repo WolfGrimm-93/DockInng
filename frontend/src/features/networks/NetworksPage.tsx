@@ -108,7 +108,7 @@ export default function NetworksPage() {
             )
           }}
         />
-        <p className="muted" style={{ fontSize: 'var(--text-xs)' }}>Las redes del sistema y las que tienen contenedores conectados no se pueden eliminar.</p>
+        <p className="muted text-[length:var(--text-xs)]" >Las redes del sistema y las que tienen contenedores conectados no se pueden eliminar.</p>
       </div>
       {dialog}
     </>

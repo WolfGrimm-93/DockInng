@@ -50,7 +50,7 @@ export function SkeletonTable({ cols, rows }: { cols: number; rows: number }) {
         <thead>
           <tr>
             {Array.from({ length: cols }, (_, i) => (
-              <th key={i}><span className="skeleton" style={{ width: 40 + ((i * 13) % 40), height: 10 }} /></th>
+              <th key={i}><span className="skeleton h-2.5" style={{ width: 40 + ((i * 13) % 40) }} /></th>
             ))}
           </tr>
         </thead>
@@ -104,7 +104,7 @@ export function ErrorPanel({ diagnostic, connectionName, target, onRetry, onChan
               <b>{i + 1}. {s.title}</b>
               <p>{s.detail}</p>
               {s.command ? <code>{s.command}</code> : null}
-              {s.hint ? <p style={{ marginTop: 6 }}>{s.hint}</p> : null}
+              {s.hint ? <p className="mt-1.5">{s.hint}</p> : null}
             </div>
             <span className="tag" style={s.state === 'fail' ? { color: 'var(--status-dead)' } : undefined}>{s.tag}</span>
           </li>
@@ -170,9 +170,9 @@ export function ComposeMissing({ onRecheck, compact, detail }: { onRecheck(): vo
             <b>docker compose version</b>
             <p>{detail || 'Comando no encontrado.'}</p>
             <code>sudo pacman -S docker-compose</code>
-            <p style={{ marginTop: 6 }}>En Debian o Ubuntu: <code style={{ display: 'inline', padding: '0 4px', margin: 0 }}>sudo apt install docker-compose-plugin</code></p>
+            <p className="mt-1.5">En Debian o Ubuntu: <code className="inline px-1 m-0">sudo apt install docker-compose-plugin</code></p>
           </div>
-          <span className="tag" style={{ color: 'var(--status-dead)' }}>Falta</span>
+          <span className="tag text-status-dead" >Falta</span>
         </li>
       </ol>
       <footer>

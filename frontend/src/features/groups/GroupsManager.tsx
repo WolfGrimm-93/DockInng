@@ -27,13 +27,12 @@ function GroupRow({ g, count }: { g: CustomGroup; count: number }) {
   return (
     <div className="setting-row group-row-cfg" role="group" aria-label={`Grupo ${safeText(g.name, { singleLine: true })}`}>
       <span className="grp-swatch grp-swatch-lg" style={hueStyle(g.hue)} aria-hidden="true" />
-      <div className="grow" style={{ minWidth: 0, display: 'grid', gap: 6 }}>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+      <div className="grow grid min-w-0 gap-1.5">
+        <div className="flex flex-wrap items-center gap-2">
           <label className="sr-only" htmlFor={`gn-${g.id}`}>Nombre del grupo</label>
           <input
             id={`gn-${g.id}`}
-            className="input"
-            style={{ maxWidth: 260 }}
+            className="input max-w-[260px]"
             value={name}
             maxLength={MAX_GROUP_NAME + 10}
             aria-invalid={err ? true : undefined}
@@ -42,14 +41,14 @@ function GroupRow({ g, count }: { g: CustomGroup; count: number }) {
             onBlur={commit}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur() } else if (e.key === 'Escape') setName(g.name) }}
           />
-          <span className="muted" style={{ fontSize: 'var(--text-xs)' }}>{count === 0 ? 'Sin contenedores' : `${count} contenedor${count > 1 ? 'es' : ''}`}</span>
+          <span className="muted text-xs">{count === 0 ? 'Sin contenedores' : `${count} contenedor${count > 1 ? 'es' : ''}`}</span>
         </div>
         {err ? <small id={`ge-${g.id}`} role="status" className="field-error">{err}</small> : null}
         <HuePicker value={g.hue} onChange={(h) => setHue(g.id, h)} label={`Color del grupo ${safeText(g.name, { singleLine: true })}`} />
       </div>
       {confirmDel ? (
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }} role="group" aria-label="Confirmar eliminación del grupo">
-          <span className="muted" style={{ fontSize: 'var(--text-xs)' }}>Los contenedores no se tocan.</span>
+        <div className="flex items-center gap-1.5" role="group" aria-label="Confirmar eliminación del grupo">
+          <span className="muted text-xs">Los contenedores no se tocan.</span>
           <Button variant="destructive" size="sm" onClick={() => del(g.id)}>Eliminar grupo</Button>
           <Button variant="secondary" size="sm" onClick={() => setConfirmDel(false)}>Cancelar</Button>
         </div>
@@ -160,8 +159,8 @@ export function GroupsManager() {
             return (
               <div className="setting-row group-row-cfg" key={p} role="group" aria-label={`Stack ${safeText(p, { singleLine: true })}`}>
                 <span className="grp-swatch grp-swatch-lg" style={hueStyle(hue)} aria-hidden="true" />
-                <div className="grow" style={{ minWidth: 0, display: 'grid', gap: 6 }}>
-                  <b>{safeText(p, { singleLine: true })} <span className="muted" style={{ fontWeight: 400, fontSize: 'var(--text-xs)' }}>{custom === undefined ? '· color automático' : '· color elegido'}</span></b>
+                <div className="grow grid min-w-0 gap-1.5">
+                  <b>{safeText(p, { singleLine: true })} <span className="muted font-normal text-xs">{custom === undefined ? '· color automático' : '· color elegido'}</span></b>
                   <HuePicker value={hue} onChange={(h) => setStackHue(p, h)} label={`Color del stack ${safeText(p, { singleLine: true })}`} />
                 </div>
                 {custom === undefined ? null : <Button variant="secondary" size="sm" onClick={() => setStackHue(p, null)}>Color automático</Button>}

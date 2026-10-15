@@ -99,7 +99,7 @@ export default function SettingsPage() {
         count={tab === 'connections' ? `${conn.profiles.length} conexiones` : null}
         primary={tab === 'connections' ? <LinkButton variant="primary" href={route.href('conn-new')}><Icon name="plus" />Añadir conexión</LinkButton> : undefined}
       />
-      <Tabs value={tab} onValueChange={(v) => setTab(v as SettingsTab)} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+      <Tabs value={tab} onValueChange={(v) => setTab(v as SettingsTab)} className="flex flex-col flex-1 min-h-0">
         <TabsList aria-label="Secciones de configuración">
           {TABS.map((t) => (
             <TabsTab key={t.id} value={t.id}><Icon name={t.icon} />{t.label}</TabsTab>
@@ -144,7 +144,7 @@ export default function SettingsPage() {
                 </div>
               ))}
             </div>
-            <p className="muted" style={{ fontSize: 'var(--text-xs)', marginTop: 6 }}>El caso «Denegado sin interacción» de la política solo existe en la línea de comandos; en la interfaz gráfica no aplica.</p>
+            <p className="muted text-[length:var(--text-xs)] mt-1.5" >El caso «Denegado sin interacción» de la política solo existe en la línea de comandos; en la interfaz gráfica no aplica.</p>
           </section>
 
           <section aria-labelledby="sRisk">
@@ -180,7 +180,7 @@ export default function SettingsPage() {
           {dev ? (
             <section aria-labelledby="sPrev">
               <h2 className="section-title" id="sPrev">Vista previa de estados <span className="tag">Solo plantilla</span></h2>
-              <div className="card card-pad" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <div className="card card-pad flex flex-wrap gap-2" >
                 {PREVIEWS.map((x) => <Button key={x.label} variant="secondary" size="sm" onClick={() => applyPreview(x.p)}>{x.label}</Button>)}
                 <LinkButton variant="secondary" size="sm" href={route.href('create')}>Nuevo contenedor</LinkButton>
                 <LinkButton variant="secondary" size="sm" href={route.href('pull', { pull: 'running' })}>Descarga en curso</LinkButton>

@@ -101,10 +101,6 @@ pub enum BuildFeed {
     },
 }
 
-fn invalid(msg: impl Into<String>) -> EngineError {
-    EngineError::InvalidInput(msg.into())
-}
-
 fn has_control(s: &str) -> bool {
     s.chars().any(|c| c.is_control())
 }
@@ -115,7 +111,7 @@ pub fn validate_spec(spec: &BuildSpec) -> Result<(), EngineError> {
         || spec.context_dir.len() > 4096
         || has_control(&spec.context_dir)
     {
-        return Err(invalid("directorio de contexto inválido"));
+        return Err(EngineError::invalid("directorio de contexto inválido"));
     }
     if let Some(df) = &spec.dockerfile {
         validate_dockerfile(df)?;
@@ -123,7 +119,9 @@ pub fn validate_spec(spec: &BuildSpec) -> Result<(), EngineError> {
     if let Some(tag) = &spec.tag {
         crate::pull::validate_reference(tag)?;
         if tag.starts_with('-') || tag.contains('@') {
-            return Err(invalid("la etiqueta de la imagen no puede ser un digest"));
+            return Err(EngineError::invalid(
+                "la etiqueta de la imagen no puede ser un digest",
+            ));
         }
     }
     if let Some(t) = &spec.target {
@@ -133,11 +131,13 @@ pub fn validate_spec(spec: &BuildSpec) -> Result<(), EngineError> {
             && t.chars()
                 .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'));
         if !ok {
-            return Err(invalid("nombre de target con caracteres no permitidos"));
+            return Err(EngineError::invalid(
+                "nombre de target con caracteres no permitidos",
+            ));
         }
     }
     if spec.build_args.len() > MAX_BUILD_ARGS {
-        return Err(invalid(format!(
+        return Err(EngineError::invalid(format!(
             "demasiados build args (máximo {MAX_BUILD_ARGS})"
         )));
     }
@@ -151,19 +151,19 @@ pub fn validate_spec(spec: &BuildSpec) -> Result<(), EngineError> {
                 .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
             && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
         if !ok {
-            return Err(invalid("nombre de build arg inválido"));
+            return Err(EngineError::invalid("nombre de build arg inválido"));
         }
         if reserved_arg_name(name) {
-            return Err(invalid(
+            return Err(EngineError::invalid(
                 "ese nombre de build arg está reservado (variables de entorno del sistema o de Docker)",
             ));
         }
         if !seen.insert(name.as_str()) {
-            return Err(invalid("build arg repetido"));
+            return Err(EngineError::invalid("build arg repetido"));
         }
         // Sin saltos de línea ni controles (los valores no se citan en ningún mensaje).
         if value.len() > 4096 || has_control(value) {
-            return Err(invalid("valor de build arg inválido"));
+            return Err(EngineError::invalid("valor de build arg inválido"));
         }
     }
     Ok(())
@@ -213,15 +213,17 @@ pub fn reserved_arg_name(name: &str) -> bool {
 /// El Dockerfile es relativo al contexto y no puede escapar de él.
 pub fn validate_dockerfile(df: &str) -> Result<(), EngineError> {
     if df.is_empty() || df.len() > 512 || has_control(df) {
-        return Err(invalid("ruta de Dockerfile inválida"));
+        return Err(EngineError::invalid("ruta de Dockerfile inválida"));
     }
     if df.starts_with('/') || df.starts_with('-') || df.starts_with('~') {
-        return Err(invalid(
+        return Err(EngineError::invalid(
             "el Dockerfile debe ser una ruta relativa al contexto",
         ));
     }
     if df.split('/').any(|seg| seg == "..") {
-        return Err(invalid("el Dockerfile no puede salir del contexto"));
+        return Err(EngineError::invalid(
+            "el Dockerfile no puede salir del contexto",
+        ));
     }
     Ok(())
 }

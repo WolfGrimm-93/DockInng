@@ -43,7 +43,7 @@ function CategoryCard({ cat, picked, open, onToggleOpen, onToggleItem, onToggleA
       <header className="cleanup-head">
         {cat.executable && cat.items.length > 0 ? (
           <Checkbox aria-label={`Seleccionar todo en ${meta.title}`} checked={all} indeterminate={sel > 0 && !all} onChange={(e) => onToggleAll(e.target.checked)} />
-        ) : <span style={{ width: 16 }} aria-hidden="true" />}
+        ) : <span className="w-4" aria-hidden="true" />}
         <button type="button" className="cleanup-toggle" aria-expanded={open} aria-controls={open ? bodyId : undefined} onClick={onToggleOpen}>
           <Icon name="chev-down" size="sm" className="chev" />
           <b id={`${bodyId}-t`}>{meta.title}</b>
@@ -153,7 +153,7 @@ export default function CleanupPage() {
       {head}
       <div className="toolbar">
         <label className="muted" htmlFor="clAge">Imágenes sin usar:</label>
-        <select id="clAge" className="input" style={{ maxWidth: 220 }} value={age} onChange={(e) => setAge(Number(e.target.value))}>
+        <select id="clAge" className="input max-w-[220px]"  value={age} onChange={(e) => setAge(Number(e.target.value))}>
           {AGES.map((a) => <option key={a.v} value={a.v}>{a.label}</option>)}
         </select>
         <span className="muted">Solo lectura hasta que confirmes. Nunca se ejecuta <code>prune</code>.</span>

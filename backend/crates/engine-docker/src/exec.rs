@@ -89,6 +89,23 @@ async fn run_quiet(
     }
 }
 
+/// Shell según el código de salida de la sonda `[ -x /bin/bash ]`: 0 = bash; 126/127 = no hay
+/// ejecutable (`None` => `no_shell`); cualquier otro código (p. ej. 1) = no hay bash, sh.
+fn shell_for_probe_exit(code: i64) -> Option<&'static str> {
+    match code {
+        0 => Some("/bin/bash"),
+        126 | 127 => None,
+        _ => Some("/bin/sh"),
+    }
+}
+
+/// Un error del daemon que significa "ese ejecutable no existe" (la sonda no llega a ejecutar).
+fn is_missing_shell_message(message: &str) -> bool {
+    message.contains("no such file")
+        || message.contains("not found")
+        || message.contains("executable file")
+}
+
 /// Decide el shell: `/bin/bash` si existe, si no `/bin/sh`; sin `/bin/sh` => `no_shell`.
 async fn probe_shell(d: &Docker, container: &str) -> Result<&'static str, EngineError> {
     let no_shell = || {
@@ -99,19 +116,53 @@ async fn probe_shell(d: &Docker, container: &str) -> Result<&'static str, Engine
     };
     let cmd = vec!["/bin/sh".into(), "-c".into(), "[ -x /bin/bash ]".into()];
     match run_quiet(d, container, cmd, PROBE_TIMEOUT).await {
-        Ok(0) => Ok("/bin/bash"),
-        Ok(126) | Ok(127) => Err(no_shell()),
-        // 1 = no hay bash (o cualquier otro código): sh.
-        Ok(_) => Ok("/bin/sh"),
+        Ok(code) => shell_for_probe_exit(code).ok_or_else(no_shell),
         Err(EngineError::Engine { message, .. } | EngineError::InvalidInput(message))
-            if message.contains("no such file")
-                || message.contains("not found")
-                || message.contains("executable file") =>
+            if is_missing_shell_message(&message) =>
         {
             Err(no_shell())
         }
         Err(e) => Err(e),
     }
+}
+
+/// Estado de un exec: (corriendo, código de salida, pid del proceso en el host).
+type ExecState = Option<(bool, Option<i64>, Option<i64>)>;
+
+/// Qué hace `close` a partir del estado leído: terminar ya o cascada de cierre.
+#[derive(Debug, PartialEq, Eq)]
+enum ClosePlan {
+    /// Ya no corre (o no existe): se devuelve su código; no hay nada que matar.
+    Finished(Option<i64>),
+    /// Sigue corriendo: hay que intentar cerrarlo.
+    Running { host_pid: Option<i64> },
+}
+
+fn close_plan(state: ExecState) -> ClosePlan {
+    match state {
+        None => ClosePlan::Finished(None),
+        Some((false, code, _)) => ClosePlan::Finished(code),
+        Some((true, _, host_pid)) => ClosePlan::Running { host_pid },
+    }
+}
+
+/// Pid (dentro del contenedor) al que se manda `kill -HUP`. Solo con socket local y pid del
+/// host conocido; en remoto no se puede verificar el namespace, así que no hay objetivo.
+fn hup_target(local: bool, host_pid: Option<i64>, container_pid: Option<u32>) -> Option<u32> {
+    if local && host_pid.is_some() {
+        container_pid
+    } else {
+        None
+    }
+}
+
+/// Comando del exec de cierre. El pid es un entero ya validado (solo dígitos, > 1).
+fn kill_command(container_pid: u32) -> Vec<String> {
+    vec![
+        "/bin/sh".into(),
+        "-c".into(),
+        format!("kill -HUP {container_pid}"),
+    ]
 }
 
 /// Lee `NSpid` de `/proc/<pid>/status` y comprueba que el proceso pertenece al contenedor
@@ -194,20 +245,23 @@ impl ExecControl for DockerExecControl {
 
     async fn close(self: Box<Self>) -> Result<Option<i64>, EngineError> {
         // 0. ¿Ya terminó? Entonces no hay nada que matar.
-        let Some((running, code, host_pid)) = self.inspect().await else {
-            return Ok(None);
+        let host_pid = match close_plan(self.inspect().await) {
+            ClosePlan::Finished(code) => return Ok(code),
+            ClosePlan::Running { host_pid } => host_pid,
         };
-        if !running {
-            return Ok(code);
-        }
         // 1. Cascada verificada: `kill -HUP` con el pid que ve el contenedor.
-        if self.local
-            && let Some(pid) = host_pid
-            && let Some(inner) = container_pid_of(pid, &self.container_id).await
-        {
-            // `inner` es un entero validado (solo dígitos, > 1): se interpola sin riesgo.
-            let cmd = vec!["/bin/sh".into(), "-c".into(), format!("kill -HUP {inner}")];
-            let _ = run_quiet(&self.docker, &self.container_id, cmd, KILL_TIMEOUT).await;
+        let inner = match host_pid {
+            Some(pid) if self.local => container_pid_of(pid, &self.container_id).await,
+            _ => None,
+        };
+        if let Some(inner) = hup_target(self.local, host_pid, inner) {
+            let _ = run_quiet(
+                &self.docker,
+                &self.container_id,
+                kill_command(inner),
+                KILL_TIMEOUT,
+            )
+            .await;
             if let Some(code) = self.wait_stopped(KILL_TIMEOUT).await {
                 return Ok(code);
             }
@@ -322,5 +376,72 @@ impl ExecEngine for DockerEngine {
                 local,
             }),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sonda_de_shell_por_codigo_de_salida() {
+        assert_eq!(shell_for_probe_exit(0), Some("/bin/bash"));
+        // 1 = no hay bash: sh.
+        assert_eq!(shell_for_probe_exit(1), Some("/bin/sh"));
+        assert_eq!(shell_for_probe_exit(2), Some("/bin/sh"));
+        // Sin ejecutable: no hay terminal posible.
+        assert_eq!(shell_for_probe_exit(126), None);
+        assert_eq!(shell_for_probe_exit(127), None);
+    }
+
+    #[test]
+    fn mensajes_de_shell_inexistente_del_daemon() {
+        assert!(is_missing_shell_message(
+            "OCI runtime exec failed: exec: \"/bin/sh\": stat /bin/sh: no such file or directory"
+        ));
+        assert!(is_missing_shell_message(
+            "exec failed: executable file not found in $PATH"
+        ));
+        assert!(!is_missing_shell_message(
+            "error de red al hablar con el daemon"
+        ));
+    }
+
+    #[test]
+    fn cierre_ya_terminado_no_mata_nada() {
+        // Sin exec (inspect falló) o ya parado: se devuelve su código y no hay cascada.
+        assert_eq!(close_plan(None), ClosePlan::Finished(None));
+        assert_eq!(
+            close_plan(Some((false, Some(130), Some(42)))),
+            ClosePlan::Finished(Some(130))
+        );
+        assert_eq!(
+            close_plan(Some((true, None, Some(42)))),
+            ClosePlan::Running { host_pid: Some(42) }
+        );
+    }
+
+    #[test]
+    fn hup_solo_con_socket_local_y_pid_verificado() {
+        // Remoto: no se puede verificar el namespace de pids => no hay objetivo.
+        assert_eq!(hup_target(false, Some(42), Some(7)), None);
+        // Local sin pid del host: no hay de dónde partir.
+        assert_eq!(hup_target(true, None, Some(7)), None);
+        // Local con pid del host pero no verificado dentro del contenedor.
+        assert_eq!(hup_target(true, Some(42), None), None);
+        // Local y verificado.
+        assert_eq!(hup_target(true, Some(42), Some(7)), Some(7));
+    }
+
+    #[test]
+    fn comando_de_cierre_interpola_solo_el_pid_validado() {
+        assert_eq!(
+            kill_command(7),
+            vec![
+                "/bin/sh".to_string(),
+                "-c".to_string(),
+                "kill -HUP 7".to_string()
+            ]
+        );
     }
 }

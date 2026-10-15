@@ -130,7 +130,7 @@ export default function VolumesPage() {
             </tr>
           )}
         />
-        <p className="muted" style={{ fontSize: 'var(--text-xs)' }}>Los volúmenes en uso no se pueden eliminar: elimina primero el contenedor que los usa. Eliminar un volumen pide escribir su nombre.</p>
+        <p className="muted text-[length:var(--text-xs)]" >Los volúmenes en uso no se pueden eliminar: elimina primero el contenedor que los usa. Eliminar un volumen pide escribir su nombre.</p>
       </div>
       {dialog}
     </>

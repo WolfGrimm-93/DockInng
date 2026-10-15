@@ -4,6 +4,70 @@ Ver detalle y contexto en Obsidian: `Proyectos/DockInng/DockInng - Pendientes.md
 
 Lo ya cerrado se retiró de esta lista (2026-10-06); su historial está en la Bitácora de Obsidian.
 
+## Servidor web (`backend/server`), rama `feature/web-server` — primera versión (2026-10-13)
+
+Nuevo adaptador HTTP (`axum`), igual nivel que `dockinng-cli` y la app de escritorio: habla
+contra `engine-core`/`engine-docker`, no reimplementa nada de Docker. Pensado para correr en
+un contenedor y servirse por red, en dos modos:
+
+- **`DOCKINNG_AUTH_MODE=single`**: sin login, todo pedido entra como admin sintético (mismo
+  supuesto de confianza que hoy la app/CLI: red ya confiable). Sin esa variable, o con
+  `multi`, el servidor exige sesión — **seguro por defecto**, hay que pedir `single` a propósito.
+- **`multi`**: usuarios y roles (`Admin`/`Operator`/`Viewer`, nuevo enum `Role` en
+  `engine-core`), persistidos en `store` (tabla `users`, esquema v3, contraseña con Argon2).
+  Sesión por cookie `HttpOnly`/`Secure`/`SameSite=Strict`, en memoria del proceso (ver
+  pendiente abajo). Primer admin: `DOCKINNG_BOOTSTRAP_ADMIN_USER`/`_PASSWORD` al arrancar sin
+  usuarios.
+
+Endpoints: `/healthz`, `/api/auth/{login,logout,me}`, `/api/users` (CRUD, solo `admin`, no
+deja borrar/degradar al último admin ni al propio usuario logueado), `/api/containers`
+(prueba de concepto de lectura contra el motor real).
+
+**Verificado, no solo compilado:** `cargo test --workspace` y
+`cargo clippy --workspace --all-targets` limpios; además arranqué el binario real
+(`target/debug/dockinng-server`) en ambos modos — en `single` devolvió los contenedores reales
+del Docker de esta máquina por `/api/containers`; en `multi` con admin inicial por variables
+de entorno, hice login real, confirmé la cookie en `/api/auth/me` y listé el usuario por
+`/api/users`. Server y Store corrieron contra un socket Docker y un SQLite reales, no mocks.
+
+**Pendiente — no es "terminado", falta para tener paridad o quedar listo para producción:**
+- [ ] Solo hay un endpoint de lectura (`/api/containers`). No hay ninguna acción que modifique
+  el motor todavía: falta conectar `Role::can_act()` con `ConfirmationPolicy` para exponer
+  start/stop/remove/etc. por HTTP.
+- [ ] Sin streaming: logs, stats y terminal (`exec`) no están portados. `backend/app` ya tiene
+  la lógica de *backpressure*/*coalescing* desacoplada de Tauri detrás de un trait `Sink<T>`
+  (`streams.rs`, `exec_sessions.rs`); portarla a WebSocket es el camino más corto, no reescribir.
+- [ ] **Las sesiones viven en memoria del proceso: reiniciar el servidor desconecta a todos.**
+  No hay persistencia de sesiones entre reinicios.
+- [ ] No existe cliente web: el `frontend/` actual solo habla con Tauri. Falta una UI (o
+  reutilizar la actual con una capa de transporte HTTP/WebSocket en vez de `invoke`).
+- [ ] Sin containerización: no hay `Dockerfile`/compose para desplegar `dockinng-server` en un
+  contenedor (que es el objetivo final pedido).
+- [ ] `/api/auth/login` no tiene límite de intentos (solo mitiga el canal lateral de tiempo
+  con un hash señuelo); falta *rate limiting* contra fuerza bruta.
+- [ ] No hay registro de auditoría de acciones de administración (alta/baja/cambio de rol).
+- [ ] El administrador inicial se crea desde variables de entorno con la contraseña en claro
+  al arrancar; no hay una vía más segura (ej. prompt interactivo o rotación obligatoria).
+- [ ] Decisión de diseño documentada, no bloqueante: el token de sesión usa UUID v4, no v7
+  (excepción a la regla global, igual que `LOCAL_CONNECTION_ID` en `store`: es un secreto
+  efímero, no un id de recurso — ver comentario en `server/src/session.rs`).
+- [ ] Faltan pruebas de integración de los últimos dos endpoints de permiso fino que no llegué
+  a cubrir con Docker real (solo con `MockEngine`): ningún endpoint de acción existe aún, así
+  que esto se retoma junto con el ítem de arriba.
+
+## Auditoría de correcciones (2026-10-06, integrada en develop)
+
+Pendientes que quedaron abiertos tras las correcciones de la auditoría completa:
+
+- [x] Creación de contenedor y construcción canjean su ticket con `confirmed=true` fijo. Cerrado en la segunda ronda de correcciones (backend): exigen `Approval` del diálogo nativo cuando la decisión lo pide.
+- [x] `context rm` de la CLI pasa por el broker de tickets (`ActionRequest::RemoveConnection`, `ItemKind::Connection`). Cerrado en la segunda ronda de correcciones (backend).
+- [x] `F-9`: inline styles, de 114 a 16. Los 16 que quedan son valores calculados en runtime (alturas de virtualización, porcentajes, colores de grupo/servicio, anchos de skeleton); no son candidatos a clase fija. Cerrado en la segunda ronda (frontend).
+- [x] `F-12`: `CreateContainerPage.tsx` de 377 a 86 líneas; puertos, entorno, red y grupo pasaron a componentes propios y a `useCreateContainerForm.tsx`. Cerrado en la segunda ronda (frontend).
+- [ ] Revisión visual en la app de los cambios de estilo (`--row-h`/`--head-h` en capa, tokens `--z-*`, renombrado a `workflows.css`, `connections-ops.css`, `interaction-chrome.css`, `ports-actions.css`) y de la nueva `CreateContainerPage` dividida. Solo se verificó build y tests, nunca en pantalla.
+- [ ] Decidir: `truncate` de `compose` (cuenta bytes) y el de la CLI (caracteres) no se unifican porque cambiaría salidas; `is_remote` son cuatro cosas distintas.
+- [ ] Reglas de argumentos de build y longitud de nombres: la lista de reservados y la validación están igualadas a mano entre frontend y backend (tests de paridad). Falta una fuente única vía contrato.
+- [ ] Riesgo de la línea del webview: `execute_action` ya NO recibe `confirmed`; la aprobación la da un diálogo nativo (Tauri), construido solo por el adaptador de la app (`Approval::from_native_dialog()`) o el prompt de la CLI (`from_cli_prompt()`). PENDIENTE: `registry_delete`, `connection_delete` y `quit_app` siguen recibiendo `confirmed: bool` del webview (mismo bypass). Migrarlos al mismo `Approval` nativo. El diálogo nativo en sí no se probó en una ventana Tauri real (solo con un `ApprovalSource` falso en tests); falta esa prueba manual. Límite aceptado: quien acepta el diálogo sin leerlo aprueba igualmente.
+
 ## Ola 3: empaquetado
 
 - [ ] Pasar `rpmlint` sin errores al RPM generado por Tauri: verificado en Fedora 44 con `rpmlint 2.8.0`; quedan 9 errores y 2 advertencias por documentación no marcada como `%doc`, `no-documentation`, `no-changelogname-tag`, `no-buildhost-tag` y nombre de archivo no coherente. El paquete instala/desinstala correctamente; documentar o corregir según lo que controle Tauri.

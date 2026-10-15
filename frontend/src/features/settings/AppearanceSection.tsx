@@ -132,7 +132,7 @@ export function AppearanceSection() {
           {clash ? (
             <AlertBox kind="warn" icon="warn" title="Este color se parece al de un estado" text={`Se parece al de «${clash}». Los estados no cambian con el acento y siempre llevan icono y texto, así que no se confunden; puedes usarlo igualmente.`} />
           ) : null}
-          {bronze ? <p className="muted" style={{ fontSize: 'var(--text-xs)' }}>En modo claro este color se oscurece a un tono bronce para mantener el contraste AA con el texto blanco.</p> : null}
+          {bronze ? <p className="muted text-[length:var(--text-xs)]" >En modo claro este color se oscurece a un tono bronce para mantener el contraste AA con el texto blanco.</p> : null}
         </div>
 
         <div className="setting-row stack">
@@ -160,7 +160,7 @@ export function AppearanceSection() {
               <Button variant="secondary" size="sm" type="button">Secundario</Button>
               <span className="tag tag-brand">Etiqueta de acento</span>
               <span className="tag">Etiqueta neutra</span>
-              <input className="input preview-focus" style={{ width: 150 }} aria-label="Campo de ejemplo con foco" defaultValue="Foco visible" readOnly tabIndex={-1} />
+              <input className="input preview-focus w-[150px]"  aria-label="Campo de ejemplo con foco" defaultValue="Foco visible" readOnly tabIndex={-1} />
             </div>
             <div className="preview-row">
               <StatusBadge state="running" /><StatusBadge state="paused" /><StatusBadge state="restarting" /><StatusBadge state="exited" /><StatusBadge state="dead" /><StatusBadge state="created" />

@@ -1,12 +1,8 @@
-//! RIESGO RESIDUAL ACEPTADO (ALTO): `plan_action` + `execute_action(ticket, typed)` no son una
-//! frontera de seguridad. Un webview comprometido (XSS, contenido remoto inyectado) puede
-//! pedir el plan y ejecutarlo con el texto de confirmación correcto ("ELIMINAR" o el nombre)
-//! SIN ningún gesto humano, porque la confirmación la aporta el mismo proceso que la pide.
-//! El ticket solo garantiza el contrato para los caminos legítimos de la app (preview
-//! calculado en el backend, escritura exigida, un solo uso, objetivos resueltos por el
-//! backend, re-verificación por elemento). La barrera real es la CSP estricta y la ausencia de
-//! contenido remoto en la ventana. En esta ronda NO hay diálogo nativo de confirmación;
-//! añadirlo es el siguiente paso si se quiere cerrar este riesgo.
+//! Aprobación: `execute_action(ticket, typed)` NO recibe ninguna confirmación del webview. La
+//! aprobación la concede un diálogo NATIVO (`approvals::NativeApprovals`) antes de canjear el
+//! ticket; si la persona no acepta, `PolicyDenied` y el ticket sigue vivo. El webview no puede
+//! dibujar ni responder ese diálogo. Un webview comprometido aún puede PEDIR el diálogo, pero
+//! no puede aprobarlo por sí mismo.
 //!
 //! Comandos IPC. Cada comando devuelve `Result<T, ApiError>` (serializable) y delega en
 //! funciones `*_inner` que reciben el motor como trait para poder probarse con `MockEngine`.
@@ -26,6 +22,8 @@
 //!   start_container(id) | stop_container(id) | restart_container(id) -> ()
 //!   plan_action(request: ActionRequest) -> ActionPlan
 //!   execute_action(ticket, typed: Option<String>) -> ActionOutcome
+//!       Si la decisión exige confirmación, se muestra el diálogo nativo; sin aceptación,
+//!       PolicyDenied (el ticket no se consume). `typed` lo valida el núcleo tras el diálogo.
 //!   cancel_action(ticket) -> ()
 //!   subscribe_engine_events(on_event: Channel<EngineFeed>) -> SubscriptionId
 //!   subscribe_logs(id, tail: Option<u32>, follow, on_event: Channel<LogFeed>) -> SubscriptionId
@@ -43,6 +41,7 @@ use engine_core::{
 use tauri::ipc::Channel;
 use tauri::{Runtime, State, Window};
 
+use crate::approvals::{ApprovalSource, obtain_approval};
 use crate::state::AppState;
 use crate::streams::{
     EndReason, EngineFeed, LogFeed, Sink, StatsFeed, StreamKind, run_events, run_logs, run_stats,
@@ -238,9 +237,26 @@ pub async fn execute_action(
     typed: Option<String>,
 ) -> ApiResult<ActionOutcome> {
     let _guard = state.action_guard().await?;
-    state
-        .actions
-        .execute(&ticket, typed.as_deref())
+    execute_action_inner(
+        &state.actions,
+        state.approvals.clone(),
+        &ticket,
+        typed.as_deref(),
+    )
+    .await
+}
+
+/// Núcleo de `execute_action`: pide la aprobación (si el ticket la exige) y canjea.
+pub async fn execute_action_inner(
+    actions: &engine_core::ActionService,
+    approvals: Arc<dyn ApprovalSource>,
+    ticket: &str,
+    typed: Option<&str>,
+) -> ApiResult<ActionOutcome> {
+    let prompt = actions.approval_prompt(ticket).map_err(ApiError::from)?;
+    let approval = obtain_approval(approvals, prompt).await?;
+    actions
+        .execute(ticket, typed, approval)
         .await
         .map_err(ApiError::from)
 }

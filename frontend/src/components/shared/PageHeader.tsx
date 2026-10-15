@@ -19,7 +19,7 @@ export function PageHeader({ title, count, back, secondary, primary, simulated }
   return (
     <header className="view-head">
       {back ? (
-        <div style={{ width: '100%' }}>
+        <div className="w-full">
           <a className="crumb" href={back.href}>
             <Icon name="back" size="sm" />
             {back.label}

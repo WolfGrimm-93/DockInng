@@ -111,10 +111,10 @@ export default function StacksPage() {
         {head}
         <div className="view-body" aria-busy="true">
           <div className="card card-pad" role="status" aria-label="Cargando stacks">
-            <span className="skeleton" style={{ width: 160, marginBottom: 14 }} />
-            <span className="skeleton" style={{ width: '100%', marginBottom: 10 }} />
-            <span className="skeleton" style={{ width: '90%', marginBottom: 10 }} />
-            <span className="skeleton" style={{ width: '70%' }} />
+            <span className="skeleton w-40 mb-3.5"  />
+            <span className="skeleton w-full mb-2.5"  />
+            <span className="skeleton w-[90%] mb-2.5"  />
+            <span className="skeleton w-[70%]"  />
           </div>
         </div>
       </>

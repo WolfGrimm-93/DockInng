@@ -301,7 +301,7 @@ describe('sim: limpieza guiada', () => {
     const minio = stopped.find((i) => i.name === 'minio-dev')!
     const plan = await api.actions.plan({ type: 'cleanup', selection: { containers: [minio.id], images: [], volumes: [], networks: [] } })
     await api.containers.start(minio.id) // cambia el estado tras el plan
-    const out = await api.actions.execute(plan.ticket!)
+    const out = await api.actions.execute(plan.ticket!, undefined)
     expect(out.succeeded).toEqual([])
     expect(out.failed[0]).toMatchObject({ item: { name: 'minio-dev' }, error: { code: 'state_changed' } })
     expect((await api.containers.list()).some((c) => c.names[0] === 'minio-dev')).toBe(true)

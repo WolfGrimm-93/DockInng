@@ -3,6 +3,16 @@
 
 pub mod actions;
 pub mod api;
+pub mod approval;
+
+/// Segundos desde la época Unix. Única implementación: la usan el núcleo y el almacén.
+pub fn now_unix_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
 pub mod broker;
 pub mod build;
 pub mod cleanup;
@@ -19,6 +29,7 @@ pub mod policy;
 pub mod pull;
 pub mod registry;
 pub mod resources;
+pub mod role;
 pub mod stacks;
 pub mod stats;
 pub mod system;
@@ -40,6 +51,7 @@ pub use actions::{
     ItemKind, ItemRef, PlanDecision, PlanDenyReason, PlanWarning,
 };
 pub use api::{ApiError, ApiErrorCode};
+pub use approval::{Approval, ApprovalOrigin, ApprovalPrompt};
 pub use build::{
     BuildFeed, BuildLine, BuildOutcome, BuildPlan, BuildProgress, BuildSpec, BuildStream,
     BuildWarning,
@@ -51,9 +63,9 @@ pub use cleanup::{
 pub use client::{EngineClient, EngineStream};
 pub use connection::{ConnectionCause, ConnectionStatus, DiagStep, DiagStepId, StepStatus};
 pub use connections::{
-    ConnSpec, ConnTestResult, ConnectionProfile, ExportImportReport, Group, GroupAssignment,
-    GroupOp, GroupsSnapshot, HostKeyProbe, HostKeyState, LOCAL_CONNECTION_ID, LegacyGroup,
-    LegacyGroups, LegacyImportReport, SshIdentity, SshMode,
+    ConnSpec, ConnTestResult, ConnectionControl, ConnectionProfile, ExportImportReport, Group,
+    GroupAssignment, GroupOp, GroupsSnapshot, HostKeyProbe, HostKeyState, LOCAL_CONNECTION_ID,
+    LegacyGroup, LegacyGroups, LegacyImportReport, SshIdentity, SshMode,
 };
 pub use create::{
     CreateContainerSpec, CreateEngine, CreateNetworkSpec, CreatePlan, CreateResult, CreateService,
@@ -74,6 +86,7 @@ pub use policy::{
 pub use pull::{LayerPhase, LayerProgress, PullEngine, PullEvent, PullSnapshot, PullTracker};
 pub use registry::{DOCKER_HUB_SERVER, RegistryAuth, RegistrySummary, Secret};
 pub use resources::{Image, Network, Volume};
+pub use role::Role;
 pub use stacks::{
     CancelSignal, ComposeContainer, ComposeFlavor, ComposeInfo, IssueKind, ProgressItem,
     ProgressKind, ProgressStatus, ServicePhase, ServiceProgress, StackControl, StackDiscovery,

@@ -274,7 +274,7 @@ fn enums() -> Map<String, Value> {
     );
     put(
         "ItemKind",
-        names(&unit_enum!(ItemKind: Container, Image, Volume, Network, Stack)),
+        names(&unit_enum!(ItemKind: Container, Image, Volume, Network, Stack, Connection)),
     );
     put(
         "PlanDenyReason",
@@ -372,7 +372,7 @@ fn api_error_codes() -> Vec<ApiErrorCode> {
     unit_enum!(ApiErrorCode: Connection, NotFound, Conflict, InvalidInput, Engine, Timeout,
         PolicyDenied, TicketInvalid, TicketExpired, TypedMismatch, StateChanged, NotImplemented,
         Internal, ComposeMissing, ComposeFailed, InvalidCompose, ImageMissing, AuthRequired,
-        RegistryUnreachable, NoShell)
+        RegistryUnreachable, NoShell, Unauthenticated, Forbidden)
 }
 
 fn connection_causes() -> Vec<ConnectionCause> {
@@ -419,6 +419,7 @@ fn types() -> Map<String, Value> {
             ActionRequest::Cleanup { .. } => json!({"type": "cleanup", "selection":
                 {"containers": ["b2"], "images": [], "volumes": ["data"], "networks": []}}),
             ActionRequest::PruneSystem => json!({"type": "prune_system"}),
+            ActionRequest::RemoveConnection { .. } => json!({"type": "remove_connection", "id": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3e"}),
         ),
     );
     put(
@@ -1539,9 +1540,9 @@ mod tests {
     }
 
     #[test]
-    fn los_errores_cubren_los_veinte_codigos_y_la_forma_de_cause_y_quiesced() {
+    fn los_errores_cubren_los_veintidos_codigos_y_la_forma_de_cause_y_quiesced() {
         let e = api_errors();
-        assert_eq!(e["by_code"].as_object().unwrap().len(), 20);
+        assert_eq!(e["by_code"].as_object().unwrap().len(), 22);
         assert_eq!(e["by_cause"].as_object().unwrap().len(), 10);
         // `cause` va siempre (null si no aplica); `quiesced` solo cuando es verdadero.
         assert!(e["by_code"]["conflict"]["cause"].is_null());

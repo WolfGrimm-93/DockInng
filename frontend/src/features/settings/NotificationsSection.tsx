@@ -34,7 +34,7 @@ export function NotificationsSection() {
             <Switch aria-label="Avisos del sistema" checked={notifyEnabled} onChange={(e) => void setPref(api, 'notify_enabled', e.target.checked)} />
           </div>
         </div>
-        <p className="muted" style={{ fontSize: 'var(--text-xs)', marginTop: 6 }}>Las reglas de anti-ruido agrupan los avisos: como máximo uno por contenedor cada 30 s.</p>
+        <p className="muted text-[length:var(--text-xs)] mt-1.5" >Las reglas de anti-ruido agrupan los avisos: como máximo uno por contenedor cada 30 s.</p>
       </section>
 
       <section aria-labelledby="sNotifEv">
@@ -52,8 +52,8 @@ export function NotificationsSection() {
             </div>
           ))}
         </div>
-        {!notifyEnabled ? <p className="muted" style={{ fontSize: 'var(--text-xs)', marginTop: 6 }}>Activa «Avisos del sistema» para elegir qué eventos avisan.</p> : null}
-        <div style={{ marginTop: 10 }}>
+        {!notifyEnabled ? <p className="muted text-[length:var(--text-xs)] mt-1.5" >Activa «Avisos del sistema» para elegir qué eventos avisan.</p> : null}
+        <div className="mt-2.5">
           <Button variant="secondary" size="sm" disabled={!notifyEnabled} onClick={test}><Icon name="bell" size="sm" />Enviar aviso de prueba</Button>
         </div>
       </section>

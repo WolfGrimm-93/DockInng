@@ -53,15 +53,15 @@ export function StackCard(p: StackCardProps) {
   return (
     <section className="card stack-card" aria-label={`Stack ${name}`}>
       <header>
-        <div style={{ minWidth: 0 }}>
-          <h3 style={{ overflowWrap: 'anywhere' }}>{name} <span className="tag" title={s.origin === 'discovered' ? 'Detectado por las etiquetas de los contenedores' : s.origin === 'linked' ? 'Archivo Compose vinculado' : 'Stack creado en DockInng'}>{ORIGIN[s.origin]}</span></h3>
-          <div className="path" style={{ overflowWrap: 'anywhere' }}>{s.path ? safeText(s.path, { singleLine: true }) : 'Ubicación del archivo desconocida'}</div>
+        <div className="min-w-0">
+          <h3 className="[overflow-wrap:anywhere]">{name} <span className="tag" title={s.origin === 'discovered' ? 'Detectado por las etiquetas de los contenedores' : s.origin === 'linked' ? 'Archivo Compose vinculado' : 'Stack creado en DockInng'}>{ORIGIN[s.origin]}</span></h3>
+          <div className="path [overflow-wrap:anywhere]" >{s.path ? safeText(s.path, { singleLine: true }) : 'Ubicación del archivo desconocida'}</div>
         </div>
         <span className="spacer">
           <span className="health" role="img" aria-label={`${okN} de ${n} servicios en ejecución`}>
-            {s.services.map((x) => <i key={x.name} style={{ flex: 1, background: HEALTH[x.state] ?? 'var(--status-exited)' }} />)}
+            {s.services.map((x) => <i key={x.name} className="flex-1" style={{ background: HEALTH[x.state] ?? 'var(--status-exited)' }} />)}
           </span>
-          <span className="muted" style={{ minWidth: 84, textAlign: 'right' }}>{okN} de {n} activos</span>
+          <span className="muted min-w-[84px] text-right" >{okN} de {n} activos</span>
           {s.editable ? (
             <LinkButton variant="secondary" size="sm" locked={p.locked} href={p.editHref} aria-label={`Editar stack ${name}`}><Icon name="edit" size="sm" />Editar</LinkButton>
           ) : (
@@ -97,7 +97,7 @@ export function StackCard(p: StackCardProps) {
             {href ? <a href={href} className="link-name"><b>{safeText(x.name, { singleLine: true })}</b></a> : <b>{safeText(x.name, { singleLine: true })}</b>}
             <span><StatusBadge state={x.state} /></span>
             <span className="mono svc-image" title={safeText(x.image, { singleLine: true })}>{safeText(x.image, { singleLine: true })}</span>
-            <span className="muted" style={{ textAlign: 'right' }} title="Réplicas en ejecución">{x.replicas}</span>
+            <span className="muted text-right"  title="Réplicas en ejecución">{x.replicas}</span>
           </div>
         )
       })}

@@ -28,7 +28,7 @@ export function AssignGroupMenu({ names, triggerClass, ariaLabel, children }: { 
         <DropdownMenuTrigger className={triggerClass} aria-label={ariaLabel}>{children}</DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuLabel>Mover a un grupo</DropdownMenuLabel>
-          {groups.length === 0 ? <div className="menu-label" style={{ fontWeight: 400 }}>Todavía no tienes grupos.</div> : null}
+          {groups.length === 0 ? <div className="menu-label font-normal" >Todavía no tienes grupos.</div> : null}
           {groups.map((g) => (
             <DropdownMenuItem key={g.id} onClick={() => move(g.id)}>
               <span className="grp-swatch" style={hueStyle(g.hue)} aria-hidden="true" />

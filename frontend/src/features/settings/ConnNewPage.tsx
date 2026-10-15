@@ -3,7 +3,7 @@
 // → `connection_trust_host_key` → `connection_test` → «Guardar» (solo tras una prueba correcta de ESTOS datos). No hay campo que acepte contenido
 // de llaves ni opción «inseguro». (?test=testing|ok|fail solo en simulado/DEV: previsualiza los estados de la prueba.)
 import { safeText } from '@/lib/safeText'
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { devFlagsEnabled } from '@/app/devFlags'
 import { useHashRoute } from '@/app/useHashRoute'
 import { HostKeyDialog } from '@/components/shared/HostKeyDialog'
@@ -20,14 +20,10 @@ import type { ConnSpec, ConnTestResult, HostKeyProbe, PodmanCandidate } from '@/
 import { toast } from '@/lib/toastStore'
 import { LinkButton } from '../common/LinkButton'
 
-type Kind = 'ssh' | 'tls'
-type Mode = 'explicit' | 'alias'
-type Ident = 'agent' | 'file'
-type Phase = 'idle' | 'probing' | 'trusting' | 'testing' | 'saving'
-type Errors = Partial<Record<'name' | 'host' | 'port' | 'user' | 'identity' | 'ca' | 'cert' | 'key', string>>
+import { buildConnSpec, type ConnFormErrors, type Ident, type Kind, type Mode } from './connSpecBuild'
 
-const HOST_RE = /^(?:[A-Za-z0-9._-]{1,253}|\[[0-9A-Fa-f:.]+\])$/
-const USER_RE = /^[a-z_][a-z0-9_-]{0,31}$/
+type Phase = 'idle' | 'probing' | 'trusting' | 'testing' | 'saving'
+type Errors = ConnFormErrors
 
 export default function ConnNewPage() {
   const route = useHashRoute()
@@ -90,30 +86,11 @@ export default function ConnNewPage() {
   useEffect(() => { void api.system.podmanDetect().then(setPodman).catch(() => setPodman([])); return cancelPending }, [api, cancelPending])
 
   /** Valida en el borde (el backend vuelve a validar) y construye el spec tipado. */
-  const build = (): { spec: ConnSpec; errors: null } | { spec: null; errors: Errors } => {
-    const e: Errors = {}
-    const p = Number(port)
-    if (!name.trim() || name.trim().length > 40) e.name = 'Escribe un nombre (1–40 caracteres).'
-    else if (name.trim().toLowerCase() === 'local') e.name = 'El nombre «Local» está reservado.'
-    else if (existing.some((p) => p.id !== editId && p.name.trim().toLowerCase() === name.trim().toLowerCase())) e.name = 'Ya existe una conexión con ese nombre: elige otro (o elimínala antes desde Configuración).'
-    if (!HOST_RE.test(host.trim()) || host.trim().startsWith('-')) e.host = ssh && mode === 'alias' ? 'Alias no válido (letras, números, punto, guion).' : 'Host no válido (nombre, IPv4 o [IPv6]).'
-    if (!Number.isInteger(p) || p < 1 || p > 65535) e.port = 'Puerto entre 1 y 65535.'
-    if (ssh) {
-      if (mode === 'explicit' && !USER_RE.test(user.trim())) e.user = 'Usuario no válido (minúsculas, números, _ y -).'
-      if (ident === 'file' && !identPath.trim().startsWith('/')) e.identity = 'Indica la ruta ABSOLUTA de la llave privada.'
-    } else {
-      if (!ca.trim().startsWith('/')) e.ca = 'Ruta absoluta del certificado CA.'
-      if (!cert.trim().startsWith('/')) e.cert = 'Ruta absoluta del certificado de cliente.'
-      if (!keyPath.trim().startsWith('/')) e.key = 'Ruta absoluta de la llave de cliente.'
-    }
-    if (Object.keys(e).length) return { spec: null, errors: e }
-    const base = { name: name.trim(), host: host.trim(), port: p }
-    const spec: ConnSpec = ssh
-      ? { kind: 'ssh', ...base, user: user.trim(), mode, identity: ident === 'agent' ? { type: 'agent' } : { type: 'file', path: identPath.trim() } }
-      : { kind: 'tls', ...base, ca_path: ca.trim(), cert_path: cert.trim(), key_path: keyPath.trim() }
-    return { spec, errors: null }
-  }
-  const specKey = useMemo(() => { const b = build(); return b.spec ? JSON.stringify(b.spec) : null }, [kind, name, host, port, user, mode, ident, identPath, ca, cert, keyPath]) // eslint-disable-line react-hooks/exhaustive-deps
+  const formValues = { kind, name, host, port, user, mode, ident, identPath, ca, cert, keyPath }
+  const build = () => buildConnSpec(formValues, existing, editId)
+  // Huella del spec válido actual (null si no valida): cambia con cualquier campo, así que no se memoiza.
+  const specNow = buildConnSpec(formValues, existing, editId)
+  const specKey = specNow.spec ? JSON.stringify(specNow.spec) : null
   const dirty = () => { seq.current++; setResult(null); setOkFor(null); setPhase('idle') }
 
   const runTest = async (spec: ConnSpec, n: number) => {
@@ -243,7 +220,7 @@ export default function ConnNewPage() {
             <div className="form-body">
               <div className="f-row">
                 <span className="f-label" id="lType">Tipo</span>
-                <Segmented<Kind> labelledBy="lType" style={{ justifySelf: 'start' }} value={kind} onChange={pickKind} options={[{ value: 'ssh', label: 'SSH' }, { value: 'tls', label: 'TLS (tcp://)' }]} />
+                <Segmented<Kind> labelledBy="lType" className="justify-self-start" value={kind} onChange={pickKind} options={[{ value: 'ssh', label: 'SSH' }, { value: 'tls', label: 'TLS (tcp://)' }]} />
               </div>
               <div className="f-cols">
                 <div className="f-row"><label htmlFor="cName">Nombre</label><Input ref={nameInput} id="cName" value={name} placeholder="prod-hetzner" maxLength={40} {...inv('name', 'eName')} onChange={(e) => setName(e.target.value)} />{field('name', 'eName')}</div>
@@ -259,12 +236,12 @@ export default function ConnNewPage() {
                 <>
                   <div className="f-row">
                     <span className="f-label" id="lMode">Cómo se resuelve el host</span>
-                    <Segmented<Mode> labelledBy="lMode" style={{ justifySelf: 'start' }} value={mode} onChange={(m) => { setMode(m); dirty() }} options={[{ value: 'explicit', label: 'Host y usuario' }, { value: 'alias', label: 'Alias de ~/.ssh/config' }]} />
+                    <Segmented<Mode> labelledBy="lMode" className="justify-self-start" value={mode} onChange={(m) => { setMode(m); dirty() }} options={[{ value: 'explicit', label: 'Host y usuario' }, { value: 'alias', label: 'Alias de ~/.ssh/config' }]} />
                     <span className="f-hint">Con alias, el propio ssh lee tu configuración; DockInng igualmente exige verificar la huella y usa su propio archivo de hosts conocidos.</span>
                   </div>
                   <div className="f-row">
                     <span className="f-label" id="lIdent">Identidad</span>
-                    <Segmented<Ident> labelledBy="lIdent" style={{ justifySelf: 'start' }} value={ident} onChange={(i) => { setIdent(i); dirty() }} options={[{ value: 'agent', label: 'ssh-agent' }, { value: 'file', label: 'Archivo de llave' }]} />
+                    <Segmented<Ident> labelledBy="lIdent" className="justify-self-start" value={ident} onChange={(i) => { setIdent(i); dirty() }} options={[{ value: 'agent', label: 'ssh-agent' }, { value: 'file', label: 'Archivo de llave' }]} />
                   </div>
                   {ident === 'file' ? (
                     <div className="f-row">
@@ -302,14 +279,14 @@ export default function ConnNewPage() {
 
           {podman.length ? (
             <AlertBox kind="info" icon="info" title="Se detectó Podman en este equipo"
-              text={<>{podman.map((c) => <span key={c.path} style={{ display: 'block' }}><code>{safeText(c.path, { singleLine: true })}</code> ({c.rootless ? 'rootless' : 'root'})</span>)}Por ahora es solo detección: conectar con Podman todavía no está disponible.</>} />
+              text={<>{podman.map((c) => <span key={c.path} className="block"><code>{safeText(c.path, { singleLine: true })}</code> ({c.rootless ? 'rootless' : 'root'})</span>)}Por ahora es solo detección: conectar con Podman todavía no está disponible.</>} />
           ) : null}
 
           <div className="form-actions">
             <Button ref={verifyBtn} type="button" variant="secondary" locked={busy} onClick={() => { if (!busy) void verify() }}><Icon name={testing ? 'loader' : 'zap'} spin={testing} />{ssh ? 'Verificar y probar' : 'Probar conexión'}</Button>
             <Button type="submit" variant="primary" disabled={!canSave}><Icon name="check" />Guardar conexión</Button>
             <LinkButton variant="ghost" href={route.href('settings')}>Cancelar</LinkButton>
-            {!result && !testing ? <span className="muted" style={{ alignSelf: 'center' }}>Sin probar todavía.</span> : null}
+            {!result && !testing ? <span className="muted self-center" >Sin probar todavía.</span> : null}
           </div>
         </form>
       </div>

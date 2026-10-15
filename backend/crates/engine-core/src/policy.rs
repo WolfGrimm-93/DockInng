@@ -84,6 +84,12 @@ pub enum DenyReason {
 }
 
 impl Decision {
+    /// ¿Exige una confirmación explícita del usuario antes de ejecutar? Lo exigen `Confirm` y
+    /// `ConfirmTyped` (el texto escrito es confirmación además del gesto). `Allow` y `Deny` no.
+    pub fn needs_confirmation(&self) -> bool {
+        matches!(self, Decision::Confirm | Decision::ConfirmTyped { .. })
+    }
+
     /// ¿Vale `typed` como confirmación? `Deny` nunca acepta.
     pub fn accepts(&self, typed: Option<&str>) -> bool {
         match self {

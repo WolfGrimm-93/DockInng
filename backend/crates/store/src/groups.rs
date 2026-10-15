@@ -102,18 +102,45 @@ fn group_exists(tx: &Transaction<'_>, id: &str) -> Result<bool, StoreError> {
         .is_some())
 }
 
-/// Hay otro grupo con ese nombre (sin distinguir mayúsculas)?
-fn name_taken(tx: &Transaction<'_>, name: &str, except: Option<&str>) -> Result<bool, StoreError> {
+/// Id del grupo con ese nombre (sin distinguir mayúsculas), si existe; `except` se ignora.
+/// Es la ÚNICA comparación de nombres del módulo (creación, renombrado, importación y legacy):
+/// no puede discrepar entre ellas. `lower()` de SQLite solo cubre ASCII, por eso no se usa.
+fn grupo_con_nombre(
+    tx: &Transaction<'_>,
+    name: &str,
+    except: Option<&str>,
+) -> Result<Option<String>, StoreError> {
     let lower = name.to_lowercase();
     let mut st = tx.prepare("SELECT id, name FROM groups")?;
     let rows = st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
     for row in rows {
         let (id, n) = row?;
         if Some(id.as_str()) != except && n.to_lowercase() == lower {
-            return Ok(true);
+            return Ok(Some(id));
         }
     }
-    Ok(false)
+    Ok(None)
+}
+
+/// Hay otro grupo con ese nombre (sin distinguir mayúsculas)?
+fn name_taken(tx: &Transaction<'_>, name: &str, except: Option<&str>) -> Result<bool, StoreError> {
+    Ok(grupo_con_nombre(tx, name, except)?.is_some())
+}
+
+/// Ya hay una asignación para ese contenedor en esa conexión?
+fn assignment_exists(
+    tx: &Transaction<'_>,
+    connection_id: &str,
+    name: &str,
+) -> Result<bool, StoreError> {
+    Ok(tx
+        .query_row(
+            "SELECT 1 FROM group_assignments WHERE connection_id = ?1 AND container_name = ?2",
+            params![connection_id, name],
+            |_| Ok(()),
+        )
+        .optional()?
+        .is_some())
 }
 
 fn pick_hue(tx: &Transaction<'_>) -> Result<u16, StoreError> {
@@ -208,6 +235,18 @@ fn apply_op(tx: &Transaction<'_>, op: GroupOp) -> Result<(), StoreError> {
                     if !group_exists(tx, &gid)? {
                         return Err(StoreError::NotFound("grupo".into()));
                     }
+                    // Tope comprobado ANTES de escribir: si se comprobara después, un error
+                    // dejaría ya insertadas las filas (dentro de la misma transacción de import).
+                    let distintos: HashSet<&String> = names.iter().collect();
+                    let mut nuevas = 0usize;
+                    for n in &distintos {
+                        if !assignment_exists(tx, &connection_id, n)? {
+                            nuevas += 1;
+                        }
+                    }
+                    if count(tx, "group_assignments")? + nuevas > MAX_ASSIGNMENTS {
+                        return invalid("demasiadas asignaciones de grupo");
+                    }
                     for n in &names {
                         tx.execute(
                             "INSERT INTO group_assignments (connection_id, container_name, group_id)
@@ -215,9 +254,6 @@ fn apply_op(tx: &Transaction<'_>, op: GroupOp) -> Result<(), StoreError> {
                              ON CONFLICT(connection_id, container_name) DO UPDATE SET group_id = excluded.group_id",
                             params![connection_id, n, gid],
                         )?;
-                    }
-                    if count(tx, "group_assignments")? > MAX_ASSIGNMENTS {
-                        return invalid("demasiadas asignaciones de grupo");
                     }
                 }
                 None => {
@@ -335,16 +371,14 @@ impl Store {
                 .get("name")
                 .and_then(Value::as_str)
                 .ok_or_else(|| StoreError::InvalidInput("grupo sin nombre".into()))?;
-            let hue = g.get("hue").and_then(Value::as_i64);
-            let buscar = |tx: &Transaction<'_>| -> Result<Option<String>, StoreError> {
-                Ok(tx
-                    .query_row(
-                        "SELECT id FROM groups WHERE lower(name) = lower(?1)",
-                        [name.trim()],
-                        |r| r.get(0),
-                    )
-                    .optional()?)
+            // Ausente = matiz automático; presente pero no entero = error (como fuera de rango).
+            let hue = match g.get("hue") {
+                None | Some(Value::Null) => None,
+                Some(v) => Some(v.as_i64().ok_or_else(|| {
+                    StoreError::InvalidInput(format!("matiz no entero en el grupo «{name}»"))
+                })?),
             };
+            let buscar = |tx: &Transaction<'_>| grupo_con_nombre(tx, name.trim(), None);
             let id = match buscar(&tx)? {
                 Some(id) => {
                     rep.groups_reused += 1;
@@ -409,6 +443,8 @@ impl Store {
         }
         if let Some(colores) = obj.get("stack_hues").and_then(Value::as_object) {
             for (proyecto, hue) in colores {
+                // Matiz de stack no entero o fuera de 0..359: se omite (igual que el rechazo de
+                // `SetStackHue` más abajo). Los matices de grupo sí se rechazan con error.
                 let Some(hue) = hue.as_i64() else { continue };
                 match apply_op(
                     &tx,
@@ -462,25 +498,8 @@ impl Store {
                 continue;
             }
             // Nombre duplicado (sin distinguir mayúsculas): las asignaciones van al ya importado.
-            if name_taken(&tx, &name, None)? {
-                let existing: Option<String> = {
-                    let lower = name.to_lowercase();
-                    let mut st = tx.prepare("SELECT id, name FROM groups")?;
-                    let rows =
-                        st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
-                    let mut found = None;
-                    for row in rows {
-                        let (id, n) = row?;
-                        if n.to_lowercase() == lower {
-                            found = Some(id);
-                            break;
-                        }
-                    }
-                    found
-                };
-                if let Some(e) = existing {
-                    id_map.insert(g.id.clone(), e);
-                }
+            if let Some(existing) = grupo_con_nombre(&tx, &name, None)? {
+                id_map.insert(g.id.clone(), existing);
                 continue;
             }
             let hue = g.hue.rem_euclid(360) as u16;
@@ -495,6 +514,10 @@ impl Store {
             // Un id v7 ya presente en la base (no debería): se regenera.
             if group_exists(&tx, &new)? {
                 new = new_id();
+            }
+            // Tope contra las filas que YA existen en la base, no solo contra el payload.
+            if count(&tx, "groups")? >= MAX_GROUPS {
+                return invalid("los datos de grupos exceden los límites");
             }
             tx.execute(
                 "INSERT INTO groups (id, name, hue, sort, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -524,6 +547,12 @@ impl Store {
             if !conn_ok {
                 dropped += 1;
                 continue;
+            }
+            // Igual que el tope de grupos: cuenta lo que ya hay en la base.
+            if !assignment_exists(&tx, profile, container)?
+                && count(&tx, "group_assignments")? >= MAX_ASSIGNMENTS
+            {
+                return invalid("los datos de grupos exceden los límites");
             }
             tx.execute(
                 "INSERT INTO group_assignments (connection_id, container_name, group_id)
@@ -758,6 +787,43 @@ mod tests {
     }
 
     #[test]
+    fn import_legacy_respeta_el_tope_con_grupos_ya_guardados() {
+        // B-6: el tope se comparaba solo con el payload; con grupos ya en la base se superaba.
+        let (_t, s) = store();
+        for i in 0..MAX_GROUPS - 1 {
+            create(&s, &format!("previo {i}")).unwrap();
+        }
+        let p = LegacyGroups {
+            v: 1,
+            groups: vec![
+                LegacyGroup {
+                    id: "a".into(),
+                    name: "nuevo a".into(),
+                    hue: 1,
+                },
+                LegacyGroup {
+                    id: "b".into(),
+                    name: "nuevo b".into(),
+                    hue: 2,
+                },
+            ],
+            assign: BTreeMap::new(),
+            stack_hue: BTreeMap::new(),
+        };
+        assert!(matches!(
+            s.groups_import_legacy(p),
+            Err(StoreError::InvalidInput(_))
+        ));
+        let snap = s.groups_load().unwrap();
+        assert_eq!(
+            snap.groups.len(),
+            MAX_GROUPS - 1,
+            "el primer nuevo no debe quedar escrito"
+        );
+        assert!(!snap.legacy_imported);
+    }
+
+    #[test]
     fn import_conserva_el_mapa_exacto() {
         let (_t, s) = store();
         let ids: Vec<String> = (0..5).map(|_| uuid::Uuid::now_v7().to_string()).collect();
@@ -894,5 +960,86 @@ mod tests {
             .is_err()
         );
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn asignacion_que_supera_el_limite_no_deja_filas_escritas() {
+        // B-3: el tope se comprobaba DESPUÉS de insertar; el import omite la fila con
+        // InvalidInput y sigue, pero la fila ya insertada en la misma transacción se commiteaba.
+        let (_t, s) = store();
+        create(&s, "G").unwrap();
+        let lleno: Vec<serde_json::Value> = (0..MAX_ASSIGNMENTS)
+            .map(|i| {
+                serde_json::json!({"connection_id": "local", "container_name": format!("c{i}"), "group_id": "g"})
+            })
+            .collect();
+        let doc = |asig: Vec<serde_json::Value>| {
+            serde_json::json!({
+                "format": "dockinng-groups", "version": 1,
+                "groups": [{"id": "g", "name": "G"}], "assignments": asig
+            })
+        };
+        // Hasta el tope exacto: todo entra.
+        s.groups_import_export(&doc(lleno)).unwrap();
+        assert_eq!(s.groups_load().unwrap().assignments.len(), MAX_ASSIGNMENTS);
+        // Una más: se omite y NO debe quedar escrita.
+        let extra = serde_json::json!({"connection_id": "local", "container_name": "extra", "group_id": "g"});
+        let rep = s.groups_import_export(&doc(vec![extra])).unwrap();
+        assert_eq!(rep.assignments_skipped, 1);
+        let snap = s.groups_load().unwrap();
+        assert_eq!(snap.assignments.len(), MAX_ASSIGNMENTS);
+        assert!(!snap.assignments.iter().any(|a| a.container_name == "extra"));
+    }
+
+    #[test]
+    fn importar_matiz_no_entero_se_rechaza_como_fuera_de_rango() {
+        // B-4: un matiz 12.5 o "rojo" se ignoraba en silencio (se elegía uno automático). Ahora
+        // se rechaza igual que un matiz fuera de rango, sin escribir nada.
+        let (_t, s) = store();
+        for hue in [
+            serde_json::json!(12.5),
+            serde_json::json!("rojo"),
+            serde_json::json!(400),
+        ] {
+            let doc = serde_json::json!({
+                "format": "dockinng-groups", "version": 1,
+                "groups": [{"id": "g", "name": "Nuevo", "hue": hue}]
+            });
+            assert!(
+                matches!(
+                    s.groups_import_export(&doc),
+                    Err(StoreError::InvalidInput(_))
+                ),
+                "matiz {hue} debe rechazarse"
+            );
+        }
+        assert!(
+            s.groups_load().unwrap().groups.is_empty(),
+            "nada debe quedar escrito"
+        );
+        // Un matiz entero válido sigue funcionando.
+        let ok = serde_json::json!({
+            "format": "dockinng-groups", "version": 1,
+            "groups": [{"id": "g", "name": "Nuevo", "hue": 200}]
+        });
+        s.groups_import_export(&ok).unwrap();
+        assert_eq!(s.groups_load().unwrap().groups[0].hue, 200);
+    }
+
+    #[test]
+    fn importar_grupo_con_mayusculas_unicode_reutiliza_el_existente() {
+        // B-2: la búsqueda de import usaba lower() de SQLite (solo ASCII) y la de creación
+        // to_lowercase() de Rust: "ñandú" no encontraba a "Ñandú" y el import chocaba.
+        let (_t, s) = store();
+        create(&s, "Ñandú").unwrap();
+        let doc = serde_json::json!({
+            "format": "dockinng-groups", "version": 1,
+            "groups": [{"id": "x", "name": "ñandú"}]
+        });
+        let rep = s
+            .groups_import_export(&doc)
+            .expect("el nombre con otra capitalización Unicode debe reutilizar el grupo");
+        assert_eq!((rep.groups_created, rep.groups_reused), (0, 1));
+        assert_eq!(s.groups_load().unwrap().groups.len(), 1);
     }
 }

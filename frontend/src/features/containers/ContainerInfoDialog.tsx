@@ -159,7 +159,7 @@ function Body({ c, initialTab, closeRef, onClose }: { c: Container; initialTab: 
     <>
       <div className="dlg-body">
         <span className="dlg-ico"><Icon name="network" size="lg" /></span>
-        <div style={{ minWidth: 0 }}>
+        <div className="min-w-0">
           <DialogTitle>Puertos e IPs de {name}</DialogTitle>
           <DialogDescription render={<p />}>
             {plural(total, 'puerto abierto', 'puertos abiertos')}{total ? ` · ${plural(publishedPorts(entries), 'publicado', 'publicados')} en el equipo` : ''} · {plural(nets, 'red', 'redes')}

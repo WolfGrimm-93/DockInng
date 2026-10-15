@@ -92,7 +92,7 @@ export default function PullPage() {
     <>
       {head}
       <div className="toolbar">
-        <label className="field" style={{ flex: '1 1 320px', maxWidth: 520 }}>
+        <label className="field flex-[1_1_320px] max-w-[520px]" >
           <Icon name="download" />
           <input ref={refInput} className="input" id="pullRef" value={ref} aria-label="Imagen a descargar" placeholder="registro/nombre:etiqueta" disabled={pulling}
             aria-invalid={!!fieldError} aria-describedby={fieldError ? 'pullErr' : 'pullHint'}
@@ -127,9 +127,9 @@ export default function PullPage() {
           <EmptyState icon="download" title="Elige qué imagen descargar" text="Escribe el nombre con su etiqueta. Verás el avance de cada capa y podrás cancelar en cualquier momento; la descarga continúa aunque cambies de pantalla." />
         ) : (
           <section className="card" aria-label="Progreso por capa">
-            <header style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+            <header className="flex items-center gap-3 px-4 py-3 border-b border-border">
               <b className="mono">{safeText(target, { singleLine: true })}</b>
-              <span className="muted" style={{ marginLeft: 'auto' }} id="pullTotal" aria-live="off">{op.layers.length ? summary : op.state === 'pulling' ? 'Conectando con el registro…' : ''}</span>
+              <span className="muted ml-auto"  id="pullTotal" aria-live="off">{op.layers.length ? summary : op.state === 'pulling' ? 'Conectando con el registro…' : ''}</span>
             </header>
             <div id="layers">
               {op.layers.length === 0 && pulling ? <div className="layer"><span className="muted">Esperando las capas…</span></div> : <LayerProgress layers={op.layers} pulling={pulling} />}

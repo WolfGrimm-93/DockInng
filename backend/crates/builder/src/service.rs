@@ -12,6 +12,7 @@ use std::time::Duration;
 use compose::args::CommandSpec;
 use compose::proc::{LineReader, Spawn, TokioSpawn, build_env};
 use engine_core::actions::PlanDecision;
+use engine_core::approval::{Approval, ApprovalPrompt};
 use engine_core::broker::{Broker, RedeemError, SystemClock, TICKET_TTL};
 use engine_core::build::{
     BUILD_RING_LINES, BuildFeed, BuildLine, BuildOutcome, BuildPlan, BuildProgress, BuildSpec,
@@ -135,7 +136,8 @@ impl Default for BuildService {
 }
 
 fn invalid(msg: impl Into<String>) -> ApiError {
-    ApiError::new(ApiErrorCode::InvalidInput, msg)
+    // Mismo código y mensaje que el resto de entradas inválidas del núcleo.
+    ApiError::from(engine_core::EngineError::invalid(msg))
 }
 
 impl BuildService {
@@ -211,6 +213,31 @@ impl BuildService {
         self.plan_with(spec, target, Interactivity::Interactive, false)
     }
 
+    /// Texto del diálogo de aprobación para un ticket de construcción sensible. `None` si no hay
+    /// ticket, expiró o su decisión no exige confirmación.
+    pub fn approval_prompt(&self, ticket: Option<&str>) -> Option<ApprovalPrompt> {
+        let t = ticket?;
+        self.broker
+            .peek(t, |(spec, _host), decision| {
+                if !decision.needs_confirmation() {
+                    return None;
+                }
+                Some(ApprovalPrompt {
+                    title: "Confirmar construcción con contexto sensible".into(),
+                    lines: vec![
+                        format!("contexto: {}", spec.context_dir),
+                        "El contexto apunta a una ruta sensible (home, raíz o directorios del sistema).".into(),
+                    ],
+                    typed_hint: match decision {
+                        Decision::ConfirmTyped { expected } => Some(expected.clone()),
+                        _ => None,
+                    },
+                })
+            })
+            .ok()
+            .flatten()
+    }
+
     /// Invalida todos los tickets pendientes (al cambiar de conexión).
     pub fn invalidate_all(&self) {
         self.broker.clear();
@@ -266,6 +293,7 @@ impl BuildService {
         &self,
         spec: &BuildSpec,
         ticket: Option<&str>,
+        approval: Option<Approval>,
         target: &BuildTarget,
         sink: &dyn BuildSink,
         cancel: impl Future<Output = ()>,
@@ -286,7 +314,12 @@ impl BuildService {
                     "el contexto es sensible: hay que confirmar antes de construir",
                 )
             })?;
-            let (payload, _) = self.broker.redeem(t, None).map_err(|e| match e {
+            // La aprobación humana la aporta el adaptador (diálogo nativo). Sin ella no se canjea.
+            let (payload, _) = self.broker.redeem(t, None, approval).map_err(|e| match e {
+                RedeemError::NotConfirmed => ApiError::new(
+                    ApiErrorCode::PolicyDenied,
+                    "la acción requiere la aprobación del usuario",
+                ),
                 RedeemError::Expired => {
                     ApiError::new(ApiErrorCode::TicketExpired, "el ticket expiró")
                 }
@@ -669,6 +702,7 @@ mod tests {
             .run(
                 &spec(&dir),
                 None,
+                None,
                 &BuildTarget {
                     docker_host: Some("unix:///x".into()),
                     env: vec![],
@@ -721,6 +755,7 @@ mod tests {
             .run(
                 &spec(&dir),
                 None,
+                None,
                 &BuildTarget::default(),
                 &sink,
                 std::future::pending(),
@@ -744,6 +779,7 @@ mod tests {
         let r = svc
             .run(
                 &spec(&dir),
+                None,
                 None,
                 &BuildTarget::default(),
                 &sink,
@@ -769,6 +805,7 @@ mod tests {
             s2.run(
                 &d2,
                 None,
+                None,
                 &BuildTarget::default(),
                 &sink,
                 tokio::time::sleep(Duration::from_millis(300)),
@@ -780,6 +817,7 @@ mod tests {
         let second = svc
             .run(
                 &spec(&dir),
+                None,
                 None,
                 &BuildTarget::default(),
                 &sink,
@@ -829,6 +867,7 @@ mod tests {
             .run(
                 &s,
                 None,
+                None,
                 &BuildTarget::default(),
                 &sink,
                 std::future::pending(),
@@ -842,6 +881,7 @@ mod tests {
             .run(
                 &other,
                 Some(&ticket),
+                Some(engine_core::Approval::for_tests()),
                 &BuildTarget::default(),
                 &sink,
                 std::future::pending(),
@@ -855,6 +895,7 @@ mod tests {
             .run(
                 &s,
                 Some(&t),
+                Some(engine_core::Approval::for_tests()),
                 &BuildTarget::default(),
                 &sink,
                 std::future::pending(),
@@ -865,6 +906,7 @@ mod tests {
             .run(
                 &s,
                 Some(&t),
+                Some(engine_core::Approval::for_tests()),
                 &BuildTarget::default(),
                 &sink,
                 std::future::pending(),
@@ -1001,6 +1043,7 @@ mod tests {
         svc.run(
             &spec(&dir),
             None,
+            None,
             &BuildTarget::default(),
             &sink,
             std::future::pending(),
@@ -1039,21 +1082,42 @@ mod tests {
         // Plan en local, ejecución en remoto: rechazado.
         let t = svc.plan(&s, &local).unwrap().ticket.unwrap();
         let e = svc
-            .run(&s, Some(&t), &remote, &sink, std::future::pending())
+            .run(
+                &s,
+                Some(&t),
+                Some(engine_core::Approval::for_tests()),
+                &remote,
+                &sink,
+                std::future::pending(),
+            )
             .await;
         assert_eq!(e.unwrap_err().code, ApiErrorCode::TicketInvalid);
         // Mismo destino: vale.
         let t = svc.plan(&s, &local).unwrap().ticket.unwrap();
         assert!(
-            svc.run(&s, Some(&t), &local, &sink, std::future::pending())
-                .await
-                .is_ok()
+            svc.run(
+                &s,
+                Some(&t),
+                Some(engine_core::Approval::for_tests()),
+                &local,
+                &sink,
+                std::future::pending()
+            )
+            .await
+            .is_ok()
         );
         // Tras invalidar (cambio de conexión) el ticket ya no sirve.
         let t = svc.plan(&s, &local).unwrap().ticket.unwrap();
         svc.invalidate_all();
         let e = svc
-            .run(&s, Some(&t), &local, &sink, std::future::pending())
+            .run(
+                &s,
+                Some(&t),
+                Some(engine_core::Approval::for_tests()),
+                &local,
+                &sink,
+                std::future::pending(),
+            )
             .await;
         assert_eq!(e.unwrap_err().code, ApiErrorCode::TicketInvalid);
         let _ = std::fs::remove_dir_all(&home);
@@ -1076,6 +1140,7 @@ mod tests {
             svc2.run(
                 &s2,
                 Some(&t2b),
+                Some(engine_core::Approval::for_tests()),
                 &BuildTarget::default(),
                 &sink,
                 tokio::time::sleep(Duration::from_millis(300)),
@@ -1085,7 +1150,14 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(100)).await;
         let sink = Collect::default();
         let e = svc
-            .run(&s, Some(&t2), &target, &sink, std::future::pending())
+            .run(
+                &s,
+                Some(&t2),
+                Some(engine_core::Approval::for_tests()),
+                &target,
+                &sink,
+                std::future::pending(),
+            )
             .await;
         assert_eq!(e.unwrap_err().code, ApiErrorCode::Conflict);
         let _ = first.await;
@@ -1094,6 +1166,7 @@ mod tests {
             .run(
                 &s,
                 Some(&t2),
+                Some(engine_core::Approval::for_tests()),
                 &target,
                 &sink,
                 tokio::time::sleep(Duration::from_millis(50)),

@@ -118,7 +118,7 @@ export default function ImagesPage() {
                 </td>
                 <td className="col-id mono muted">
                   {id12}
-                  <div className="muted" style={{ fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)' }}>{rel}</div>
+                  <div className="muted font-sans text-[length:var(--text-xs)]" >{rel}</div>
                 </td>
                 <td className="num col-size">{formatBytes(i.size_bytes)}</td>
                 <td>{i.containers > 0 ? <span className="tag"><Icon name="check" size="sm" />En uso · {i.containers}</span> : <span className="tag">Sin usar</span>}</td>

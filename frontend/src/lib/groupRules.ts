@@ -8,6 +8,9 @@ export const MAX_ASSIGNMENTS = 20_000
 
 export type CustomGroup = StoredGroup
 
+/** Longitud en caracteres Unicode (code points), igual que `chars().count()` del backend. `.length` contaría las mitades de un emoji como 2. */
+export const contarCaracteres = (t: string): number => [...t].length
+
 export const clampHue = (h: number): number => (Number.isFinite(h) ? ((Math.round(h) % 360) + 360) % 360 : 0)
 
 /** Caracteres de control C0/DEL y de control bidireccional (U+202A–202E, U+2066–2069): no se admiten en nombres de grupo. */
@@ -23,7 +26,7 @@ export function hasForbiddenChars(t: string): boolean {
 export function validateGroupName(name: string, groups: readonly CustomGroup[], exceptId?: string): string | null {
   const t = name.trim()
   if (!t) return 'Escribe un nombre.'
-  if (t.length > MAX_GROUP_NAME) return `Máximo ${MAX_GROUP_NAME} caracteres.`
+  if (contarCaracteres(t) > MAX_GROUP_NAME) return `Máximo ${MAX_GROUP_NAME} caracteres.`
   if (hasForbiddenChars(t)) return 'El nombre tiene caracteres no permitidos.'
   if (groups.some((g) => g.id !== exceptId && g.name.toLocaleLowerCase() === t.toLocaleLowerCase())) return 'Ya existe un grupo con ese nombre.'
   return null
@@ -41,7 +44,7 @@ export function sanitizeGroups(raw: unknown): GroupsData {
       const r = (g ?? {}) as Record<string, unknown>
       if (typeof r.id !== 'string' || !r.id || seen.has(r.id) || typeof r.name !== 'string' || typeof r.hue !== 'number') continue
       const name = r.name.trim()
-      if (!name || name.length > MAX_GROUP_NAME || hasForbiddenChars(name)) continue
+      if (!name || contarCaracteres(name) > MAX_GROUP_NAME || hasForbiddenChars(name)) continue
       seen.add(r.id)
       groups.push({ id: r.id, name, hue: clampHue(r.hue) })
     }

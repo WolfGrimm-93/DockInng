@@ -5,7 +5,7 @@ export function PageFallback() {
   return (
     <div aria-busy="true">
       <header className="view-head">
-        <div className="view-title"><span className="skeleton" style={{ width: 160, height: 20 }} /></div>
+        <div className="view-title"><span className="skeleton w-40 h-5"  /></div>
       </header>
       <div className="view-body"><SkeletonTable cols={7} rows={8} /></div>
     </div>

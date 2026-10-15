@@ -57,11 +57,11 @@ describe('adaptador simulado: política plan → ticket → execute', () => {
     expect(plan.decision).toEqual({ type: 'confirm' })
     expect(plan.warnings.map((w) => w.type)).toEqual(['running_force', 'volumes_kept'])
     expect(plan.ticket).toBeTruthy()
-    const out = await api.actions.execute(plan.ticket!)
+    const out = await api.actions.execute(plan.ticket!, undefined)
     expect(out.succeeded).toHaveLength(1)
     expect((await api.containers.list()).some((c) => c.id === id)).toBe(false)
     // replay del mismo ticket: rechazado
-    await expect(api.actions.execute(plan.ticket!)).rejects.toMatchObject({ code: 'ticket_invalid' })
+    await expect(api.actions.execute(plan.ticket!, undefined)).rejects.toMatchObject({ code: 'ticket_invalid' })
   })
   it('volumen: confirmación escrita con el nombre; typed incorrecto no consume el ticket', async () => {
     const api = mk()
@@ -93,7 +93,7 @@ describe('adaptador simulado: política plan → ticket → execute', () => {
     const api = mk()
     const plan = await api.actions.plan({ type: 'prune_images' } satisfies ActionRequest)
     await api.actions.cancel(plan.ticket!)
-    await expect(api.actions.execute(plan.ticket!)).rejects.toMatchObject({ code: 'ticket_invalid' })
+    await expect(api.actions.execute(plan.ticket!, undefined)).rejects.toMatchObject({ code: 'ticket_invalid' })
   })
 })
 

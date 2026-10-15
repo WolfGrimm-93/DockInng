@@ -56,16 +56,16 @@ export function LogsTab({ c }: { c: Container }) {
       <div className="toolbar">
         <SearchField id="lq" placeholder="Filtrar líneas de log" value={q} onChange={setQ} />
         <Segmented<Lvl> ariaLabel="Nivel" value={lvl} onChange={setLvl} options={LEVELS.map((l) => ({ value: l, label: l === 'all' ? 'Todos' : l }))} />
-        <label style={{ display: 'inline-flex', gap: 8, alignItems: 'center', marginLeft: 'auto' }}>
+        <label className="inline-flex items-center gap-2 ml-auto">
           <Switch checked={follow} onChange={(e) => setFollow(e.target.checked)} /> Seguir en vivo
         </label>
         <Button variant="secondary" size="icon" aria-label="Copiar logs" onClick={() => void copy()}><Icon name="copy" /></Button>
       </div>
       <LogViewer lines={lines} follow={follow} level={lvl} query={q} label={`Logs de ${name}`} />
       <div role="status" aria-live="polite">
-        {lines.length > 0 && visible.length === 0 ? <p className="muted" style={{ fontSize: 'var(--text-xs)' }}>Ninguna línea coincide con el filtro.</p> : null}
-        {dropped > 0 ? <p className="muted" style={{ fontSize: 'var(--text-xs)' }}>{dropped} líneas omitidas por límite de caudal.</p> : null}
-        {ended ? <p className="muted" style={{ fontSize: 'var(--text-xs)' }}>{ENDED[ended] ?? 'Fin del flujo.'}</p> : null}
+        {lines.length > 0 && visible.length === 0 ? <p className="muted text-[length:var(--text-xs)]" >Ninguna línea coincide con el filtro.</p> : null}
+        {dropped > 0 ? <p className="muted text-[length:var(--text-xs)]" >{dropped} líneas omitidas por límite de caudal.</p> : null}
+        {ended ? <p className="muted text-[length:var(--text-xs)]" >{ENDED[ended] ?? 'Fin del flujo.'}</p> : null}
       </div>
     </>
   )

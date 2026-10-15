@@ -48,7 +48,7 @@ export function ConnectionsSection() {
               <span className="conn-ico"><Icon name={p.icon} /></span>
               <div className="grow">
                 <b>{label}</b>{' '}
-                {active ? <span className="tag tag-brand">Activa</span> : p.failsToConnect ? <span className="tag" style={{ color: 'var(--status-dead)' }}><Icon name="alert" size="sm" />Sin respuesta</span> : null}
+                {active ? <span className="tag tag-brand">Activa</span> : p.failsToConnect ? <span className="tag text-status-dead" ><Icon name="alert" size="sm" />Sin respuesta</span> : null}
                 {p.remote ? <> <span className="tag"><Icon name="globe" size="sm" />Remota · {p.kind.toUpperCase()}</span></> : <> <span className="tag">Local</span></>}
                 {isPodmanTarget(p) ? <> <span className="tag">Podman</span></> : null}
                 {p.simulated ? <> <span className="tag" title="Conexión de ejemplo: solo existe en el modo simulado (navegador)."><Icon name="flask" size="sm" />Simulada</span></> : null}

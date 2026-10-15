@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 
 export function NoMatch({ what, onClear }: { what: string; onClear(): void }) {
   return (
-    <div className="state" style={{ padding: '36px 24px' }}>
+    <div className="state py-9 px-6" >
       <span className="state-ico"><Icon name="search" size="lg" /></span>
       <h2>{what}</h2>
       <p>Prueba con otro texto de búsqueda.</p>
