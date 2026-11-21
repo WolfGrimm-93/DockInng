@@ -4,6 +4,43 @@ Ver detalle y contexto en Obsidian: `Proyectos/DockInng/DockInng - Pendientes.md
 
 Lo ya cerrado se retiró de esta lista (2026-10-06); su historial está en la Bitácora de Obsidian.
 
+## Auditoría completa front-back (2026-11-21)
+
+Hallazgos de una lectura de código (4 revisores, solo lectura) más las puertas automáticas: `cargo test --workspace` en verde, clippy limpio, `pnpm lint`/`tsc`/`build` en verde. Los hallazgos salen de leer el código y deben reproducirse antes de arreglarlos. No se ejercieron los tests `live_*` (Docker, SSH, TLS reales). Sin hallazgos críticos.
+
+**Alto**
+- [x] **A1. `up` de un stack sin política de confirmación** (resuelto en `feature/auditoria-stack-up`). Un compose con `privileged`, `docker.sock`, red/PID del host o binds sensibles se levantaba sin ticket ni diálogo. Ahora el núcleo evalúa los riesgos del compose RESUELTO (`Action::StackUpSensitive`, `StackControl::assess_op`, `prepare_op_approved`, `StackApproval`), la app pide diálogo nativo, la CLI pregunta (`stacks up --yes` salta la confirmación simple) y `PreparedOp` rechaza con `policy_denied` si falta la aprobación o aparece un riesgo que la persona no vio. Pendiente: probarlo con Docker real y en ventana Tauri real (los tests usan `FakeSpawn` y diálogo falso).
+- [ ] **A2. Login HTTP sin límite de intentos** (`server/src/auth.rs:85`). Fuerza bruta y DoS: Argon2 corre en un worker de tokio sin `spawn_blocking`. Throttling por IP y usuario con backoff, semáforo de concurrencia, longitud máxima de usuario/contraseña.
+- [ ] **A3. Sesiones sin caducidad ni tope** (`server/src/session.rs`). Añadir `created_at`/`last_seen`, TTL absoluto (8-12 h) e inactivo (~30 min), `Max-Age` en la cookie, tope por usuario y purga.
+- [ ] **A4. Modo `single` sin autenticación y acepta `0.0.0.0`** (`server/src/config.rs:254`). Rechazar bind no-loopback (o exigir flag explícito/token) y avisar al arrancar.
+
+**Medio**
+- [ ] **M1. El webview decide confirmaciones destructivas**: `connection_delete`, `registry_delete` y `quit_app` reciben `confirmed: bool` (`commands_remote.rs:174`, `commands_store.rs:80`, `RegistriesSection.tsx:76`, `ConnectionsSection.tsx:33`). Pasarlos por `ActionService`/diálogo nativo y quitar el booleano. Revisar también `connection_forget_host_key` (texto escrito, sin diálogo nativo).
+- [ ] **M2. Carrera al degradar/borrar admins** (`server/src/users_admin.rs:90-142`): `guard_last_admin` sin transacción. Hacerlo en una sola sentencia SQL.
+- [ ] **M3. Usuarios y contraseñas**: validación débil (sin límites, sin normalización NFKC, homógrafos, `len()` en bytes, bootstrap admin sin validar). No existe ruta para cambiar contraseña; al añadirla debe invalidar sesiones (`remove_all_for_user`). `DUMMY_HASH` diferido filtra por timing si el usuario existe (`LazyLock::force` al arrancar).
+- [ ] **M4. Compose: procesos huérfanos tras cancelar** (`compose/src/proc.rs:92-134`): `reaped = true` antes de `reap_group`.
+- [ ] **M5. `StackStore::save` sin serializar** (`compose/src/files.rs:705-772`): no toma el guard `busy`, `expected_revision: None` se salta el control de concurrencia y la escritura yaml+`.env` no es atómica.
+- [ ] **M6. Sandbox de includes por escaneo de texto** (`compose/src/sandbox.rs`, `validate.rs`): no cubre `build.context`, `secrets.file`, `configs.file` ni binds, y hay TOCTOU entre escaneo y lectura de Compose. Parsear YAML real o validar el JSON resuelto; pasar el YAML validado por stdin.
+- [ ] **M7. `working_dir` de stack vinculado puede ser `/` o `$HOME`** (`compose/src/files.rs:342-352`): el confinamiento queda vacío. Reutilizar `sensitive_reason`.
+- [ ] **M8. Logs sin sanear en la UI** (`LogViewer.tsx:58`, `LogsTab.tsx:46`): sin `safeText` ni limpieza de ANSI; controles bidi pueden invertir texto. No hay XSS.
+- [ ] **M9. Carrera en el store del frontend** (`engineStore.ts:~228`): dos `list()` del mismo tipo pueden resolver desordenados. Contador por `kind`.
+- [ ] **M10. `pnpm audit --prod`: 7 vulnerabilidades (2 altas, 4 moderadas, 1 baja)**; una es `vite` (parche ≥8.3.3, vía `@tailwindcss/vite`). Revisar las otras seis y correr `cargo audit` (no se corrió).
+- [ ] **M11. Comandos de contenedor sin plan** (`commands.rs:206-222`: start/stop/restart directos). Aceptable si la política los clasifica `Allow` (lo hace); verificar paridad con la CLI.
+
+**Bajo**
+- [ ] Quitar la capability `dialog:allow-open` (`backend/app/capabilities/default.json:84`), sin uso desde el frontend.
+- [ ] `check_paths_exist` (`commands_remote.rs:36-62`) actúa como oráculo de existencia de archivos: mensaje genérico o rutas por diálogo nativo.
+- [ ] PKGBUILD con `sha256sums=('SKIP')`: fijar hash real antes de cualquier release.
+- [ ] `groups_import_legacy` (`commands_store.rs:233`): comprobar límite de tamaño del payload.
+- [ ] Servidor: cabeceras de seguridad (HSTS, `nosniff`, `no-store`), cookie `__Host-`, sin TLS propio (documentar proxy), avisar si `bind` no es loopback con `insecure_cookies`, timeouts y límites a nivel de router; comprobar que los errores de SQLite no lleguen crudos al cliente (`store/src/error.rs:47`).
+- [ ] Almacén: crear `store.db` y `.bak-vN` con modo 0600 desde el principio; el `.bak` conserva hashes indefinidamente.
+- [ ] `known_hosts` se lee entero sin tope (`transport/src/known_hosts.rs`).
+- [ ] `engine-docker/src/exec.rs:~165`: carrera de PID reciclado en el cierre del exec; `close()` en `Drop` de la sesión.
+- [ ] `broker.restore` ignora `MAX_PENDING` (`engine-core/src/broker.rs:~170`).
+- [ ] Frontend: regex de nivel de log con mala precedencia (`lib/logLevel.ts:11`), casts inseguros (`adapters/tauri/index.ts:99`, `ContainerDetailPage:69,152`, `AppearanceSection:128,144`, `useCreateContainerForm:188`), doble parseo O(5000) en logs, accesibilidad (`CommandPalette.tsx:78`, `NewGroupDialog:41`), datos de demo en `ContainersPage:166`, `eslint-disable exhaustive-deps` a revisar (`LogViewer:31`, `XtermTerminal:158`, `devOnce:12`, `useVirtualTable:27`), sin i18n (textos en español hardcodeados). Verificar que `pnpm contract:check` corra en CI.
+- [ ] Tests faltantes: `save` concurrente contra `acquire`, `reap_group` y cancelación durante la espera, `link` con `working_dir` raíz/`$HOME`.
+- [ ] No auditado: `platilla-html/`, `scripts/`, CI.
+
 ## Servidor web (`backend/server`), rama `feature/web-server` — primera versión (2026-10-13)
 
 Nuevo adaptador HTTP (`axum`), igual nivel que `dockinng-cli` y la app de escritorio: habla
