@@ -10,7 +10,7 @@
 //!   prefs_set(key, value) -> ()
 //!   registry_list() -> RegistrySummary[]                     (nunca incluye el secreto)
 //!   registry_save(server, username, secret) -> RegistrySummary   (único canal que lleva un secreto)
-//!   registry_delete(id, confirmed) -> ()                     (exige `confirmed`: Action::RemoveRegistry)
+//!   registry_delete(id) -> ()                                (Action::RemoveRegistry: diálogo NATIVO de aprobación)
 //!   registry_test(id) -> ()                                  (ok = credenciales válidas; error = ApiError
 //!                                                             `auth_required` / `registry_unreachable` / ...)
 //!
@@ -21,15 +21,16 @@
 use std::sync::Arc;
 
 use engine_core::{
-    Action, ApiError, ApiErrorCode, Decision, EngineError, ExportImportReport, GroupOp,
-    GroupsSnapshot, Interactivity, LegacyGroups, LegacyImportReport, RegistrySummary, Secret,
-    decide,
+    Action, ApiError, ApiErrorCode, ApprovalPrompt, Decision, EngineError, ExportImportReport,
+    GroupOp, GroupsSnapshot, Interactivity, LegacyGroups, LegacyImportReport, RegistrySummary,
+    Secret, decide,
 };
 use serde_json::{Value, json};
 use store::{SecretStore, Store, StoreError};
 use tauri::{AppHandle, Runtime, State};
 use tauri_plugin_dialog::DialogExt;
 
+use crate::approvals::obtain_approval;
 use crate::state::AppState;
 
 type ApiResult<T> = Result<T, ApiError>;
@@ -76,14 +77,25 @@ where
     with_store(state, move |s| f(s, secrets.as_ref())).await
 }
 
-/// El GUI confirma con un diálogo y manda `confirmed = true`; sin él, la política decide.
-pub fn require_confirmed(action: &Action, confirmed: bool) -> ApiResult<()> {
+/// Aprobación humana de `action` por diálogo NATIVO. El webview NO puede aprobar: no recibe ningún
+/// booleano de confirmación (ver `approvals.rs`). La política decide si hace falta: `Allow` no
+/// pregunta, `Confirm`/`ConfirmTyped` muestran `prompt` y `Deny` rechaza. Si la persona no acepta,
+/// `PolicyDenied` y no se toca nada. No retener locks mientras dura el diálogo.
+pub async fn require_native_approval(
+    state: &AppState,
+    action: &Action,
+    prompt: ApprovalPrompt,
+) -> ApiResult<()> {
     match decide(action, Interactivity::Interactive, false) {
         Decision::Allow => Ok(()),
-        Decision::Confirm if confirmed => Ok(()),
-        _ => Err(ApiError::new(
+        Decision::Confirm | Decision::ConfirmTyped { .. } => {
+            obtain_approval(state.approvals.clone(), Some(prompt))
+                .await
+                .map(|_| ())
+        }
+        Decision::Deny(_) => Err(ApiError::new(
             ApiErrorCode::PolicyDenied,
-            "la acción exige confirmación explícita",
+            "la política no permite esta acción",
         )),
     }
 }
@@ -303,12 +315,24 @@ pub async fn registry_save(
 }
 
 #[tauri::command]
-pub async fn registry_delete(
-    state: State<'_, AppState>,
-    id: String,
-    confirmed: bool,
-) -> ApiResult<()> {
-    require_confirmed(&Action::RemoveRegistry, confirmed)?;
+pub async fn registry_delete(state: State<'_, AppState>, id: String) -> ApiResult<()> {
+    // El diálogo describe el registro real (no lo que diga el webview).
+    let lookup = id.clone();
+    let row = with_store(&state, move |s| s.registry_get(&lookup)).await?;
+    require_native_approval(
+        &state,
+        &Action::RemoveRegistry,
+        ApprovalPrompt {
+            title: "Confirmar eliminar credenciales".into(),
+            lines: vec![
+                format!("registro: {}", row.server),
+                format!("usuario: {}", row.username),
+                "Se olvidarán las credenciales guardadas en el llavero.".into(),
+            ],
+            typed_hint: None,
+        },
+    )
+    .await?;
     with_store_and_secrets(&state, move |s, k| s.registry_remove(k, &id)).await
 }
 

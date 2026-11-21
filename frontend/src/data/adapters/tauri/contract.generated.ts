@@ -901,7 +901,6 @@ export const COMMANDS = {
     "recheck": false
   }, resultType: "ComposeInfo", result: result_compose_info },
   connection_delete: { args: {
-    "confirmed": true,
     "id": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3e"
   }, resultType: "void", result: result_connection_delete },
   connection_forget_host_key: { args: {
@@ -1159,7 +1158,6 @@ export const COMMANDS = {
   }, resultType: "void", result: result_quit_app },
   reconnect: { args: {}, resultType: "ConnectionStatus", result: result_reconnect },
   registry_delete: { args: {
-    "confirmed": true,
     "id": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3d"
   }, resultType: "void", result: result_registry_delete },
   registry_list: { args: {}, resultType: "RegistrySummary[]", result: result_registry_list },
