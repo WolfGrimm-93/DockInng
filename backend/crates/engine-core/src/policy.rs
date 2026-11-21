@@ -32,6 +32,9 @@ pub enum Action {
     /// Crear un contenedor con riesgos (bind sensible, `network=host`, `docker.sock`):
     /// confirmación simple, `--yes` la salta.
     CreateSensitive,
+    /// Levantar (`up`) un stack cuyo compose resuelto tiene riesgos (`privileged`, `network_mode:
+    /// host`, `docker.sock`, binds sensibles...): confirmación simple, `--yes` la salta.
+    StackUpSensitive,
     /// Olvidar las credenciales guardadas de un registro (confirmación simple).
     RemoveRegistry,
     /// Borrar un perfil de conexión guardado (confirmación simple: no toca el servidor remoto).
@@ -158,6 +161,7 @@ impl ConfirmationPolicy {
             | RemoveImage
             | RemoveNetwork
             | CreateSensitive
+            | StackUpSensitive
             | RemoveRegistry
             | RemoveConnection
             | BuildSensitiveContext => simple(),
@@ -263,6 +267,11 @@ mod tests {
     #[test]
     fn create_sensitive_es_confirmacion_simple() {
         matriz_simple(Action::CreateSensitive);
+    }
+
+    #[test]
+    fn stack_up_sensitive_es_confirmacion_simple() {
+        matriz_simple(Action::StackUpSensitive);
     }
 
     #[test]

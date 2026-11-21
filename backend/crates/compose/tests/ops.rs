@@ -1246,3 +1246,120 @@ async fn restart_sin_servicios_con_include_que_escapa_falla_antes_de_compose() {
         fake.displays()
     );
 }
+
+// ---------------------------------------------------------------------------------------------
+// `up` con riesgos: exige aprobación humana que cubra los riesgos del compose RESUELTO
+// ---------------------------------------------------------------------------------------------
+
+/// Config resuelta con un servicio `privileged` y otro con el socket de Docker.
+fn risky_config(with_sock: bool) -> String {
+    let mut v: serde_json::Value = serde_json::from_str(CONFIG).unwrap();
+    v["services"]["sleeper"]["privileged"] = serde_json::json!(true);
+    if with_sock {
+        v["services"]["second"]["volumes"] = serde_json::json!([
+            {"type": "bind", "source": "/var/run/docker.sock", "target": "/var/run/docker.sock"}
+        ]);
+    }
+    v.to_string()
+}
+
+async fn run_up(r: &ComposeRunner, approval: Option<engine_core::StackApproval>) -> StackOpFeed {
+    let (sink, store) = feeds();
+    r.prepare_op_approved("web", StackOp::Up { services: None }, approval)
+        .await
+        .unwrap()
+        .run(sink, never())
+        .await;
+    ended(&store)
+}
+
+#[tokio::test]
+async fn up_con_riesgos_sin_aprobacion_se_rechaza_y_no_lanza_up() {
+    let tmp = Tmp::new();
+    let fake = FakeSpawn::new();
+    fake.on(
+        "config --format json",
+        Script::default().stdout(&risky_config(false)),
+    );
+    fake.on(" up ", Script::lines(UP));
+    let r = setup(fake.clone(), &tmp).await;
+    let StackOpFeed::Ended { outcome, error, .. } = run_up(&r, None).await else {
+        unreachable!()
+    };
+    assert_eq!(outcome, StackOutcome::Failed);
+    assert_eq!(error.unwrap().code, ApiErrorCode::PolicyDenied);
+    assert!(fake.displays().iter().all(|d| !d.contains(" up ")));
+}
+
+#[tokio::test]
+async fn up_con_riesgos_y_aprobacion_que_los_cubre_se_ejecuta() {
+    let tmp = Tmp::new();
+    let fake = FakeSpawn::new();
+    fake.on(
+        "config --format json",
+        Script::default().stdout(&risky_config(false)),
+    );
+    fake.on(" up ", Script::lines(UP));
+    let r = setup(fake.clone(), &tmp).await;
+    let risks = r
+        .assess_op("web", &StackOp::Up { services: None })
+        .await
+        .unwrap();
+    assert_eq!(risks, vec![StackRisk::Privileged]);
+    let ap = engine_core::StackApproval {
+        approval: engine_core::Approval::for_tests(),
+        risks,
+    };
+    let StackOpFeed::Ended { outcome, .. } = run_up(&r, Some(ap)).await else {
+        unreachable!()
+    };
+    assert_eq!(outcome, StackOutcome::Success);
+    assert!(fake.displays().iter().any(|d| d.contains(" up ")));
+}
+
+#[tokio::test]
+async fn up_rechaza_un_riesgo_nuevo_que_la_aprobacion_no_cubria() {
+    // La persona aprobó `privileged`; el YAML cambió después y ahora monta docker.sock.
+    let tmp = Tmp::new();
+    let fake = FakeSpawn::new();
+    fake.on(
+        "config --format json",
+        Script::default().stdout(&risky_config(true)),
+    );
+    fake.on(" up ", Script::lines(UP));
+    let r = setup(fake.clone(), &tmp).await;
+    let ap = engine_core::StackApproval {
+        approval: engine_core::Approval::for_tests(),
+        risks: vec![StackRisk::Privileged],
+    };
+    let StackOpFeed::Ended { outcome, error, .. } = run_up(&r, Some(ap)).await else {
+        unreachable!()
+    };
+    assert_eq!(outcome, StackOutcome::Failed);
+    assert_eq!(error.unwrap().code, ApiErrorCode::PolicyDenied);
+    assert!(fake.displays().iter().all(|d| !d.contains(" up ")));
+}
+
+#[tokio::test]
+async fn assess_solo_aplica_a_up() {
+    let tmp = Tmp::new();
+    let fake = FakeSpawn::new();
+    fake.on(
+        "config --format json",
+        Script::default().stdout(&risky_config(true)),
+    );
+    let r = setup(fake, &tmp).await;
+    for op in [
+        StackOp::Restart { services: None },
+        StackOp::Stop { services: None },
+        StackOp::Start { services: None },
+        StackOp::Pull { services: None },
+    ] {
+        assert!(r.assess_op("web", &op).await.unwrap().is_empty());
+    }
+    let up = r
+        .assess_op("web", &StackOp::Up { services: None })
+        .await
+        .unwrap();
+    assert!(up.contains(&StackRisk::Privileged) && up.contains(&StackRisk::DockerSock));
+}

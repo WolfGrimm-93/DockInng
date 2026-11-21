@@ -9,8 +9,9 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use engine_core::{
-    CancelSignal, ComposeContainer, ComposeInfo, EngineError, StackControl, StackFiles, StackOp,
-    StackOpFeed, StackOpRun, StackOrigin, StackOutcome, StackSink, StackSummary, StackValidation,
+    CancelSignal, ComposeContainer, ComposeInfo, EngineError, StackApproval, StackControl,
+    StackFiles, StackOp, StackOpFeed, StackOpRun, StackOrigin, StackOutcome, StackRisk, StackSink,
+    StackSummary, StackValidation,
 };
 
 use crate::args::{ConfigFiles, ProjectSpec};
@@ -244,6 +245,7 @@ impl ComposeRunner {
             project,
             secrets,
             info,
+            approval: None,
             _guard: guard,
         })
     }
@@ -569,11 +571,32 @@ impl StackControl for ComposeRunner {
         Ok(self.blocking(move |s| s.unlink(&n)).await?)
     }
 
-    async fn prepare_op(&self, name: &str, op: StackOp) -> EResult<Box<dyn StackOpRun>> {
-        let (kind, services) = split_op(&op);
+    async fn assess_op(&self, name: &str, op: &StackOp) -> EResult<Vec<StackRisk>> {
+        let (kind, services) = split_op(op);
+        if kind != crate::types::StackOpKind::Up {
+            return Ok(Vec::new());
+        }
         let prepared = self
             .prepare(name, OpKind::Lifecycle(kind), services)
             .await?;
+        Ok(engine_core::sensitive_risks(&prepared.assess().await?))
+    }
+
+    async fn prepare_op_approved(
+        &self,
+        name: &str,
+        op: StackOp,
+        approval: Option<StackApproval>,
+    ) -> EResult<Box<dyn StackOpRun>> {
+        let (kind, services) = split_op(&op);
+        let mut prepared = self
+            .prepare(name, OpKind::Lifecycle(kind), services)
+            .await?;
+        prepared.approval = approval;
         Ok(Box::new(prepared))
+    }
+
+    async fn prepare_op(&self, name: &str, op: StackOp) -> EResult<Box<dyn StackOpRun>> {
+        self.prepare_op_approved(name, op, None).await
     }
 }

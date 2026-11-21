@@ -135,6 +135,7 @@ pub async fn run_stack_op<R: Runtime>(
         window.label(),
         &name,
         op,
+        &state.approvals,
         sink,
     )
     .await
