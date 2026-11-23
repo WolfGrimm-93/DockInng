@@ -5,6 +5,7 @@
 pub mod auth;
 pub mod config;
 pub mod containers;
+pub mod credentials;
 mod cookie;
 pub mod error;
 pub mod login_limit;
@@ -15,7 +16,7 @@ pub mod users_admin;
 use std::sync::Arc;
 
 use axum::Router;
-use axum::routing::{delete, get, patch, post};
+use axum::routing::{delete, get, patch, post, put};
 use engine_core::Role;
 use engine_docker::{DockerEngine, Target};
 use store::Store;
@@ -40,6 +41,7 @@ pub fn build_router(state: &AppState) -> Router<AppState> {
                 get(users_admin::list_users).post(users_admin::create_user),
             )
             .route("/api/users/{id}/role", patch(users_admin::set_role))
+            .route("/api/users/{id}/password", put(users_admin::set_password))
             .route("/api/users/{id}", delete(users_admin::delete_user));
     }
 
@@ -61,6 +63,14 @@ pub fn open_store_and_bootstrap(config: &Config) -> Store {
     if count == 0 {
         match &config.bootstrap_admin {
             Some((username, password)) => {
+                // Mismas reglas que al crear usuarios por la API: un admin inicial débil o con
+                // un nombre engañoso sería la cuenta más valiosa del sistema.
+                if let Err(e) = credentials::validate_username(username)
+                    .and_then(|()| credentials::validate_password(password))
+                {
+                    eprintln!("DOCKINNG_BOOTSTRAP_ADMIN_USER/_PASSWORD inválidos: {e}");
+                    std::process::exit(1);
+                }
                 let hash = store::password::hash_password(password)
                     .expect("hash del administrador inicial");
                 store
