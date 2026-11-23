@@ -108,16 +108,33 @@ pub struct TokioSpawn;
 struct TokioChild {
     child: Option<tokio::process::Child>,
     pgid: Option<i32>,
-    reaped: bool,
+    /// El hijo directo (líder del grupo) ya salió y fue reapeado.
+    leader_reaped: bool,
+    /// El GRUPO entero quedó vacío (o rematado). Solo entonces no queda nada que señalar:
+    /// `wait()` puede cancelarse entre `leader_reaped` y este punto, y el grupo seguiría vivo.
+    group_done: bool,
+}
+
+/// ¿Queda algún miembro vivo en el grupo `pgid`?
+fn group_alive(pgid: i32) -> bool {
+    // SAFETY: `kill(-pgid, 0)` solo comprueba si existe algún miembro.
+    unsafe { libc::kill(-pgid, 0) == 0 }
 }
 
 impl TokioChild {
     fn signal(&self, sig: i32) {
-        if let (Some(pgid), false) = (self.pgid, self.reaped) {
-            // SAFETY: `kill` con un pgid propio (process_group(0)) y una señal válida.
-            unsafe {
-                libc::kill(-pgid, sig);
-            }
+        let Some(pgid) = self.pgid else { return };
+        if self.group_done {
+            return;
+        }
+        // Con el líder ya reapeado el id solo es nuestro mientras el grupo tenga miembros (un
+        // grupo vacío puede reasignarse): sin miembros no se señala nada.
+        if self.leader_reaped && !group_alive(pgid) {
+            return;
+        }
+        // SAFETY: `kill` con un pgid propio (process_group(0)) y una señal válida.
+        unsafe {
+            libc::kill(-pgid, sig);
         }
     }
 }
@@ -130,10 +147,12 @@ impl ChildHandle for TokioChild {
             return Err(io::Error::other("proceso ya liberado"));
         };
         let st = child.wait().await?;
-        self.reaped = true;
+        self.leader_reaped = true;
         // El hijo directo (`docker`) pudo salir dejando al plugin de Compose vivo en el grupo:
-        // se espera y, pasada la gracia, se remata el grupo entero (sin huérfanos).
+        // se espera y, pasada la gracia, se remata el grupo entero (sin huérfanos). Si esta
+        // futura se cancela aquí, `group_done` sigue en `false` y `kill`/`Drop` terminan el trabajo.
         reap_group(self.pgid, GROUP_GRACE).await;
+        self.group_done = true;
         Ok(ExitInfo {
             code: st.code(),
             signal: st.signal(),
@@ -151,13 +170,35 @@ impl Drop for TokioChild {
     /// Sin huérfanos: si el hijo sigue vivo al soltar el manejador (ventana destruida, tarea
     /// abortada) se le manda SIGTERM ya y una tarea desacoplada lo remata con SIGKILL a los 5 s.
     fn drop(&mut self) {
-        if self.reaped {
+        if self.group_done {
+            return;
+        }
+        let pgid = self.pgid;
+        // El líder ya salió pero el grupo seguía vivo (`wait()` cancelado durante la espera del
+        // grupo): SIGTERM ya y remate con SIGKILL pasada la gracia, sin volver a esperar al líder.
+        if self.leader_reaped {
+            if let Some(pgid) = pgid.filter(|p| group_alive(*p)) {
+                // SAFETY: el grupo tiene miembros, así que el id no puede haberse reasignado.
+                unsafe {
+                    libc::kill(-pgid, libc::SIGTERM);
+                }
+                match tokio::runtime::Handle::try_current() {
+                    Ok(h) => {
+                        h.spawn(reap_group(Some(pgid), GROUP_GRACE));
+                    }
+                    Err(_) => {
+                        // SAFETY: ver arriba.
+                        unsafe {
+                            libc::kill(-pgid, libc::SIGKILL);
+                        }
+                    }
+                }
+            }
             return;
         }
         let Some(mut child) = self.child.take() else {
             return;
         };
-        let pgid = self.pgid;
         if let Some(pgid) = pgid {
             // SAFETY: ver `signal`.
             unsafe {
@@ -241,7 +282,8 @@ impl Spawn for TokioSpawn {
             child: Box::new(TokioChild {
                 child: Some(child),
                 pgid,
-                reaped: false,
+                leader_reaped: false,
+                group_done: false,
             }),
         })
     }
@@ -573,5 +615,76 @@ mod tests {
             }
         }
         None
+    }
+
+    /// ¿Existe el proceso `pid`? (`kill(pid, 0)`; un zombi cuenta como vivo, y aquí no hay).
+    fn alive(pid: i32) -> bool {
+        // SAFETY: señal 0 solo comprueba existencia.
+        unsafe { libc::kill(pid, 0) == 0 }
+    }
+
+    /// Lanza `sh -c <script>` con el lanzador real y devuelve el manejador y el pid que imprimió.
+    async fn lanzar(script: &str) -> (Box<dyn ChildHandle>, i32) {
+        use tokio::io::AsyncBufReadExt;
+        let spec = CommandSpec {
+            program: "sh".into(),
+            args: vec!["-c".into(), script.into()],
+        };
+        let sp = TokioSpawn
+            .spawn(&spec, &[("PATH".into(), "/usr/bin:/bin".into())], Path::new("/"), None)
+            .await
+            .unwrap();
+        let mut lines = tokio::io::BufReader::new(sp.stdout).lines();
+        let pid: i32 = lines.next_line().await.unwrap().unwrap().trim().parse().unwrap();
+        (sp.child, pid)
+    }
+
+    async fn espera_muerte(pid: i32, hasta: Duration) -> bool {
+        let t = tokio::time::Instant::now();
+        while t.elapsed() < hasta {
+            if !alive(pid) {
+                return true;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        !alive(pid)
+    }
+
+    /// Regresión (auditoría M4): el hijo directo sale pero deja un nieto en el grupo (como el
+    /// plugin de Compose). Si `wait()` se cancela durante la espera del grupo, el `Drop` debe
+    /// rematar al nieto igualmente (antes `reaped = true` desactivaba señales y Drop).
+    #[tokio::test]
+    async fn cancelar_wait_durante_la_espera_del_grupo_no_deja_huerfanos() {
+        let (mut child, nieto) = lanzar("sleep 60 & echo $!; exit 0").await;
+        assert!(alive(nieto));
+        // Cancela `wait()` a mitad de `reap_group` (el nieto sigue vivo en el grupo).
+        let r = tokio::time::timeout(Duration::from_millis(300), child.wait()).await;
+        assert!(r.is_err(), "wait debería seguir esperando al grupo");
+        drop(child);
+        assert!(
+            espera_muerte(nieto, Duration::from_secs(8)).await,
+            "el nieto quedó huérfano"
+        );
+    }
+
+    #[tokio::test]
+    async fn kill_tras_cancelar_wait_tambien_alcanza_al_grupo() {
+        let (mut child, nieto) = lanzar("sleep 60 & echo $!; exit 0").await;
+        let _ = tokio::time::timeout(Duration::from_millis(300), child.wait()).await;
+        child.kill();
+        assert!(espera_muerte(nieto, Duration::from_secs(3)).await);
+    }
+
+    #[tokio::test]
+    async fn wait_normal_remata_al_grupo_y_no_toca_a_otros() {
+        let (mut child, nieto) = lanzar("sleep 60 & echo $!; exit 0").await;
+        let ajeno = tokio::process::Command::new("sleep").arg("60").spawn().unwrap();
+        let ajeno_pid = ajeno.id().unwrap() as i32;
+        let info = child.wait().await.unwrap();
+        assert!(info.success());
+        assert!(espera_muerte(nieto, Duration::from_secs(1)).await);
+        assert!(alive(ajeno_pid), "no debe matar procesos de otro grupo");
+        // SAFETY: matamos nuestro propio `sleep` de prueba.
+        unsafe { libc::kill(ajeno_pid, libc::SIGKILL) };
     }
 }
