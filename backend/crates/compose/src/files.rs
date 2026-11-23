@@ -791,12 +791,14 @@ impl StackStore {
         {
             // Son dos archivos y no hay escritura conjunta atómica: si falla el segundo se
             // devuelve el compose a su contenido anterior para no dejar un par inconsistente.
-            return Err(match write_atomic(dir, fname, old_yaml.as_bytes(), yaml_mode) {
-                Ok(()) => e,
-                Err(re) => ComposeError::Internal(format!(
-                    "no se pudo escribir el .env ({e}) y tampoco restaurar el compose anterior ({re}): revisa los archivos del stack"
-                )),
-            });
+            return Err(
+                match write_atomic(dir, fname, old_yaml.as_bytes(), yaml_mode) {
+                    Ok(()) => e,
+                    Err(re) => ComposeError::Internal(format!(
+                        "no se pudo escribir el .env ({e}) y tampoco restaurar el compose anterior ({re}): revisa los archivos del stack"
+                    )),
+                },
+            );
         }
         self.read(name)
     }
@@ -1574,7 +1576,7 @@ mod tests {
         // Explícito: la raíz y /etc.
         for wd in ["/", "/etc"] {
             let e = s
-                .link("amplio", &[compose.clone()], Some(Path::new(wd)), None)
+                .link("amplio", std::slice::from_ref(&compose), Some(Path::new(wd)), None)
                 .unwrap_err();
             assert!(matches!(e, ComposeError::Denied(_)), "{wd}: {e:?}");
         }
@@ -1582,7 +1584,9 @@ mod tests {
         // lee HOME del entorno del proceso, así que se fija sin hilos concurrentes que lo lean
         // de otro modo en este módulo).
         let guard = HomeGuard::set(&p);
-        let e = s.link("amplio", &[compose.clone()], None, None).unwrap_err();
+        let e = s
+            .link("amplio", std::slice::from_ref(&compose), None, None)
+            .unwrap_err();
         assert!(matches!(e, ComposeError::Denied(_)), "derivado: {e:?}");
         drop(guard);
         // Un proyecto normal sigue vinculándose.

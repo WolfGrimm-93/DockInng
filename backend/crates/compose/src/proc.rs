@@ -631,11 +631,23 @@ mod tests {
             args: vec!["-c".into(), script.into()],
         };
         let sp = TokioSpawn
-            .spawn(&spec, &[("PATH".into(), "/usr/bin:/bin".into())], Path::new("/"), None)
+            .spawn(
+                &spec,
+                &[("PATH".into(), "/usr/bin:/bin".into())],
+                Path::new("/"),
+                None,
+            )
             .await
             .unwrap();
         let mut lines = tokio::io::BufReader::new(sp.stdout).lines();
-        let pid: i32 = lines.next_line().await.unwrap().unwrap().trim().parse().unwrap();
+        let pid: i32 = lines
+            .next_line()
+            .await
+            .unwrap()
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
         (sp.child, pid)
     }
 
@@ -678,7 +690,10 @@ mod tests {
     #[tokio::test]
     async fn wait_normal_remata_al_grupo_y_no_toca_a_otros() {
         let (mut child, nieto) = lanzar("sleep 60 & echo $!; exit 0").await;
-        let ajeno = tokio::process::Command::new("sleep").arg("60").spawn().unwrap();
+        let ajeno = tokio::process::Command::new("sleep")
+            .arg("60")
+            .spawn()
+            .unwrap();
         let ajeno_pid = ajeno.id().unwrap() as i32;
         let info = child.wait().await.unwrap();
         assert!(info.success());

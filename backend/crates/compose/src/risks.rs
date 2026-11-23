@@ -78,6 +78,19 @@ fn is_socket(path: &str) -> bool {
     )
 }
 
+/// Marca una ruta que Compose lee en ESTA máquina (secret/config/contexto de build) si es el
+/// socket del motor o una ruta sensible. Reutiliza `SensitiveBind`: para quien aprueba es lo mismo,
+/// «se expone esta ruta del host».
+fn local_read_risk(path: &str, home: Option<&str>, out: &mut Vec<StackRisk>) {
+    if is_socket(path) {
+        out.push(StackRisk::DockerSock);
+    } else if is_sensitive_bind(path, home) {
+        out.push(StackRisk::SensitiveBind {
+            path: path.to_string(),
+        });
+    }
+}
+
 /// Riesgos por servicio (motor local).
 pub fn analyze(config: &Value, home: Option<&str>) -> Vec<StackRisk> {
     analyze_with(config, home, false)
@@ -89,11 +102,44 @@ pub fn analyze(config: &Value, home: Option<&str>) -> Vec<StackRisk> {
 /// eso cada bind se marca como `RemoteBind`.
 pub fn analyze_with(config: &Value, home: Option<&str>, remote: bool) -> Vec<StackRisk> {
     let mut out = Vec::new();
+    // Archivos de `secrets:` y `configs:` de nivel superior: Compose los LEE en esta máquina y
+    // su contenido acaba dentro del contenedor, también con un daemon remoto.
+    for section in ["secrets", "configs"] {
+        if let Some(map) = config.get(section).and_then(Value::as_object) {
+            for def in map.values() {
+                if let Some(file) = def.get("file").and_then(Value::as_str) {
+                    local_read_risk(file, home, &mut out);
+                }
+            }
+        }
+    }
     let Some(services) = config.get("services").and_then(Value::as_object) else {
         return out;
     };
     for (name, def) in services {
         let _ = name;
+        // Contextos de construcción: el contenido de la carpeta se envía al daemon (cliente local).
+        if let Some(build) = def.get("build") {
+            let mut ctxs: Vec<&str> = Vec::new();
+            match build {
+                Value::String(s) => ctxs.push(s),
+                Value::Object(b) => {
+                    if let Some(c) = b.get("context").and_then(Value::as_str) {
+                        ctxs.push(c);
+                    }
+                    if let Some(extra) = b.get("additional_contexts").and_then(Value::as_object) {
+                        ctxs.extend(extra.values().filter_map(Value::as_str));
+                    }
+                }
+                _ => {}
+            }
+            for c in ctxs {
+                // Solo rutas locales: URLs (git/https), `service:x` y `docker-image://` no se leen aquí.
+                if c.starts_with('/') {
+                    local_read_risk(c, home, &mut out);
+                }
+            }
+        }
         if def.get("privileged").and_then(Value::as_bool) == Some(true) {
             out.push(StackRisk::Privileged);
         }
@@ -284,5 +330,62 @@ mod tests {
         }));
         assert_eq!(r.len(), 6);
         assert!(analyze(&json!({}), HOME).is_empty());
+    }
+
+    // Auditoría M6: lo que Compose lee en esta máquina y acaba en el contenedor o en el daemon.
+
+    #[test]
+    fn secrets_y_configs_hacia_rutas_sensibles_son_riesgo_tambien_en_remoto() {
+        let cfg = json!({
+            "secrets": {
+                "llave": {"file": "/home/user/.ssh/id_ed25519"},
+                "ok": {"file": "/home/user/proyectos/app/db.txt"}
+            },
+            "configs": {"pw": {"file": "/etc/shadow"}},
+            "services": {}
+        });
+        for remote in [false, true] {
+            let r = analyze_with(&cfg, HOME, remote);
+            assert!(
+                r.contains(&StackRisk::SensitiveBind {
+                    path: "/home/user/.ssh/id_ed25519".into()
+                }),
+                "remote={remote}: {r:?}"
+            );
+            assert!(r.contains(&StackRisk::SensitiveBind {
+                path: "/etc/shadow".into()
+            }));
+            assert!(!r.iter().any(
+                |x| matches!(x, StackRisk::SensitiveBind { path } if path.contains("db.txt"))
+            ));
+        }
+    }
+
+    #[test]
+    fn contexto_de_build_sensible_es_riesgo_y_urls_no() {
+        let cfg = json!({"services": {
+            "a": {"build": {"context": "/home/user"}},
+            "b": {"build": "/etc"},
+            "c": {"build": {"context": "https://github.com/x/y.git"}},
+            "d": {"build": {"context": "/home/user/proyectos/app",
+                            "additional_contexts": {"s": "/root", "i": "docker-image://alpine", "v": "service:web"}}}
+        }});
+        let r = analyze_with(&cfg, HOME, false);
+        for p in ["/home/user", "/etc", "/root"] {
+            assert!(
+                r.contains(&StackRisk::SensitiveBind { path: p.into() }),
+                "{p}: {r:?}"
+            );
+        }
+        assert_eq!(r.len(), 3, "{r:?}");
+    }
+
+    #[test]
+    fn socket_de_docker_como_secret_o_contexto_es_docker_sock() {
+        let cfg = json!({
+            "secrets": {"s": {"file": "/var/run/docker.sock"}},
+            "services": {}
+        });
+        assert!(analyze_with(&cfg, HOME, false).contains(&StackRisk::DockerSock));
     }
 }

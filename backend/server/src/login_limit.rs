@@ -156,7 +156,9 @@ impl LoginGuard {
         }
     }
 
-    /// Libera sitio: primero las entradas caducadas; si no basta, la de fallo más antiguo.
+    /// Libera sitio: primero las entradas caducadas; si no basta, la menos valiosa. Se desalojan
+    /// antes las de usuario que las de IP y antes las no bloqueadas que las bloqueadas: rociar
+    /// nombres de usuario aleatorios no debe poder borrar el contador (o el bloqueo) de una IP.
     fn make_room(&self, map: &mut HashMap<String, Entry>, now: Instant) {
         let window = self.policy.window;
         map.retain(|_, e| {
@@ -164,12 +166,18 @@ impl LoginGuard {
                 || now.saturating_duration_since(e.last_failure) < window
         });
         if map.len() >= self.policy.max_entries
-            && let Some(oldest) = map
+            && let Some(victim) = map
                 .iter()
-                .min_by_key(|(_, e)| e.last_failure)
+                .min_by_key(|(k, e)| {
+                    (
+                        e.blocked_until.is_some_and(|b| b > now),
+                        k.starts_with("ip:"),
+                        e.last_failure,
+                    )
+                })
                 .map(|(k, _)| k.clone())
         {
-            map.remove(&oldest);
+            map.remove(&victim);
         }
     }
 
@@ -317,5 +325,22 @@ mod tests {
         assert!(g.try_hash_slot().is_none());
         drop(a);
         assert!(g.try_hash_slot().is_some());
+    }
+
+    #[test]
+    fn rociar_usuarios_no_borra_el_contador_ni_el_bloqueo_de_una_ip() {
+        // Mapa diminuto (4): 3 entradas de IP bloqueadas/contando + spray de usuarios.
+        let g = guard();
+        let t0 = Instant::now();
+        for i in 0..10 {
+            g.record_failure(ip(1), &format!("u{i}"), t0 + Duration::from_millis(i));
+        }
+        // La IP llegó a su umbral (10) y sigue bloqueada pese al spray y al tope del mapa.
+        assert!(g.check(ip(1), "otro", t0 + Duration::from_millis(11)).is_err());
+        for i in 0..100 {
+            g.record_failure(ip(2), &format!("spray{i}"), t0 + Duration::from_millis(20 + i));
+        }
+        assert!(g.check(ip(1), "otro", t0 + Duration::from_millis(200)).is_err());
+        assert!(g.lock().contains_key("ip:10.0.0.1"));
     }
 }
