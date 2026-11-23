@@ -173,8 +173,14 @@ pub enum NetworksCmd {
 pub enum StacksCmd {
     /// Lista los stacks
     Ls,
-    /// Levanta un stack (`docker compose up -d`)
-    Up(StackTarget),
+    /// Levanta un stack (`docker compose up -d`). Si el compose tiene riesgos (`privileged`,
+    /// `docker.sock`, red del host, binds sensibles) pide confirmación (`--yes` la salta)
+    Up {
+        #[command(flatten)]
+        target: StackTarget,
+        #[command(flatten)]
+        confirm: Confirm,
+    },
     /// Baja un stack (confirmación escrita: su nombre; nunca borra volúmenes)
     Down { name: String },
     /// Reinicia un stack

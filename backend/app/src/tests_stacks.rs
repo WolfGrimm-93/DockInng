@@ -136,6 +136,7 @@ async fn operacion_completa_por_el_servicio_con_progreso_y_fin() {
         "main",
         "web",
         StackOp::Up { services: None },
+        &r.state.approvals,
         sink,
     )
     .await
@@ -169,6 +170,7 @@ async fn errores_previos_se_devuelven_al_comando_sin_lanzar_tarea() {
             "main",
             bad,
             StackOp::Stop { services: None },
+            &r.state.approvals,
             sink.clone(),
         )
         .await
@@ -183,6 +185,7 @@ async fn errores_previos_se_devuelven_al_comando_sin_lanzar_tarea() {
         StackOp::Up {
             services: Some(vec!["--evil".into()]),
         },
+        &r.state.approvals,
         sink,
     )
     .await
@@ -215,6 +218,7 @@ async fn cuarta_operacion_simultanea_es_conflict_y_no_deja_el_stack_ocupado() {
                 "main",
                 n,
                 StackOp::Stop { services: None },
+                &r.state.approvals,
                 sink,
             )
             .await
@@ -229,6 +233,7 @@ async fn cuarta_operacion_simultanea_es_conflict_y_no_deja_el_stack_ocupado() {
         "main",
         last,
         StackOp::Stop { services: None },
+        &r.state.approvals,
         sink.clone(),
     )
     .await
@@ -241,6 +246,7 @@ async fn cuarta_operacion_simultanea_es_conflict_y_no_deja_el_stack_ocupado() {
         "otra",
         last,
         StackOp::Stop { services: None },
+        &r.state.approvals,
         sink,
     )
     .await
@@ -266,6 +272,7 @@ async fn cancelar_es_solo_de_la_ventana_duena() {
         "main",
         "web",
         StackOp::Stop { services: None },
+        &r.state.approvals,
         sink,
     )
     .await
@@ -314,6 +321,7 @@ async fn abort_duro_y_cierre_de_ventana_no_dejan_huerfanos() {
         "main",
         "a",
         StackOp::Stop { services: None },
+        &r.state.approvals,
         s1,
     )
     .await
@@ -324,6 +332,7 @@ async fn abort_duro_y_cierre_de_ventana_no_dejan_huerfanos() {
         "main",
         "b",
         StackOp::Stop { services: None },
+        &r.state.approvals,
         s2,
     )
     .await
@@ -348,6 +357,7 @@ async fn abort_duro_y_cierre_de_ventana_no_dejan_huerfanos() {
         "main",
         "a",
         StackOp::Stop { services: None },
+        &r.state.approvals,
         s3,
     )
     .await
@@ -531,4 +541,111 @@ fn ipc_de_stacks_bajo_la_acl_real() {
     )
     .expect_err("servicio hostil");
     assert_eq!(e["code"], "invalid_input");
+}
+
+// `up` con riesgos: el diálogo NATIVO decide; el webview no puede aprobar.
+
+fn risky_config() -> String {
+    let mut v: serde_json::Value = serde_json::from_str(CONFIG).unwrap();
+    v["services"]["sleeper"]["privileged"] = serde_json::json!(true);
+    v.to_string()
+}
+
+fn risky_rig() -> (Rig, Arc<FakeSpawn>) {
+    let fake = FakeSpawn::new();
+    fake.on(
+        "config --format json",
+        Script::default().stdout(&risky_config()),
+    );
+    fake.on(
+        " up ",
+        Script::lines(&UP.replace("dockinng-test-recon", "web")),
+    );
+    (rig(fake.clone()), fake)
+}
+
+#[tokio::test]
+async fn up_con_riesgos_sin_aprobar_en_el_dialogo_no_lanza_nada() {
+    let (r, fake) = risky_rig();
+    create(&r, "web").await;
+    let dialogo = crate::approvals::FakeApprovals::new(false);
+    let source: Arc<dyn crate::approvals::ApprovalSource> = dialogo.clone();
+    let (sink, _rx) = chan();
+    let e = start_stack_op(
+        &r.state.streams,
+        &r.state.stacks,
+        "main",
+        "web",
+        StackOp::Up { services: None },
+        &source,
+        sink,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(e.code, ApiErrorCode::PolicyDenied);
+    assert_eq!(dialogo.pedidos().len(), 1);
+    assert!(
+        dialogo.pedidos()[0]
+            .lines
+            .iter()
+            .any(|l| l.contains("privileged"))
+    );
+    assert!(fake.displays().iter().all(|d| !d.contains(" up ")));
+}
+
+#[tokio::test]
+async fn up_con_riesgos_aprobado_en_el_dialogo_se_ejecuta() {
+    let (r, fake) = risky_rig();
+    create(&r, "web").await;
+    let source: Arc<dyn crate::approvals::ApprovalSource> =
+        crate::approvals::FakeApprovals::new(true);
+    let (sink, mut rx) = chan();
+    start_stack_op(
+        &r.state.streams,
+        &r.state.stacks,
+        "main",
+        "web",
+        StackOp::Up { services: None },
+        &source,
+        sink,
+    )
+    .await
+    .unwrap();
+    let feeds = ended(&mut rx).await;
+    assert!(matches!(
+        feeds.last(),
+        Some(StackOpFeed::Ended {
+            outcome: StackOutcome::Success,
+            ..
+        })
+    ));
+    assert!(fake.displays().iter().any(|d| d.contains(" up ")));
+}
+
+#[tokio::test]
+async fn up_sin_riesgos_no_abre_dialogo() {
+    let fake = FakeSpawn::new();
+    fake.on("config --format json", Script::default().stdout(CONFIG));
+    fake.on(
+        " up ",
+        Script::lines(&UP.replace("dockinng-test-recon", "web")),
+    );
+    let r = rig(fake);
+    create(&r, "web").await;
+    let dialogo = crate::approvals::FakeApprovals::new(false);
+    let source: Arc<dyn crate::approvals::ApprovalSource> = dialogo.clone();
+    let (sink, mut rx) = chan();
+    start_stack_op(
+        &r.state.streams,
+        &r.state.stacks,
+        "main",
+        "web",
+        StackOp::Up { services: None },
+        &source,
+        sink,
+    )
+    .await
+    .unwrap();
+    ended(&mut rx).await;
+    assert!(dialogo.pedidos().is_empty());
 }

@@ -5,11 +5,13 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use engine_core::{
-    ApiError, ApiErrorCode, CancelSignal, ComposeContainer, StackControl, StackDiscovery,
-    StackFiles, StackOp, StackOpFeed, StackOutcome, StackSink, StackSummary,
+    ApiError, ApiErrorCode, CancelSignal, ComposeContainer, StackApproval, StackControl,
+    StackDiscovery, StackFiles, StackOp, StackOpFeed, StackOutcome, StackSink, StackSummary,
+    stack_up_prompt,
 };
 use tokio::sync::oneshot;
 
+use crate::approvals::{ApprovalSource, obtain_approval};
 use crate::streams::{Sink, StreamKind, StreamRegistry};
 
 /// Máximo de entradas de cancelación vivas (defensa; el registro real limita a 3 por ventana).
@@ -134,6 +136,7 @@ pub async fn start_stack_op(
     window: &str,
     name: &str,
     op: StackOp,
+    approvals: &Arc<dyn ApprovalSource>,
     sink: Arc<dyn Sink<StackOpFeed>>,
 ) -> Result<String, ApiError> {
     if !stacks.has_capacity() {
@@ -142,7 +145,22 @@ pub async fn start_stack_op(
             "demasiadas operaciones de stack en curso",
         ));
     }
-    let prepared = stacks.control.prepare_op(name, op).await?;
+    // `up` con riesgos (privileged, docker.sock, red del host, binds sensibles...): aprobación
+    // humana por diálogo NATIVO. El webview no puede aprobar. El núcleo vuelve a comprobar los
+    // riesgos al ejecutar y rechaza si aparece alguno que la persona no vio.
+    let risks = stacks.control.assess_op(name, &op).await?;
+    let approval = if risks.is_empty() {
+        None
+    } else {
+        let prompt = stack_up_prompt(name, &risks);
+        obtain_approval(approvals.clone(), Some(prompt))
+            .await?
+            .map(|approval| StackApproval { approval, risks })
+    };
+    let prepared = stacks
+        .control
+        .prepare_op_approved(name, op, approval)
+        .await?;
     let (tx, rx) = oneshot::channel::<()>();
     // Un emisor soltado NO cuenta como cancelación: solo un `send` explícito.
     let cancel: CancelSignal = Box::pin(async move {

@@ -122,21 +122,24 @@ async fn dispatch(ctx: &Ctx, command: Command) -> Result<(), CliError> {
         Command::Logs { id, follow, tail } => cmd_logs::logs(ctx, &id, follow, tail).await,
         Command::Stacks(c) => match c {
             StacksCmd::Ls => cmd_stacks::ls(ctx).await,
-            StacksCmd::Up(t) => {
-                cmd_stacks::run_op(ctx, t, |services| StackOp::Up { services }).await
+            StacksCmd::Up { target, confirm } => {
+                cmd_stacks::run_op(ctx, target, confirm.yes, |services| StackOp::Up {
+                    services,
+                })
+                .await
             }
             StacksCmd::Down { name } => cmd_stacks::down(ctx, &name).await,
             StacksCmd::Restart(t) => {
-                cmd_stacks::run_op(ctx, t, |services| StackOp::Restart { services }).await
+                cmd_stacks::run_op(ctx, t, false, |services| StackOp::Restart { services }).await
             }
             StacksCmd::Stop(t) => {
-                cmd_stacks::run_op(ctx, t, |services| StackOp::Stop { services }).await
+                cmd_stacks::run_op(ctx, t, false, |services| StackOp::Stop { services }).await
             }
             StacksCmd::Start(t) => {
-                cmd_stacks::run_op(ctx, t, |services| StackOp::Start { services }).await
+                cmd_stacks::run_op(ctx, t, false, |services| StackOp::Start { services }).await
             }
             StacksCmd::Pull(t) => {
-                cmd_stacks::run_op(ctx, t, |services| StackOp::Pull { services }).await
+                cmd_stacks::run_op(ctx, t, false, |services| StackOp::Pull { services }).await
             }
         },
         Command::Cleanup(c) => match c {

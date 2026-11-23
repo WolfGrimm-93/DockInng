@@ -5,13 +5,13 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use engine_core::{
-    ActionRequest, CancelSignal, StackControl, StackDiscovery, StackOp, StackOpFeed, StackOutcome,
-    StackSink,
+    ActionRequest, CancelSignal, PlanDecision, StackApproval, StackControl, StackDiscovery,
+    StackOp, StackOpFeed, StackOutcome, StackSink, stack_up_prompt,
 };
 
 use crate::apply::apply;
 use crate::cli::StackTarget;
-use crate::confirm::Stdin;
+use crate::confirm::{Stdin, gate, interactivity};
 use crate::ctx::{Ctx, ctrl_c};
 use crate::output::{print_json, print_lines, print_ndjson, table};
 
@@ -88,12 +88,42 @@ fn sink(json: bool) -> StackSink {
 pub async fn run_op(
     ctx: &Ctx,
     t: StackTarget,
+    assume_yes: bool,
     op: fn(Option<Vec<String>>) -> StackOp,
 ) -> Result<(), CliError> {
     let services = (!t.services.is_empty()).then_some(t.services);
     let runner = ctx.runner();
+    let op = op(services);
+    // `up` con riesgos: misma política que la GUI. Pregunta (o `--yes`) y el núcleo vuelve a
+    // comprobar los riesgos al ejecutar.
+    let risks = runner
+        .assess_op(&t.name, &op)
+        .await
+        .map_err(|e| e.to_string())?;
+    let approval = if risks.is_empty() {
+        None
+    } else {
+        for line in stack_up_prompt(&t.name, &risks).lines {
+            eprintln!("aviso: {line}");
+        }
+        let decision = engine_core::decide(
+            &engine_core::Action::StackUpSensitive,
+            interactivity(),
+            assume_yes,
+        );
+        gate(
+            &PlanDecision::from(&decision),
+            assume_yes,
+            "¿Levantar este stack con estos riesgos?",
+            &mut Stdin,
+        )?;
+        Some(StackApproval {
+            approval: engine_core::Approval::from_cli_prompt(),
+            risks,
+        })
+    };
     let prepared = runner
-        .prepare_op(&t.name, op(services))
+        .prepare_op_approved(&t.name, op, approval)
         .await
         .map_err(|e| e.to_string())?;
     // Ctrl-C = cancelación limpia (SIGTERM al grupo de procesos y `Ended{canceled}`).

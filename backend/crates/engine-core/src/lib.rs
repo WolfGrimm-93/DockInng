@@ -89,9 +89,10 @@ pub use resources::{Image, Network, Volume};
 pub use role::Role;
 pub use stacks::{
     CancelSignal, ComposeContainer, ComposeFlavor, ComposeInfo, IssueKind, ProgressItem,
-    ProgressKind, ProgressStatus, ServicePhase, ServiceProgress, StackControl, StackDiscovery,
-    StackFiles, StackOp, StackOpFeed, StackOpRun, StackOrigin, StackOutcome, StackRisk,
-    StackService, StackSink, StackStatus, StackSummary, StackValidation, ValidationIssue,
+    ProgressKind, ProgressStatus, ServicePhase, ServiceProgress, StackApproval, StackControl,
+    StackDiscovery, StackFiles, StackOp, StackOpFeed, StackOpRun, StackOrigin, StackOutcome,
+    StackRisk, StackService, StackSink, StackStatus, StackSummary, StackValidation,
+    ValidationIssue, sensitive_risks, stack_up_prompt,
 };
 pub use stats::ContainerStats;
 pub use system::{ContainerDisk, DiskCategory, DiskUsage, GpuInfo, HostResources, SystemUsage};
