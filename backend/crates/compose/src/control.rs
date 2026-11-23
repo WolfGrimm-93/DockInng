@@ -418,8 +418,15 @@ impl StackControl for ComposeRunner {
             env.to_string(),
             expected_revision.map(str::to_string),
         );
+        // Mismo guard que las operaciones (`up`, `down`...): no se reescribe el YAML mientras
+        // Compose lo está leyendo, y dos guardados del mismo stack no se pisan. Se retiene
+        // hasta terminar la escritura (el guard viaja dentro de la tarea de bloqueo).
+        let guard = self.core.acquire(name)?;
         Ok(self
-            .blocking(move |s| s.save(&n, &y, &e, rev.as_deref()))
+            .blocking(move |s| {
+                let _guard = guard;
+                s.save(&n, &y, &e, rev.as_deref())
+            })
             .await?)
     }
 
