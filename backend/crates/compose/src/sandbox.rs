@@ -3,9 +3,21 @@
 //! cualquier componente, ni por interpolación `${...}` (que solo se resuelve ejecutando Compose,
 //! así que se rechaza).
 //!
-//! Como `validate::find_remote_include`, el análisis es línea a línea y falla cerrado: ante la
-//! duda, rechaza. Los `include` y `extends.file` locales se siguen de forma recursiva, porque
-//! Compose también resuelve los de los archivos incluidos.
+//! Dos pasadas que se suman (basta con que una marque un escape):
+//! 1. Escáner línea a línea (como `validate::find_remote_include`): falla cerrado y da la línea.
+//! 2. Parseo YAML real del documento: ve lo que un escáner de texto no puede (documentos en estilo
+//!    flujo `{include: [...]}`, alias `*ancla`, escapes `\x2e\x2e` dentro de comillas, claves de
+//!    fusión `<<`). Si el YAML no se puede parsear no marca nada: Compose lo rechazará con su
+//!    propio error y el escáner de texto sigue actuando como respaldo.
+//!
+//! Los `include` y `extends.file` locales se siguen de forma recursiva, porque Compose también
+//! resuelve los de los archivos incluidos.
+//!
+//! Límites conocidos: entre este análisis y la lectura de Compose el archivo puede cambiar
+//! (TOCTOU); quien pueda escribir en el proyecto ya tiene los privilegios del usuario. Los
+//! archivos que lee Compose por otras claves (`build.context`, `secrets.*.file`,
+//! `configs.*.file`, binds) NO se confinan aquí —es habitual que vivan fuera del proyecto— sino
+//! que `risks` los marca y su `up` exige aprobación humana.
 
 use std::collections::HashSet;
 use std::fs;
@@ -151,7 +163,7 @@ impl Scan {
                 return Some(esc);
             }
         }
-        None
+        self.parsed(text, bases, depth, nested)
     }
 
     /// Valida las rutas de un valor. Las rutas que pasan se siguen si son `include`/`extends`.
@@ -170,36 +182,77 @@ impl Scan {
         };
         // Un valor de `extends` sin `file:` (nombre de servicio) no es una ruta.
         for tok in tokens(value, ctx != Ctx::Extends) {
-            if tok.contains('$') {
-                // La interpolación solo se resuelve ejecutando Compose: no se puede verificar.
+            if let Some(esc) = self.check_tok(tok, ctx, bases, depth, esc) {
                 return Some(esc);
             }
-            if tok.contains("://") {
-                if REMOTE_PREFIXES.iter().any(|p| tok.starts_with(p)) {
-                    continue;
+        }
+        None
+    }
+
+    /// Valida UNA ruta ya extraída (sin partirla en fragmentos). Las que pasan se siguen si son
+    /// `include`/`extends`.
+    fn check_tok(
+        &mut self,
+        tok: &str,
+        ctx: Ctx,
+        bases: &[PathBuf],
+        depth: usize,
+        esc: Escape,
+    ) -> Option<Escape> {
+        if tok.contains('$') {
+            // La interpolación solo se resuelve ejecutando Compose: no se puede verificar.
+            return Some(esc);
+        }
+        if tok.contains("://") {
+            if REMOTE_PREFIXES.iter().any(|p| tok.starts_with(p)) {
+                return None;
+            }
+            return Some(esc);
+        }
+        let candidates: Vec<PathBuf> = if Path::new(tok).is_absolute() {
+            vec![PathBuf::from(tok)]
+        } else if bases.is_empty() {
+            return Some(esc);
+        } else {
+            bases.iter().map(|b| b.join(tok)).collect()
+        };
+        let mut found = Vec::with_capacity(candidates.len());
+        for cand in &candidates {
+            match self.confine(cand) {
+                Some(canon) => found.push(canon),
+                None => return Some(esc),
+            }
+        }
+        if ctx != Ctx::EnvFile {
+            for canon in &found {
+                if let Some(esc) = self.follow(canon, depth) {
+                    return Some(esc);
                 }
-                return Some(esc);
             }
-            let candidates: Vec<PathBuf> = if Path::new(tok).is_absolute() {
-                vec![PathBuf::from(tok)]
-            } else if bases.is_empty() {
-                return Some(esc);
-            } else {
-                bases.iter().map(|b| b.join(tok)).collect()
+        }
+        None
+    }
+
+    /// Segunda pasada: parsea el documento y revisa las rutas de `include`, `env_file` y
+    /// `extends.file` en CUALQUIER parte del árbol (con alias y claves de fusión resueltos).
+    fn parsed(
+        &mut self,
+        text: &str,
+        bases: &[PathBuf],
+        depth: usize,
+        nested: bool,
+    ) -> Option<Escape> {
+        let mut doc: serde_norway::Value = serde_norway::from_str(text).ok()?;
+        let _ = doc.apply_merge();
+        let mut refs: Vec<(Ctx, String)> = Vec::new();
+        collect_refs(&doc, &mut refs);
+        for (ctx, path) in refs {
+            let esc = Escape {
+                line: line_of(text, &path, ctx),
+                in_included: nested,
             };
-            let mut found = Vec::with_capacity(candidates.len());
-            for cand in &candidates {
-                match self.confine(cand) {
-                    Some(canon) => found.push(canon),
-                    None => return Some(esc),
-                }
-            }
-            if ctx != Ctx::EnvFile {
-                for canon in &found {
-                    if let Some(esc) = self.follow(canon, depth) {
-                        return Some(esc);
-                    }
-                }
+            if let Some(found) = self.check_tok(&path, ctx, bases, depth, esc) {
+                return Some(found);
             }
         }
         None
@@ -246,6 +299,65 @@ impl Scan {
         }
         None
     }
+}
+
+/// Recorre el árbol y junta las rutas locales de `include`, `env_file` y `extends.file`.
+fn collect_refs(v: &serde_norway::Value, out: &mut Vec<(Ctx, String)>) {
+    use serde_norway::Value;
+    match v {
+        Value::Mapping(m) => {
+            for (k, val) in m {
+                match k.as_str().and_then(block_ctx) {
+                    Some(Ctx::Extends) => {
+                        // `extends: servicio` (cadena) no es una ruta; `extends: {file: ...}` sí.
+                        if let Value::Mapping(_) = val {
+                            push_paths(val, Ctx::Include, out);
+                        }
+                    }
+                    Some(ctx) => push_paths(val, ctx, out),
+                    None => {}
+                }
+                collect_refs(val, out);
+            }
+        }
+        Value::Sequence(seq) => seq.iter().for_each(|x| collect_refs(x, out)),
+        Value::Tagged(t) => collect_refs(&t.value, out),
+        _ => {}
+    }
+}
+
+/// Rutas de un valor: cadena, lista, o mapa con `path`/`file`/`project_directory`.
+fn push_paths(v: &serde_norway::Value, ctx: Ctx, out: &mut Vec<(Ctx, String)>) {
+    use serde_norway::Value;
+    match v {
+        Value::String(s) if !s.is_empty() => out.push((ctx, s.clone())),
+        Value::Sequence(seq) => seq.iter().for_each(|x| push_paths(x, ctx, out)),
+        Value::Mapping(m) => {
+            for key in PATH_KEYS {
+                if let Some(val) = m.get(key) {
+                    push_paths(val, ctx, out);
+                }
+            }
+        }
+        Value::Tagged(t) => push_paths(&t.value, ctx, out),
+        _ => {}
+    }
+}
+
+/// Línea (1-based) donde aparece la ruta o, si no está literal (alias, escapes), la de la clave
+/// que la usa; 1 si no se encuentra.
+fn line_of(text: &str, path: &str, ctx: Ctx) -> u32 {
+    let key = match ctx {
+        Ctx::Include => "include",
+        Ctx::EnvFile => "env_file",
+        Ctx::Extends => "extends",
+    };
+    let find = |needle: &str| {
+        text.lines()
+            .position(|l| l.contains(needle))
+            .and_then(|i| u32::try_from(i + 1).ok())
+    };
+    find(path).or_else(|| find(key)).unwrap_or(1)
 }
 
 fn block_ctx(key: &str) -> Option<Ctx> {
@@ -574,5 +686,82 @@ mod tests {
         // Un `file:` fuera del bloque `extends` no es una ruta de Compose que se valide aquí.
         let text = "include:\n  - ./ok.yaml\nservices:\n  web:\n    file: ../fuera\n";
         assert_eq!(linea(text, &t.proyecto()), None);
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Auditoría M6: formas de YAML que Compose acepta y un escáner por líneas no ve. Se resuelven
+    // con un parseo real del documento (alias, estilo flujo, escapes dentro de cadenas).
+    // -----------------------------------------------------------------------------------------
+
+    #[test]
+    fn documento_completo_en_estilo_flujo_se_revisa() {
+        let t = Tmp::new("flujo");
+        assert!(
+            linea(
+                "{include: [{path: ../fuera/secreto.yaml}], services: {}}\n",
+                &t.proyecto()
+            )
+            .is_some()
+        );
+        assert!(
+            linea(
+                "{services: {web: {image: x, env_file: [../fuera/secreto.env]}}}\n",
+                &t.proyecto()
+            )
+            .is_some()
+        );
+    }
+
+    #[test]
+    fn alias_yaml_no_oculta_la_ruta() {
+        let t = Tmp::new("alias");
+        // La ruta se define en un ancla y se usa por alias: la línea de `env_file` solo dice `*e`.
+        let yaml =
+            "x-ruta: &e ../fuera/secreto.env\nservices:\n  web:\n    image: x\n    env_file: *e\n";
+        assert!(linea(yaml, &t.proyecto()).is_some());
+        let yaml = "x-ruta: &i ../fuera/secreto.yaml\ninclude:\n  - *i\n";
+        assert!(linea(yaml, &t.proyecto()).is_some());
+    }
+
+    #[test]
+    fn escapes_dentro_de_cadenas_entre_comillas_se_decodifican() {
+        let t = Tmp::new("escapes");
+        // `\x2e\x2e` y `\u002e\u002e` son `..` para el parser YAML.
+        for ruta in [
+            r#""\x2e\x2e/fuera/secreto.env""#,
+            r#""\u002e\u002e/fuera/secreto.env""#,
+            r#""..\/fuera/secreto.env""#,
+        ] {
+            let yaml = format!("services:\n  web:\n    image: x\n    env_file: {ruta}\n");
+            assert!(linea(&yaml, &t.proyecto()).is_some(), "{ruta}");
+        }
+    }
+
+    #[test]
+    fn una_ruta_legitima_en_esas_formas_sigue_pasando() {
+        let t = Tmp::new("legitimas");
+        fs::write(t.proyecto().join("app.env"), "A=1\n").unwrap();
+        for yaml in [
+            "{services: {web: {image: x, env_file: [app.env]}}}\n",
+            "x-e: &e ./app.env\nservices:\n  web:\n    image: x\n    env_file: *e\n",
+            "services:\n  web:\n    image: x\n    env_file: \"\\x61pp.env\"\n",
+        ] {
+            assert_eq!(linea(yaml, &t.proyecto()), None, "{yaml}");
+        }
+    }
+
+    #[test]
+    fn bombas_de_alias_no_cuelgan_ni_se_cuelan() {
+        let t = Tmp::new("bomba");
+        let mut yaml = String::from("a0: &a0 [x, x, x, x, x, x, x, x, x]\n");
+        for i in 1..9 {
+            let prev = i - 1;
+            yaml.push_str(&format!(
+                "a{i}: &a{i} [*a{prev}, *a{prev}, *a{prev}, *a{prev}, *a{prev}, *a{prev}, *a{prev}, *a{prev}, *a{prev}]\n"
+            ));
+        }
+        yaml.push_str("services:\n  web:\n    image: x\n    env_file: ../fuera/secreto.env\n");
+        // Con o sin parseo exitoso, la ruta que escapa sigue detectándose y no se cuelga.
+        assert!(linea(&yaml, &t.proyecto()).is_some());
     }
 }

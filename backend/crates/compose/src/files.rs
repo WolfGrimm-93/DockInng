@@ -350,7 +350,24 @@ fn validate_external_dir(path: &Path) -> Result<PathBuf, ComposeError> {
     if is_forbidden(&canon) || !canon.is_dir() {
         return Err(ComposeError::Denied("directorio no permitido".into()));
     }
+    reject_broad_project_dir(&canon)?;
     Ok(canon)
+}
+
+/// Un directorio de proyecto demasiado amplio (`/`, `/home`, `$HOME`, `/etc`, `~/.ssh`...) deja el
+/// confinamiento sin efecto: cualquier `include`, `env_file` o bind «dentro del proyecto» sería en
+/// la práctica cualquier archivo del usuario. Mismo criterio que el de los binds sensibles.
+fn reject_broad_project_dir(canon: &Path) -> Result<(), ComposeError> {
+    let home = std::env::var("HOME").ok();
+    let Some(p) = canon.to_str() else {
+        return Err(ComposeError::Denied("directorio no permitido".into()));
+    };
+    if crate::risks::is_sensitive_bind(p, home.as_deref()) {
+        return Err(ComposeError::Denied(
+            "el directorio del proyecto es demasiado amplio (la raíz, tu carpeta personal o un directorio del sistema): mueve el compose a su propia carpeta".into(),
+        ));
+    }
+    Ok(())
 }
 
 /// Lectura de solo lectura de un archivo compose externo (stacks `discovered`).
@@ -739,8 +756,9 @@ impl StackStore {
         } else {
             mode(compose)
         };
-        write_atomic(dir, fname, yaml.as_bytes(), yaml_mode)?;
-        match &r.env_file {
+        // Destino del `.env` decidido y validado ANTES de escribir nada: un rechazo
+        // determinista no debe dejar el compose ya reescrito.
+        let env_target: Option<(PathBuf, String, u32)> = match &r.env_file {
             Some(p) => {
                 let edir = p
                     .parent()
@@ -754,17 +772,33 @@ impl StackStore {
                 } else {
                     mode(p)
                 };
-                write_atomic(edir, ename, env.as_bytes(), m)?;
+                Some((edir.to_path_buf(), ename.to_string(), m))
             }
-            None if env.is_empty() => {}
+            None if env.is_empty() => None,
             None if r.origin == StackOrigin::Managed => {
-                write_atomic(&r.project_dir, ENV_NAME, env.as_bytes(), 0o600)?;
+                Some((r.project_dir.clone(), ENV_NAME.to_string(), 0o600))
             }
             None => {
                 return Err(ComposeError::InvalidInput(
                     "este stack vinculado no tiene un archivo .env asociado".into(),
                 ));
             }
+        };
+        let old_yaml = current.yaml.clone();
+        write_atomic(dir, fname, yaml.as_bytes(), yaml_mode)?;
+        if let Some((edir, ename, m)) = env_target
+            && let Err(e) = write_atomic(&edir, &ename, env.as_bytes(), m)
+        {
+            // Son dos archivos y no hay escritura conjunta atómica: si falla el segundo se
+            // devuelve el compose a su contenido anterior para no dejar un par inconsistente.
+            return Err(
+                match write_atomic(dir, fname, old_yaml.as_bytes(), yaml_mode) {
+                    Ok(()) => e,
+                    Err(re) => ComposeError::Internal(format!(
+                        "no se pudo escribir el .env ({e}) y tampoco restaurar el compose anterior ({re}): revisa los archivos del stack"
+                    )),
+                },
+            );
         }
         self.read(name)
     }
@@ -834,10 +868,15 @@ impl StackStore {
         let first = validate_external_file(&files[0], MAX_YAML_BYTES, true)?;
         let wd = match working_dir {
             Some(d) => validate_external_dir(d)?,
-            None => first
-                .parent()
-                .map(Path::to_path_buf)
-                .ok_or_else(|| ComposeError::InvalidInput("sin directorio padre".into()))?,
+            None => {
+                let parent = first
+                    .parent()
+                    .map(Path::to_path_buf)
+                    .ok_or_else(|| ComposeError::InvalidInput("sin directorio padre".into()))?;
+                // El directorio derivado del propio archivo se valida igual que uno explícito.
+                reject_broad_project_dir(&parent)?;
+                parent
+            }
         };
         let mut canon_files = Vec::new();
         for f in files {
@@ -1478,5 +1517,107 @@ mod tests {
         assert_eq!(l[1].origin, StackOrigin::Managed);
         assert_eq!(s.origin_of("zeta").unwrap(), Some(StackOrigin::Managed));
         assert_eq!(s.origin_of("nada").unwrap(), None);
+    }
+
+    #[test]
+    fn save_no_deja_compose_nuevo_con_env_viejo_si_falla_el_env() {
+        // Como root los permisos de directorio no impiden escribir: la prueba no aplica.
+        // SAFETY: `geteuid` no tiene precondiciones.
+        if unsafe { libc::geteuid() } == 0 {
+            return;
+        }
+        let t = TempDir::new();
+        let s = store(&t);
+        let p = project(&t);
+        let sub = p.join("sub");
+        fs::create_dir(&sub).unwrap();
+        fs::write(sub.join(".env"), "VIEJO=1\n").unwrap();
+        s.link(
+            "proy",
+            &[p.join("compose.yaml")],
+            None,
+            Some(&sub.join(".env")),
+        )
+        .unwrap();
+        let antes = fs::read_to_string(p.join("compose.yaml")).unwrap();
+        // `.env` en un directorio de solo lectura: el segundo archivo no se puede escribir.
+        fs::set_permissions(&sub, fs::Permissions::from_mode(0o500)).unwrap();
+        let nuevo = "services:\n  b:\n    image: busybox\n";
+        let r = s.save("proy", nuevo, "NUEVO=1\n", None);
+        fs::set_permissions(&sub, fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(r.is_err());
+        assert_eq!(fs::read_to_string(p.join("compose.yaml")).unwrap(), antes);
+        assert_eq!(fs::read_to_string(sub.join(".env")).unwrap(), "VIEJO=1\n");
+    }
+
+    #[test]
+    fn save_de_vinculado_sin_env_rechaza_antes_de_escribir_el_compose() {
+        let t = TempDir::new();
+        let s = store(&t);
+        let p = project(&t);
+        fs::remove_file(p.join(".env")).unwrap();
+        s.link("proy", &[p.join("compose.yaml")], None, None)
+            .unwrap();
+        let antes = fs::read_to_string(p.join("compose.yaml")).unwrap();
+        let nuevo = "services:\n  b:\n    image: busybox\n";
+        assert!(matches!(
+            s.save("proy", nuevo, "X=1\n", None),
+            Err(ComposeError::InvalidInput(_))
+        ));
+        assert_eq!(fs::read_to_string(p.join("compose.yaml")).unwrap(), antes);
+    }
+
+    #[test]
+    fn working_dir_demasiado_amplio_se_rechaza_explicito_o_derivado() {
+        let t = TempDir::new();
+        let s = store(&t);
+        let p = project(&t);
+        let compose = p.join("compose.yaml");
+        // Explícito: la raíz y /etc.
+        for wd in ["/", "/etc"] {
+            let e = s
+                .link("amplio", std::slice::from_ref(&compose), Some(Path::new(wd)), None)
+                .unwrap_err();
+            assert!(matches!(e, ComposeError::Denied(_)), "{wd}: {e:?}");
+        }
+        // $HOME y su ancestro: se simula con HOME = el directorio del proyecto (la comprobación
+        // lee HOME del entorno del proceso, así que se fija sin hilos concurrentes que lo lean
+        // de otro modo en este módulo).
+        let guard = HomeGuard::set(&p);
+        let e = s
+            .link("amplio", std::slice::from_ref(&compose), None, None)
+            .unwrap_err();
+        assert!(matches!(e, ComposeError::Denied(_)), "derivado: {e:?}");
+        drop(guard);
+        // Un proyecto normal sigue vinculándose.
+        s.link("normal", &[compose], None, None).unwrap();
+    }
+
+    /// Fija `HOME` durante la prueba y lo restaura. `std::env::set_var` es global al proceso:
+    /// estas pruebas lo serializan con un cerrojo propio.
+    struct HomeGuard {
+        prev: Option<std::ffi::OsString>,
+        _lock: std::sync::MutexGuard<'static, ()>,
+    }
+    static HOME_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    impl HomeGuard {
+        fn set(dir: &Path) -> Self {
+            let lock = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let prev = std::env::var_os("HOME");
+            // SAFETY: serializado por HOME_LOCK entre las pruebas que lo tocan.
+            unsafe { std::env::set_var("HOME", dir) };
+            Self { prev, _lock: lock }
+        }
+    }
+    impl Drop for HomeGuard {
+        fn drop(&mut self) {
+            // SAFETY: ver `set`.
+            unsafe {
+                match &self.prev {
+                    Some(v) => std::env::set_var("HOME", v),
+                    None => std::env::remove_var("HOME"),
+                }
+            }
+        }
     }
 }

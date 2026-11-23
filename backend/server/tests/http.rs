@@ -563,3 +563,177 @@ async fn el_bloqueo_por_ip_usa_la_direccion_de_la_conexion_y_no_afecta_a_otras_i
         .unwrap();
     assert_eq!(r.status(), StatusCode::OK);
 }
+
+// ---------------------------------------------------------------------------------------------
+// Validación de credenciales nuevas y reseteo de contraseña
+// ---------------------------------------------------------------------------------------------
+
+async fn crear_usuario_status(state: &AppState, cookie: &str, user: &str, pass: &str) -> StatusCode {
+    app(state)
+        .oneshot(with_cookie(
+            json_req(
+                "POST",
+                "/api/users",
+                json!({"username": user, "password": pass, "role": "viewer"}),
+            ),
+            cookie,
+        ))
+        .await
+        .unwrap()
+        .status()
+}
+
+fn state_con_admin(tag: &str) -> (TempDir, AppState) {
+    let t = TempDir::new(tag);
+    let store = open_store(&t.0);
+    let hash = store::password::hash_password("correcta-123").unwrap();
+    store.user_create("root", &hash, Role::Admin).unwrap();
+    let state = state_multi(mock_engine_con_un_contenedor(), store);
+    (t, state)
+}
+
+#[tokio::test]
+async fn crear_usuario_rechaza_nombres_engañosos_y_contrasenas_fuera_de_rango() {
+    let (_t, state) = state_con_admin("credval");
+    let cookie = login_cookie(&state, "root", "correcta-123").await;
+    for (u, p) in [
+        ("аdmin", "clave-larga-ok"), // «а» cirílica: homógrafo de «admin»
+        ("a b", "clave-larga-ok"),
+        ("ab", "clave-larga-ok"),
+        ("  ", "clave-larga-ok"),
+        ("beto\n", "clave-larga-ok"),
+        ("beto", "corta"),
+    ] {
+        assert_eq!(
+            crear_usuario_status(&state, &cookie, u, p).await,
+            StatusCode::BAD_REQUEST,
+            "{u:?} / {p:?}"
+        );
+    }
+    let larga = "x".repeat(200);
+    assert_eq!(
+        crear_usuario_status(&state, &cookie, "beto", &larga).await,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        crear_usuario_status(&state, &cookie, "Beto.Ruiz", "clave-larga-ok").await,
+        StatusCode::OK
+    );
+}
+
+#[tokio::test]
+async fn el_admin_resetea_la_contrasena_y_se_cierran_las_sesiones_del_usuario() {
+    let (_t, state) = state_con_admin("reset");
+    let admin = login_cookie(&state, "root", "correcta-123").await;
+    assert_eq!(
+        crear_usuario_status(&state, &admin, "beto", "clave-vieja-123").await,
+        StatusCode::OK
+    );
+    let sesion_beto = login_cookie(&state, "beto", "clave-vieja-123").await;
+    let id = state
+        .store
+        .as_ref()
+        .unwrap()
+        .user_by_username("beto")
+        .unwrap()
+        .unwrap()
+        .id;
+    let put = |cookie: &str, body: Value| {
+        with_cookie(
+            json_req("PUT", &format!("/api/users/{id}/password"), body),
+            cookie,
+        )
+    };
+    // Una contraseña floja se rechaza y no cambia nada.
+    let r = app(&state)
+        .oneshot(put(&admin, json!({"password": "corta"})))
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+    // Un no-admin no puede resetear.
+    let r = app(&state)
+        .oneshot(put(&sesion_beto, json!({"password": "otra-clave-larga"})))
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::FORBIDDEN);
+    // El admin sí; la sesión vieja de beto muere y la clave vieja deja de servir.
+    let r = app(&state)
+        .oneshot(put(&admin, json!({"password": "clave-nueva-456"})))
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::NO_CONTENT);
+    let r = app(&state)
+        .oneshot(with_cookie(req("GET", "/api/auth/me"), &sesion_beto))
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        login_status(&state, "beto", "clave-vieja-123").await.status(),
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        login_status(&state, "beto", "clave-nueva-456").await.status(),
+        StatusCode::OK
+    );
+    // Usuario inexistente.
+    let r = app(&state)
+        .oneshot(with_cookie(
+            json_req(
+                "PUT",
+                "/api/users/no-existe/password",
+                json!({"password": "clave-nueva-456"}),
+            ),
+            &admin,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn dos_admins_borrandose_a_la_vez_por_http_dejan_a_uno() {
+    let (_t, state) = state_con_admin("carrera");
+    let admin1 = login_cookie(&state, "root", "correcta-123").await;
+    // Segundo admin.
+    let r = app(&state)
+        .oneshot(with_cookie(
+            json_req(
+                "POST",
+                "/api/users",
+                json!({"username": "otro", "password": "clave-larga-ok", "role": "admin"}),
+            ),
+            &admin1,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let id2 = body_json(r).await["id"].as_str().unwrap().to_string();
+    let admin2 = login_cookie(&state, "otro", "clave-larga-ok").await;
+    let id1 = state
+        .store
+        .as_ref()
+        .unwrap()
+        .user_by_username("root")
+        .unwrap()
+        .unwrap()
+        .id;
+    // Cada admin degrada al otro al mismo tiempo.
+    let (a, b) = tokio::join!(
+        app(&state).oneshot(with_cookie(
+            json_req("PATCH", &format!("/api/users/{id2}/role"), json!({"role": "viewer"})),
+            &admin1
+        )),
+        app(&state).oneshot(with_cookie(
+            json_req("PATCH", &format!("/api/users/{id1}/role"), json!({"role": "viewer"})),
+            &admin2
+        )),
+    );
+    let (a, b) = (a.unwrap().status(), b.unwrap().status());
+    assert_eq!(state.store.as_ref().unwrap().user_admin_count().unwrap(), 1);
+    // Uno aplicó el cambio; el otro, o bien fue rechazado por «último admin» (409) o bien
+    // perdió la sesión por el cambio de rol (401) o permisos (403). Nunca pudieron ganar los dos.
+    assert!(
+        [a, b].iter().filter(|s| **s == StatusCode::NO_CONTENT).count() <= 1,
+        "{a} {b}"
+    );
+}

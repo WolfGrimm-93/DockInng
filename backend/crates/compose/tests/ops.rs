@@ -1363,3 +1363,26 @@ async fn assess_solo_aplica_a_up() {
         .unwrap();
     assert!(up.contains(&StackRisk::Privileged) && up.contains(&StackRisk::DockerSock));
 }
+
+#[tokio::test]
+async fn guardar_el_stack_choca_con_una_operacion_en_curso_y_funciona_al_terminar() {
+    // Auditoría M5: `save` no tomaba el guard `busy` y podía reescribir el YAML mientras Compose
+    // lo leía (up/restart...).
+    let tmp = Tmp::new();
+    let fake = FakeSpawn::new();
+    fake.on("config --format json", Script::default().stdout(CONFIG));
+    let r = setup(fake, &tmp).await;
+    let nuevo = "services:\n  otro:\n    image: busybox\n";
+    let op = r
+        .prepare_op("web", StackOp::Up { services: None })
+        .await
+        .unwrap();
+    let e = r.stack_save("web", nuevo, "", None).await.unwrap_err();
+    assert!(matches!(e, EngineError::Conflict(_)), "{e:?}");
+    // El archivo no se tocó.
+    assert_eq!(r.stack_read("web", vec![]).await.unwrap().yaml, YAML);
+    // Al soltarse la operación, el guardado procede.
+    drop(op);
+    r.stack_save("web", nuevo, "", None).await.unwrap();
+    assert_eq!(r.stack_read("web", vec![]).await.unwrap().yaml, nuevo);
+}
