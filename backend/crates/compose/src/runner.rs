@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
-use engine_core::{ApiError, ApiErrorCode};
+use engine_core::{ApiError, ApiErrorCode, StackApproval, StackRisk, sensitive_risks};
 use tokio::time::MissedTickBehavior;
 
 use crate::args::{
@@ -558,6 +558,8 @@ pub struct PreparedOp {
     pub(crate) project: ProjectSpec,
     pub(crate) secrets: Vec<String>,
     pub(crate) info: ComposeInfo,
+    /// Aprobación humana de los riesgos de un `up` (la aporta el adaptador: diálogo nativo o CLI).
+    pub(crate) approval: Option<StackApproval>,
     pub(crate) _guard: BusyGuard,
 }
 
@@ -585,6 +587,25 @@ fn looks_like_unsupported_progress(texts: &[String]) -> bool {
 }
 
 impl PreparedOp {
+    /// Riesgos del modelo resuelto (`config --format json`) según el daemon (local o remoto).
+    fn risks_of(&self, raw: &serde_json::Value) -> Vec<StackRisk> {
+        let home = std::env::var("HOME").ok();
+        crate::risks::analyze_with(raw, home.as_deref(), self.core.is_remote())
+    }
+
+    /// Pre-escaneo + `config` + análisis de riesgos, sin ejecutar nada. Es lo que verá `up`.
+    pub(crate) async fn assess(&self) -> Result<Vec<StackRisk>, ComposeError> {
+        let cwd = self.project.project_dir.clone().unwrap_or_else(neutral_cwd);
+        self.core
+            .reject_remote_includes(&self.project, None)
+            .and_then(|()| self.core.reject_local_escape(&self.project, None))?;
+        let cfg = self
+            .core
+            .config(self.info.flavor, &self.project, &cwd, None, &self.secrets)
+            .await?;
+        Ok(self.risks_of(&cfg.raw))
+    }
+
     fn timeout(&self) -> Duration {
         let l = &self.core.limits;
         match self.kind {
@@ -637,6 +658,26 @@ impl PreparedOp {
             };
             match cfg {
                 Ok(c) => {
+                    // Piso de seguridad: un `up` recrea contenedores desde el YAML. Los riesgos se
+                    // calculan sobre el MISMO modelo resuelto que Compose va a ejecutar y, si hay
+                    // alguno sensible, hace falta una aprobación humana que lo cubra.
+                    if matches!(self.kind, OpKind::Lifecycle(StackOpKind::Up)) {
+                        let risks = self.risks_of(&c.raw);
+                        let sensitive = sensitive_risks(&risks);
+                        if !sensitive.is_empty()
+                            && !self.approval.as_ref().is_some_and(|a| a.covers(&sensitive))
+                        {
+                            return ended(
+                                StackOutcome::Failed,
+                                None,
+                                Some(ApiError::new(
+                                    ApiErrorCode::PolicyDenied,
+                                    "este stack tiene riesgos (privileged, docker.sock, red del host, binds sensibles...) y no fue aprobado por una persona",
+                                )),
+                                vec![],
+                            );
+                        }
+                    }
                     for s in &self.services {
                         if !c.services.iter().any(|x| &x.name == s) {
                             return ended(

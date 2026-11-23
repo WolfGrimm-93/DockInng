@@ -1207,7 +1207,7 @@ fn commands() -> Value {
     );
     c.add(
         "connection_delete",
-        json!({"id": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3e", "confirmed": true}),
+        json!({"id": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3e"}),
         "void",
         unit.clone(),
     );
@@ -1236,7 +1236,7 @@ fn commands() -> Value {
     );
     c.add(
         "registry_delete",
-        json!({"id": TICKET, "confirmed": true}),
+        json!({"id": TICKET}),
         "void",
         unit.clone(),
     );

@@ -63,11 +63,11 @@ describe('IPC Ola 2: conexiones', () => {
     expect((await api.connections.trustHostKey(F.sshSpec, F.probeUnknown.fingerprint_sha256)).state).toBe('trusted')
     expect((await api.connections.test(F.tlsSpec)).ok).toBe(true)
     expect(await api.connections.save(F.sshSpecFile)).toEqual(F.profileSsh) // spec aplanado -> perfil completo con destino legible
-    await api.connections.remove('id-1', true)
+    await api.connections.remove('id-1')
     await api.connections.select('id-1')
     expect(calls.map((c) => c.cmd)).toEqual(['connection_probe_host_key', 'connection_trust_host_key', 'connection_test', 'connection_save', 'connection_delete', 'connection_select'])
     expect(calls[1].args).toEqual({ spec: F.sshSpec, fingerprint: F.probeUnknown.fingerprint_sha256 })
-    expect(calls[4].args).toEqual({ id: 'id-1', confirmed: true })
+    expect(calls[4].args).toEqual({ id: 'id-1' })
     expect(calls[5].args).toEqual({ id: 'id-1' })
   })
   it('el spec SSH/TLS viaja con la forma serde (puerto numérico, identidad etiquetada, solo rutas)', () => {
@@ -117,11 +117,11 @@ describe('IPC Ola 2: registries', () => {
     expect(JSON.stringify(saved)).not.toContain('S3CRET')
     expect(await api.registries.list()).toEqual([F.registry])
     expect(await api.registries.test(F.registry.id)).toEqual({ ok: true }) // el comando devuelve ()
-    await api.registries.remove(F.registry.id, true)
+    await api.registries.remove(F.registry.id)
     expect(calls[0]).toEqual({ cmd: 'registry_save', args: { server: 'ghcr.io', username: 'casaluna', secret: 'S3CRET' } })
     expect(calls.slice(1).map((c) => c.cmd)).toEqual(['registry_list', 'registry_test', 'registry_delete'])
     for (const c of calls.slice(1)) expect(JSON.stringify(c.args ?? {})).not.toContain('S3CRET')
-    expect(calls[3].args).toEqual({ id: F.registry.id, confirmed: true })
+    expect(calls[3].args).toEqual({ id: F.registry.id })
   })
 })
 

@@ -30,7 +30,7 @@ export function ConnectionsSection() {
     })
     if (!ok) return
     try {
-      await api.connections.remove(p.id, true)
+      await api.connections.remove(p.id)
       toast.ok('Conexión eliminada', { sub: safeText(p.name, { singleLine: true }) })
       await store.getState().refreshProfiles()
     } catch (e) { const m = apiErrorMessage(e); toast.err(m.title, { sub: m.detail }) }

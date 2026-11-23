@@ -116,8 +116,8 @@ export interface EngineApi {
     test(spec: ConnSpec): Promise<ConnTestResult>
     /** `connection_save {spec, id?}`: sin `id` CREA (nombre repetido = conflict); con `id` EDITA esa conexión (la activa no se puede editar). */
     save(spec: ConnSpec, id?: string): Promise<ConnectionProfile>
-    /** `connection_delete`: `confirmed` solo tras el ConfirmDialog (el backend exige decide==Allow). */
-    remove(id: string, confirmed: boolean): Promise<void>
+    /** `connection_delete`: la aprobación la da el diálogo NATIVO del backend; el webview no manda ningún booleano. */
+    remove(id: string): Promise<void>
     /** `connection_select`: cambia el motor activo. Al fallar, el motor queda en el destino previo (lanza; no cambia `activeId`). */
     select(id: string): Promise<ConnectionStatus>
   }
@@ -125,7 +125,7 @@ export interface EngineApi {
   registries: {
     list(): Promise<RegistrySummary[]>
     save(input: { server: string; username: string; secret: string }): Promise<RegistrySummary>
-    remove(id: string, confirmed: boolean): Promise<void>
+    remove(id: string): Promise<void>
     test(id: string): Promise<RegistryTestResult>
   }
   /** Grupos, asignaciones y color de stacks persistentes en el almacén del backend. */

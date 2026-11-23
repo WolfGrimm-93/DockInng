@@ -214,8 +214,7 @@ export function createSimStore(ctx: SimCtx, getActive: () => string, opts: SimSt
         else ctx.world.profiles.push(p)
         return { ...p }
       },
-      async remove(id, confirmed) {
-        if (!confirmed) throw apiError('policy_denied', 'Falta la confirmación para eliminar la conexión.')
+      async remove(id) {
         if (id === 'local') throw apiError('policy_denied', 'La conexión local no se puede eliminar.')
         if (id === getActive()) throw apiError('conflict', 'No puedes eliminar la conexión activa: cambia a otra antes.')
         const i = ctx.world.profiles.findIndex((p) => p.id === id)
@@ -240,8 +239,7 @@ export function createSimStore(ctx: SimCtx, getActive: () => string, opts: SimSt
         registries.push(r)
         return { ...r }
       },
-      async remove(id, confirmed) {
-        if (!confirmed) throw apiError('policy_denied', 'Falta la confirmación para eliminar el registro.')
+      async remove(id) {
         const i = registries.findIndex((r) => r.id === id)
         if (i < 0) throw apiError('not_found', 'El registro ya no existe.')
         registries.splice(i, 1)

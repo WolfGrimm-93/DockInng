@@ -10,23 +10,24 @@
 //!        (re-sondea y escribe en el known_hosts PROPIO solo si la huella coincide con la vista;
 //!         una clave cambiada da `connection` con causa `host_key_changed` y nunca se acepta)
 //!   connection_forget_host_key(spec, confirmed_host) -> void (quita la clave guardada del known_hosts PROPIO;
-//!        `confirmed_host` debe ser el host exacto: Action::ForgetHostKey. No confía en nada.)
+//!        `confirmed_host` debe ser el host exacto (Action::ForgetHostKey) y además hay diálogo NATIVO.
+//!        No confía en nada.)
 //!   connection_test(spec) -> ConnTestResult                   (no activa; el fallo va dentro)
 //!   connection_save(spec, id?) -> ConnectionProfile           (sin `id` CREA: un nombre ya usado da `conflict`;
 //!        con `id` EDITA esa conexión, que no puede ser la activa; el nombre no puede ser el de otra)
-//!   connection_delete(id, confirmed) -> ()                    (Action::RemoveConnection; no borra la activa)
+//!   connection_delete(id) -> ()                               (Action::RemoveConnection: diálogo NATIVO; no borra la activa)
 //!   connection_select(id) -> ConnectionStatus                 (`local` o un id guardado; si falla, `ApiError`
 //!        `connection` con `cause` clasificada y el motor sigue en el destino anterior)
 
 use engine_core::{
-    Action, ApiError, ApiErrorCode, ConnSpec, ConnTestResult, ConnectionProfile, ConnectionStatus,
-    EngineError, HostKeyProbe, SshIdentity, connections::validate_spec,
+    Action, ApiError, ApiErrorCode, ApprovalPrompt, ConnSpec, ConnTestResult, ConnectionProfile,
+    ConnectionStatus, EngineError, HostKeyProbe, SshIdentity, connections::validate_spec,
 };
 use tauri::State;
 use transport::keyscan;
 use transport::ssh_args::SshTarget;
 
-use crate::commands_store::{require_confirmed, require_typed, with_store};
+use crate::commands_store::{require_native_approval, require_typed, with_store};
 use crate::state::AppState;
 use crate::switch::{known_hosts_path, select_connection, test_connection};
 
@@ -113,6 +114,22 @@ pub async fn connection_forget_host_key(
         },
         &confirmed_host,
     )?;
+    require_native_approval(
+        &state,
+        &Action::ForgetHostKey {
+            host: target.host.clone(),
+        },
+        ApprovalPrompt {
+            title: "Confirmar olvidar clave de host".into(),
+            lines: vec![
+                format!("host: {}", target.host),
+                "Se quitará la clave guardada; la próxima conexión volverá a pedir confirmar la huella."
+                    .into(),
+            ],
+            typed_hint: None,
+        },
+    )
+    .await?;
     let kh = known_hosts_path(&state)?;
     keyscan::forget(&kh, &target)
         .map(|_| ())
@@ -168,12 +185,24 @@ pub async fn connection_save(
 }
 
 #[tauri::command]
-pub async fn connection_delete(
-    state: State<'_, AppState>,
-    id: String,
-    confirmed: bool,
-) -> ApiResult<()> {
-    require_confirmed(&Action::RemoveConnection, confirmed)?;
+pub async fn connection_delete(state: State<'_, AppState>, id: String) -> ApiResult<()> {
+    // El diálogo describe la conexión real. Se pide ANTES de tomar `switch_lock` para no bloquear
+    // los cambios de conexión mientras la persona decide; la comprobación de «activa» va después.
+    let lookup = id.clone();
+    let profile = with_store(&state, move |s| s.connection_get(&lookup)).await?;
+    require_native_approval(
+        &state,
+        &Action::RemoveConnection,
+        ApprovalPrompt {
+            title: "Confirmar eliminar conexión".into(),
+            lines: vec![
+                format!("conexión: {}", profile.spec.name()),
+                "Solo se borra el perfil guardado; el servidor remoto no se toca.".into(),
+            ],
+            typed_hint: None,
+        },
+    )
+    .await?;
     // Serializa con connection_select: no se borra una conexión mientras se activa.
     let _serial = state.switch_lock.write().await;
     if state.remote.active_id().await.as_deref() == Some(id.as_str()) {

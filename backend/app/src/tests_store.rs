@@ -49,12 +49,21 @@ impl Drop for Harness {
 }
 
 fn harness(tag: &str) -> Harness {
+    harness_with(tag, crate::approvals::FakeApprovals::new(true)).0
+}
+
+/// Como `harness`, con el origen de aprobaciones (diálogo nativo falso) a elegir.
+fn harness_with(
+    tag: &str,
+    approvals: Arc<crate::approvals::FakeApprovals>,
+) -> (Harness, Arc<crate::approvals::FakeApprovals>) {
     let dir = tempdir(tag);
     let mut state = AppState::new(Arc::new(DockerEngine::with_socket(
         "/nonexistent/docker.sock",
     )));
     state.store = Some(Arc::new(Store::open(&dir.join("data")).expect("store")));
     state.secrets = Arc::new(MemorySecrets::default());
+    state.approvals = approvals.clone();
     let app = mock_builder()
         .manage(state)
         .invoke_handler(tauri::generate_handler![
@@ -77,6 +86,7 @@ fn harness(tag: &str) -> Harness {
             crate::commands_remote::connection_test,
             crate::commands_remote::connection_save,
             crate::commands_remote::connection_delete,
+            crate::commands_remote::connection_forget_host_key,
             crate::commands_remote::connection_select,
         ])
         .build(tauri::generate_context!())
@@ -84,11 +94,14 @@ fn harness(tag: &str) -> Harness {
     let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
         .build()
         .expect("ventana");
-    Harness {
-        webview,
-        dir,
-        _app: app,
-    }
+    (
+        Harness {
+            webview,
+            dir,
+            _app: app,
+        },
+        approvals,
+    )
 }
 
 impl Harness {
@@ -193,7 +206,7 @@ fn preferencias_con_lista_blanca() {
 
 #[test]
 fn registros_el_secreto_no_sale_y_borrar_exige_confirmacion() {
-    let h = harness("registry");
+    let (h, dialogo) = harness_with("registry", crate::approvals::FakeApprovals::new(true));
     let saved = h.ok(
         "registry_save",
         json!({"server": "GHCR.io", "username": "bob", "secret": "s3cr3t-ultra"}),
@@ -218,18 +231,31 @@ fn registros_el_secreto_no_sale_y_borrar_exige_confirmacion() {
         .call("registry_test", json!({"id": id}))
         .expect_err("sin daemon");
     assert!(!e.to_string().contains("s3cr3t-ultra"));
-    // Borrar sin confirmar: denegado; confirmado: ok.
+    // Borrar: lo decide el diálogo NATIVO. Un `confirmed: true` mandado por el webview se ignora.
+    dialogo.fijar(false);
     let e = h
-        .call("registry_delete", json!({"id": id, "confirmed": false}))
-        .expect_err("sin confirmación");
+        .call("registry_delete", json!({"id": id, "confirmed": true}))
+        .expect_err("el diálogo rechaza");
     assert_eq!(e["code"], "policy_denied");
-    h.ok("registry_delete", json!({"id": id, "confirmed": true}));
+    assert_eq!(
+        h.ok("registry_list", json!({}))
+            .as_array()
+            .expect("lista")
+            .len(),
+        1
+    );
+    dialogo.fijar(true);
+    h.ok("registry_delete", json!({"id": id}));
     assert_eq!(h.ok("registry_list", json!({})), json!([]));
+    // El diálogo describió el registro real.
+    let pedidos = dialogo.pedidos();
+    assert_eq!(pedidos.len(), 2);
+    assert!(pedidos[0].lines.iter().any(|l| l.contains("ghcr.io")));
 }
 
 #[test]
 fn conexiones_guardar_listar_seleccionar_y_borrar() {
-    let h = harness("conn");
+    let (h, dialogo) = harness_with("conn", crate::approvals::FakeApprovals::new(true));
     let key = h.dir.join("id_test");
     std::fs::write(&key, "no es una llave real").expect("archivo");
     let spec = json!({
@@ -292,13 +318,34 @@ fn conexiones_guardar_listar_seleccionar_y_borrar() {
     assert_eq!(r["ok"], false);
     assert_eq!(r["error"]["code"], "invalid_input");
 
-    // Borrar exige confirmación.
+    // Borrar: lo decide el diálogo NATIVO. Un `confirmed: true` mandado por el webview se ignora.
+    dialogo.fijar(false);
     let e = h
-        .call("connection_delete", json!({"id": id, "confirmed": false}))
-        .expect_err("sin confirmación");
+        .call("connection_delete", json!({"id": id, "confirmed": true}))
+        .expect_err("el diálogo rechaza");
     assert_eq!(e["code"], "policy_denied");
-    h.ok("connection_delete", json!({"id": id, "confirmed": true}));
+    assert_eq!(
+        h.ok("connection_list", json!({}))
+            .as_array()
+            .expect("lista")
+            .len(),
+        1
+    );
+    dialogo.fijar(true);
+    h.ok("connection_delete", json!({"id": id}));
     assert_eq!(h.ok("connection_list", json!({})), json!([]));
+    let pedidos = dialogo.pedidos();
+    assert_eq!(pedidos.len(), 2);
+    assert!(pedidos[0].lines.iter().any(|l| l.contains("prod")));
+    // Un id inexistente falla antes de molestar a la persona con un diálogo.
+    let e = h
+        .call(
+            "connection_delete",
+            json!({"id": uuid::Uuid::now_v7().to_string()}),
+        )
+        .expect_err("no existe");
+    assert_eq!(e["code"], "not_found");
+    assert_eq!(dialogo.pedidos().len(), 2);
 }
 
 #[test]
@@ -720,4 +767,31 @@ async fn el_cambio_de_conexion_espera_a_las_acciones_en_vuelo() {
         .await
         .expect("el cambio procede al terminar la acción")
         .expect("tarea");
+}
+
+#[test]
+fn olvidar_clave_de_host_exige_texto_escrito_y_dialogo_nativo() {
+    let (h, dialogo) = harness_with("forget", crate::approvals::FakeApprovals::new(false));
+    let spec = json!({
+        "kind": "ssh", "name": "prod", "host": "srv.example", "port": 22, "user": "deploy",
+        "mode": "explicit", "identity": {"type": "agent"}
+    });
+    // Texto incorrecto: se rechaza sin llegar a mostrar el diálogo.
+    let e = h
+        .call(
+            "connection_forget_host_key",
+            json!({"spec": spec, "confirmedHost": "otro"}),
+        )
+        .expect_err("texto incorrecto");
+    assert_eq!(e["code"], "policy_denied");
+    assert!(dialogo.pedidos().is_empty());
+    // Texto correcto pero el diálogo nativo rechaza: no se olvida nada.
+    let e = h
+        .call(
+            "connection_forget_host_key",
+            json!({"spec": spec, "confirmedHost": "srv.example"}),
+        )
+        .expect_err("diálogo rechaza");
+    assert_eq!(e["code"], "policy_denied");
+    assert_eq!(dialogo.pedidos().len(), 1);
 }

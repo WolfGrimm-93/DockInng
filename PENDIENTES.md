@@ -4,6 +4,43 @@ Ver detalle y contexto en Obsidian: `Proyectos/DockInng/DockInng - Pendientes.md
 
 Lo ya cerrado se retiró de esta lista (2026-10-06); su historial está en la Bitácora de Obsidian.
 
+## Auditoría completa front-back (2026-11-21)
+
+Hallazgos de una lectura de código (4 revisores, solo lectura) más las puertas automáticas: `cargo test --workspace` en verde, clippy limpio, `pnpm lint`/`tsc`/`build` en verde. Los hallazgos salen de leer el código y deben reproducirse antes de arreglarlos. No se ejercieron los tests `live_*` (Docker, SSH, TLS reales). Sin hallazgos críticos.
+
+**Alto**
+- [x] **A1. `up` de un stack sin política de confirmación** (resuelto en `feature/auditoria-stack-up`). Un compose con `privileged`, `docker.sock`, red/PID del host o binds sensibles se levantaba sin ticket ni diálogo. Ahora el núcleo evalúa los riesgos del compose RESUELTO (`Action::StackUpSensitive`, `StackControl::assess_op`, `prepare_op_approved`, `StackApproval`), la app pide diálogo nativo, la CLI pregunta (`stacks up --yes` salta la confirmación simple) y `PreparedOp` rechaza con `policy_denied` si falta la aprobación o aparece un riesgo que la persona no vio. Pendiente: probarlo con Docker real y en ventana Tauri real (los tests usan `FakeSpawn` y diálogo falso).
+- [x] **A2. Login HTTP sin límite de intentos** (resuelto en `feature/auditoria-servidor`). Longitudes máximas (usuario 256 B, contraseña 1024 B), bloqueo por IP (30 fallos) y por usuario (5 fallos) con espera creciente de 30 s a 15 min (429 + `Retry-After`, sin ejecutar Argon2 mientras está bloqueado), el usuario inexistente se trata igual, y Argon2 + SQLite corren en `spawn_blocking` con tope de 4 hashes simultáneos (el resto recibe 429). Límites asumidos: un atacante puede bloquear temporalmente a un usuario conocido; tras un proxy inverso todos comparten la IP del proxy (no se confía en `X-Forwarded-For`). El estado vive en memoria. Pendiente: probar con carga real y con un proxy delante.
+- [x] **A3. Sesiones sin caducidad ni tope** (resuelto en `feature/auditoria-servidor`): TTL absoluto 12 h e inactivo 30 min (`SessionPolicy`), `Max-Age` en la cookie, máximo 5 sesiones por usuario (se descarta la menos usada) y purga de vencidas al crear. Valores fijos en código (sin variables de entorno todavía).
+- [x] **A4. Modo `single` sin autenticación expuesto** (resuelto en `feature/auditoria-servidor`): `single` solo arranca en loopback; con otro bind falla con un mensaje claro salvo `DOCKINNG_SINGLE_ALLOW_EXPOSED=1`, que además deja un aviso al arrancar (igual que `INSECURE_COOKIES=1` fuera de loopback).
+
+**Medio**
+- [x] **M1. El webview decidía confirmaciones destructivas** (resuelto en `feature/auditoria-confirmaciones`): `connection_delete`, `registry_delete` y `connection_forget_host_key` ya no confían en el webview; la política decide y la aprobación es un diálogo NATIVO que describe el elemento real. Se quitó `confirmed` del IPC, del contrato y del frontend. **Abierto:** `quit_app(confirmed)` conserva el booleano a propósito (solo permite salir de la app; con operaciones en curso las aborta). Decidir si exige diálogo nativo cuando hay operaciones en curso. Pendiente: probar los diálogos en ventana Tauri real (los tests usan un diálogo falso).
+- [ ] **M2. Carrera al degradar/borrar admins** (`server/src/users_admin.rs:90-142`): `guard_last_admin` sin transacción. Hacerlo en una sola sentencia SQL.
+- [ ] **M3. Usuarios y contraseñas**: validación débil (sin límites, sin normalización NFKC, homógrafos, `len()` en bytes, bootstrap admin sin validar). No existe ruta para cambiar contraseña; al añadirla debe invalidar sesiones (`remove_all_for_user`). ~~`DUMMY_HASH` diferido~~ (resuelto en `feature/auditoria-servidor`: se calcula al arrancar). Siguen abiertos: validación de usuario/contraseña, normalización Unicode y la ruta de cambio de contraseña.
+- [ ] **M4. Compose: procesos huérfanos tras cancelar** (`compose/src/proc.rs:92-134`): `reaped = true` antes de `reap_group`.
+- [ ] **M5. `StackStore::save` sin serializar** (`compose/src/files.rs:705-772`): no toma el guard `busy`, `expected_revision: None` se salta el control de concurrencia y la escritura yaml+`.env` no es atómica.
+- [ ] **M6. Sandbox de includes por escaneo de texto** (`compose/src/sandbox.rs`, `validate.rs`): no cubre `build.context`, `secrets.file`, `configs.file` ni binds, y hay TOCTOU entre escaneo y lectura de Compose. Parsear YAML real o validar el JSON resuelto; pasar el YAML validado por stdin.
+- [ ] **M7. `working_dir` de stack vinculado puede ser `/` o `$HOME`** (`compose/src/files.rs:342-352`): el confinamiento queda vacío. Reutilizar `sensitive_reason`.
+- [ ] **M8. Logs sin sanear en la UI** (`LogViewer.tsx:58`, `LogsTab.tsx:46`): sin `safeText` ni limpieza de ANSI; controles bidi pueden invertir texto. No hay XSS.
+- [ ] **M9. Carrera en el store del frontend** (`engineStore.ts:~228`): dos `list()` del mismo tipo pueden resolver desordenados. Contador por `kind`.
+- [ ] **M10. `pnpm audit --prod`: 7 vulnerabilidades (2 altas, 4 moderadas, 1 baja)**; una es `vite` (parche ≥8.3.3, vía `@tailwindcss/vite`). Revisar las otras seis y correr `cargo audit` (no se corrió).
+- [ ] **M11. Comandos de contenedor sin plan** (`commands.rs:206-222`: start/stop/restart directos). Aceptable si la política los clasifica `Allow` (lo hace); verificar paridad con la CLI.
+
+**Bajo**
+- [ ] Quitar la capability `dialog:allow-open` (`backend/app/capabilities/default.json:84`), sin uso desde el frontend.
+- [ ] `check_paths_exist` (`commands_remote.rs:36-62`) actúa como oráculo de existencia de archivos: mensaje genérico o rutas por diálogo nativo.
+- [ ] PKGBUILD con `sha256sums=('SKIP')`: fijar hash real antes de cualquier release.
+- [ ] `groups_import_legacy` (`commands_store.rs:233`): comprobar límite de tamaño del payload.
+- [ ] Servidor: cabeceras de seguridad (HSTS, `nosniff`, `no-store`), cookie `__Host-`, sin TLS propio (documentar proxy), avisar si `bind` no es loopback con `insecure_cookies`, timeouts y límites a nivel de router; comprobar que los errores de SQLite no lleguen crudos al cliente (`store/src/error.rs:47`).
+- [ ] Almacén: crear `store.db` y `.bak-vN` con modo 0600 desde el principio; el `.bak` conserva hashes indefinidamente.
+- [ ] `known_hosts` se lee entero sin tope (`transport/src/known_hosts.rs`).
+- [ ] `engine-docker/src/exec.rs:~165`: carrera de PID reciclado en el cierre del exec; `close()` en `Drop` de la sesión.
+- [ ] `broker.restore` ignora `MAX_PENDING` (`engine-core/src/broker.rs:~170`).
+- [ ] Frontend: regex de nivel de log con mala precedencia (`lib/logLevel.ts:11`), casts inseguros (`adapters/tauri/index.ts:99`, `ContainerDetailPage:69,152`, `AppearanceSection:128,144`, `useCreateContainerForm:188`), doble parseo O(5000) en logs, accesibilidad (`CommandPalette.tsx:78`, `NewGroupDialog:41`), datos de demo en `ContainersPage:166`, `eslint-disable exhaustive-deps` a revisar (`LogViewer:31`, `XtermTerminal:158`, `devOnce:12`, `useVirtualTable:27`), sin i18n (textos en español hardcodeados). Verificar que `pnpm contract:check` corra en CI.
+- [ ] Tests faltantes: `save` concurrente contra `acquire`, `reap_group` y cancelación durante la espera, `link` con `working_dir` raíz/`$HOME`.
+- [ ] No auditado: `platilla-html/`, `scripts/`, CI.
+
 ## Servidor web (`backend/server`), rama `feature/web-server` — primera versión (2026-10-13)
 
 Nuevo adaptador HTTP (`axum`), igual nivel que `dockinng-cli` y la app de escritorio: habla
@@ -13,10 +50,13 @@ un contenedor y servirse por red, en dos modos:
 - **`DOCKINNG_AUTH_MODE=single`**: sin login, todo pedido entra como admin sintético (mismo
   supuesto de confianza que hoy la app/CLI: red ya confiable). Sin esa variable, o con
   `multi`, el servidor exige sesión — **seguro por defecto**, hay que pedir `single` a propósito.
+  `single` solo arranca en loopback: con otro `DOCKINNG_SERVER_BIND` se rechaza salvo
+  `DOCKINNG_SINGLE_ALLOW_EXPOSED=1` (asumiendo que un proxy o túnel autentica delante).
 - **`multi`**: usuarios y roles (`Admin`/`Operator`/`Viewer`, nuevo enum `Role` en
   `engine-core`), persistidos en `store` (tabla `users`, esquema v3, contraseña con Argon2).
   Sesión por cookie `HttpOnly`/`Secure`/`SameSite=Strict`, en memoria del proceso (ver
-  pendiente abajo). Primer admin: `DOCKINNG_BOOTSTRAP_ADMIN_USER`/`_PASSWORD` al arrancar sin
+  pendiente abajo); caduca a las 12 h (con `Max-Age` en la cookie) o a los 30 min sin uso, y hay
+  un máximo de 5 sesiones por usuario. El login frena la fuerza bruta (ver más abajo). Primer admin: `DOCKINNG_BOOTSTRAP_ADMIN_USER`/`_PASSWORD` al arrancar sin
   usuarios.
 
 Endpoints: `/healthz`, `/api/auth/{login,logout,me}`, `/api/users` (CRUD, solo `admin`, no

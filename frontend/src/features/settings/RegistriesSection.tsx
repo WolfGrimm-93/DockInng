@@ -73,7 +73,7 @@ export function RegistriesSection({ presetServer }: { presetServer?: string | nu
       levelNote: <><b>Nivel Confirmar.</b> Para volver a descargar imágenes privadas tendrás que añadirlas otra vez.</>, okLabel: 'Eliminar credenciales', okIcon: 'trash',
     })
     if (!ok) return
-    try { await api.registries.remove(r.id, true); toast.ok('Credenciales eliminadas'); load() } catch (e) { const m = apiErrorMessage(e); toast.err(m.title, { sub: m.detail }) }
+    try { await api.registries.remove(r.id); toast.ok('Credenciales eliminadas'); load() } catch (e) { const m = apiErrorMessage(e); toast.err(m.title, { sub: m.detail }) }
   }
 
   return (

@@ -18,9 +18,9 @@ pub fn read_session_cookie(headers: &HeaderMap) -> Option<String> {
 /// Cabecera `Set-Cookie` para fijar la sesión. `insecure` solo debe ser `true` en desarrollo
 /// local por HTTP sin TLS (`DOCKINNG_SERVER_INSECURE_COOKIES=1`); en producción el atributo
 /// `Secure` es obligatorio.
-pub fn set_cookie_header(token: &str, insecure: bool) -> String {
+pub fn set_cookie_header(token: &str, insecure: bool, max_age_secs: u64) -> String {
     let secure = if insecure { "" } else { "; Secure" };
-    format!("{COOKIE_NAME}={token}; Path=/; HttpOnly; SameSite=Strict{secure}")
+    format!("{COOKIE_NAME}={token}; Path=/; HttpOnly; SameSite=Strict{secure}; Max-Age={max_age_secs}")
 }
 
 /// Cabecera `Set-Cookie` que borra la sesión del navegador (logout).
@@ -59,9 +59,14 @@ mod tests {
 
     #[test]
     fn set_cookie_lleva_secure_salvo_en_modo_inseguro() {
-        assert!(set_cookie_header("tok", false).contains("; Secure"));
-        assert!(!set_cookie_header("tok", true).contains("; Secure"));
-        assert!(set_cookie_header("tok", false).contains("HttpOnly"));
+        assert!(set_cookie_header("tok", false, 60).contains("; Secure"));
+        assert!(!set_cookie_header("tok", true, 60).contains("; Secure"));
+        assert!(set_cookie_header("tok", false, 60).contains("HttpOnly"));
+    }
+
+    #[test]
+    fn set_cookie_caduca_en_el_navegador_con_la_vida_maxima_de_la_sesion() {
+        assert!(set_cookie_header("tok", false, 43200).ends_with("; Max-Age=43200"));
     }
 
     #[test]
