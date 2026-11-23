@@ -8,6 +8,7 @@ use engine_core::{ApiErrorCode, Role};
 use serde::{Deserialize, Serialize};
 
 use crate::auth::CurrentUser;
+use crate::credentials::{validate_password, validate_username};
 use crate::error::HttpError;
 use crate::state::AppState;
 
@@ -55,31 +56,72 @@ pub struct CreateUserRequest {
     pub role: Role,
 }
 
-/// Igual que el mínimo de Argon2 para una contraseña con algo de margen: evita cuentas
-/// triviales de adivinar sin forzar una política de complejidad que no viene al caso acá.
-const MIN_PASSWORD_LEN: usize = 8;
-
 pub async fn create_user(
     user: CurrentUser,
     State(state): State<AppState>,
     Json(req): Json<CreateUserRequest>,
 ) -> Result<Json<UserOut>, HttpError> {
     user.require_admin()?;
-    if req.username.trim().is_empty() {
-        return Err(HttpError::new(
-            ApiErrorCode::InvalidInput,
-            "el nombre de usuario no puede estar vacío",
-        ));
-    }
-    if req.password.len() < MIN_PASSWORD_LEN {
-        return Err(HttpError::new(
-            ApiErrorCode::InvalidInput,
-            format!("la contraseña debe tener al menos {MIN_PASSWORD_LEN} caracteres"),
-        ));
-    }
-    let hash = store::password::hash_password(&req.password)?;
-    let created = store_of(&state)?.user_create(&req.username, &hash, req.role)?;
+    validate_username(&req.username)
+        .and_then(|()| validate_password(&req.password))
+        .map_err(|m| HttpError::new(ApiErrorCode::InvalidInput, m))?;
+    let store = state.store.clone().ok_or_else(no_store)?;
+    // Argon2 es caro: fuera del runtime asíncrono y bajo el mismo tope que el login.
+    let hash = hash_off_runtime(&state, req.password).await?;
+    let (username, role) = (req.username, req.role);
+    let created = tokio::task::spawn_blocking(move || store.user_create(&username, &hash, role))
+        .await
+        .map_err(|_| HttpError::new(ApiErrorCode::Internal, "la tarea falló"))??;
     Ok(Json(UserOut::from(created)))
+}
+
+#[derive(Deserialize)]
+pub struct SetPasswordRequest {
+    pub password: String,
+}
+
+/// Reseteo de contraseña por un admin. Cierra TODAS las sesiones del usuario: si la cuenta
+/// estaba comprometida, el atacante no sigue dentro con el token anterior.
+pub async fn set_password(
+    user: CurrentUser,
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(req): Json<SetPasswordRequest>,
+) -> Result<StatusCode, HttpError> {
+    user.require_admin()?;
+    validate_password(&req.password).map_err(|m| HttpError::new(ApiErrorCode::InvalidInput, m))?;
+    let store = state.store.clone().ok_or_else(no_store)?;
+    let hash = hash_off_runtime(&state, req.password).await?;
+    let id2 = id.clone();
+    tokio::task::spawn_blocking(move || store.user_set_password(&id2, &hash))
+        .await
+        .map_err(|_| HttpError::new(ApiErrorCode::Internal, "la tarea falló"))??;
+    state.sessions.remove_all_for_user(&id);
+    Ok(StatusCode::NO_CONTENT)
+}
+
+fn no_store() -> HttpError {
+    HttpError::new(
+        ApiErrorCode::NotImplemented,
+        "modo single: no hay usuarios que gestionar",
+    )
+}
+
+/// Argon2 en un hilo de bloqueo y con el tope de hashes simultáneos del login.
+async fn hash_off_runtime(state: &AppState, password: String) -> Result<String, HttpError> {
+    let Some(permit) = state.login_guard.try_hash_slot() else {
+        return Err(HttpError::too_many_requests(
+            "el servidor está ocupado calculando hashes: reintenta en un momento",
+            1,
+        ));
+    };
+    tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        store::password::hash_password(&password)
+    })
+    .await
+    .map_err(|_| HttpError::new(ApiErrorCode::Internal, "la tarea falló"))?
+    .map_err(HttpError::from)
 }
 
 #[derive(Deserialize)]
@@ -94,9 +136,8 @@ pub async fn set_role(
     Json(req): Json<SetRoleRequest>,
 ) -> Result<StatusCode, HttpError> {
     user.require_admin()?;
-    let store = store_of(&state)?;
-    guard_last_admin(store, &id, req.role)?;
-    store.user_set_role(&id, req.role)?;
+    // Atómico: la comprobación de «último admin» y el cambio son una sola sentencia SQL.
+    store_of(&state)?.user_set_role_keeping_admin(&id, req.role)?;
     // El rol cambió: ninguna sesión vieja debe seguir con los permisos anteriores.
     state.sessions.remove_all_for_user(&id);
     Ok(StatusCode::NO_CONTENT)
@@ -114,29 +155,7 @@ pub async fn delete_user(
             "no podés borrar tu propio usuario",
         ));
     }
-    let store = store_of(&state)?;
-    // "Borrar" es degradar a un rol inexistente a todos los efectos de "último admin": se
-    // reusa el mismo chequeo pidiendo cualquier rol que no sea admin.
-    guard_last_admin(store, &id, Role::Viewer)?;
-    store.user_delete(&id)?;
+    store_of(&state)?.user_delete_keeping_admin(&id)?;
     state.sessions.remove_all_for_user(&id);
     Ok(StatusCode::NO_CONTENT)
-}
-
-/// Si `id` es admin y pasar a `new_role` (o borrarlo) dejaría el sistema sin ningún admin,
-/// rechaza. Evita el bloqueo clásico de "nadie puede volver a entrar".
-fn guard_last_admin(store: &store::Store, id: &str, new_role: Role) -> Result<(), HttpError> {
-    if new_role == Role::Admin {
-        return Ok(());
-    }
-    let target = store
-        .user_by_id(id)?
-        .ok_or_else(|| HttpError::new(ApiErrorCode::NotFound, format!("usuario «{id}»")))?;
-    if target.role == Role::Admin && store.user_admin_count()? <= 1 {
-        return Err(HttpError::new(
-            ApiErrorCode::Conflict,
-            "no se puede dejar el sistema sin ningún administrador",
-        ));
-    }
-    Ok(())
 }
