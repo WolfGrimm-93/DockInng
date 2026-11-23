@@ -7,6 +7,7 @@ pub mod config;
 pub mod containers;
 mod cookie;
 pub mod error;
+pub mod login_limit;
 pub mod session;
 pub mod state;
 pub mod users_admin;
@@ -93,6 +94,7 @@ pub fn build_state(config: &Config) -> AppState {
         engine,
         store,
         sessions: Arc::new(SessionStore::new()),
+        login_guard: Arc::new(login_limit::LoginGuard::default()),
         auth_mode: config.auth_mode,
         insecure_cookies: config.insecure_cookies,
     }
@@ -104,7 +106,17 @@ pub async fn run() {
         std::process::exit(1);
     });
 
+    if let Err(e) = config.validate() {
+        eprintln!("configuración inválida: {e}");
+        std::process::exit(1);
+    }
+    for aviso in config.warnings() {
+        eprintln!("aviso: {aviso}");
+    }
+
     let state = build_state(&config);
+    // Calcula el hash señuelo ahora: así el primer login de un usuario inexistente no tarda más.
+    auth::warm_up();
     let app = build_router(&state).with_state(state);
 
     let listener = tokio::net::TcpListener::bind(config.bind)
@@ -117,7 +129,11 @@ pub async fn run() {
         "dockinng-server escuchando en {} (modo {:?})",
         config.bind, config.auth_mode
     );
-    axum::serve(listener, app)
+    // `ConnectInfo` da la IP del cliente al limitador de login.
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
         .with_graceful_shutdown(shutdown_signal())
         .await
         .expect("el servidor terminó con un error de E/S");

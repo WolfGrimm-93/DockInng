@@ -10,14 +10,14 @@ Hallazgos de una lectura de código (4 revisores, solo lectura) más las puertas
 
 **Alto**
 - [x] **A1. `up` de un stack sin política de confirmación** (resuelto en `feature/auditoria-stack-up`). Un compose con `privileged`, `docker.sock`, red/PID del host o binds sensibles se levantaba sin ticket ni diálogo. Ahora el núcleo evalúa los riesgos del compose RESUELTO (`Action::StackUpSensitive`, `StackControl::assess_op`, `prepare_op_approved`, `StackApproval`), la app pide diálogo nativo, la CLI pregunta (`stacks up --yes` salta la confirmación simple) y `PreparedOp` rechaza con `policy_denied` si falta la aprobación o aparece un riesgo que la persona no vio. Pendiente: probarlo con Docker real y en ventana Tauri real (los tests usan `FakeSpawn` y diálogo falso).
-- [ ] **A2. Login HTTP sin límite de intentos** (`server/src/auth.rs:85`). Fuerza bruta y DoS: Argon2 corre en un worker de tokio sin `spawn_blocking`. Throttling por IP y usuario con backoff, semáforo de concurrencia, longitud máxima de usuario/contraseña.
-- [ ] **A3. Sesiones sin caducidad ni tope** (`server/src/session.rs`). Añadir `created_at`/`last_seen`, TTL absoluto (8-12 h) e inactivo (~30 min), `Max-Age` en la cookie, tope por usuario y purga.
-- [ ] **A4. Modo `single` sin autenticación y acepta `0.0.0.0`** (`server/src/config.rs:254`). Rechazar bind no-loopback (o exigir flag explícito/token) y avisar al arrancar.
+- [x] **A2. Login HTTP sin límite de intentos** (resuelto en `feature/auditoria-servidor`). Longitudes máximas (usuario 256 B, contraseña 1024 B), bloqueo por IP (30 fallos) y por usuario (5 fallos) con espera creciente de 30 s a 15 min (429 + `Retry-After`, sin ejecutar Argon2 mientras está bloqueado), el usuario inexistente se trata igual, y Argon2 + SQLite corren en `spawn_blocking` con tope de 4 hashes simultáneos (el resto recibe 429). Límites asumidos: un atacante puede bloquear temporalmente a un usuario conocido; tras un proxy inverso todos comparten la IP del proxy (no se confía en `X-Forwarded-For`). El estado vive en memoria. Pendiente: probar con carga real y con un proxy delante.
+- [x] **A3. Sesiones sin caducidad ni tope** (resuelto en `feature/auditoria-servidor`): TTL absoluto 12 h e inactivo 30 min (`SessionPolicy`), `Max-Age` en la cookie, máximo 5 sesiones por usuario (se descarta la menos usada) y purga de vencidas al crear. Valores fijos en código (sin variables de entorno todavía).
+- [x] **A4. Modo `single` sin autenticación expuesto** (resuelto en `feature/auditoria-servidor`): `single` solo arranca en loopback; con otro bind falla con un mensaje claro salvo `DOCKINNG_SINGLE_ALLOW_EXPOSED=1`, que además deja un aviso al arrancar (igual que `INSECURE_COOKIES=1` fuera de loopback).
 
 **Medio**
 - [x] **M1. El webview decidía confirmaciones destructivas** (resuelto en `feature/auditoria-confirmaciones`): `connection_delete`, `registry_delete` y `connection_forget_host_key` ya no confían en el webview; la política decide y la aprobación es un diálogo NATIVO que describe el elemento real. Se quitó `confirmed` del IPC, del contrato y del frontend. **Abierto:** `quit_app(confirmed)` conserva el booleano a propósito (solo permite salir de la app; con operaciones en curso las aborta). Decidir si exige diálogo nativo cuando hay operaciones en curso. Pendiente: probar los diálogos en ventana Tauri real (los tests usan un diálogo falso).
 - [ ] **M2. Carrera al degradar/borrar admins** (`server/src/users_admin.rs:90-142`): `guard_last_admin` sin transacción. Hacerlo en una sola sentencia SQL.
-- [ ] **M3. Usuarios y contraseñas**: validación débil (sin límites, sin normalización NFKC, homógrafos, `len()` en bytes, bootstrap admin sin validar). No existe ruta para cambiar contraseña; al añadirla debe invalidar sesiones (`remove_all_for_user`). `DUMMY_HASH` diferido filtra por timing si el usuario existe (`LazyLock::force` al arrancar).
+- [ ] **M3. Usuarios y contraseñas**: validación débil (sin límites, sin normalización NFKC, homógrafos, `len()` en bytes, bootstrap admin sin validar). No existe ruta para cambiar contraseña; al añadirla debe invalidar sesiones (`remove_all_for_user`). ~~`DUMMY_HASH` diferido~~ (resuelto en `feature/auditoria-servidor`: se calcula al arrancar). Siguen abiertos: validación de usuario/contraseña, normalización Unicode y la ruta de cambio de contraseña.
 - [ ] **M4. Compose: procesos huérfanos tras cancelar** (`compose/src/proc.rs:92-134`): `reaped = true` antes de `reap_group`.
 - [ ] **M5. `StackStore::save` sin serializar** (`compose/src/files.rs:705-772`): no toma el guard `busy`, `expected_revision: None` se salta el control de concurrencia y la escritura yaml+`.env` no es atómica.
 - [ ] **M6. Sandbox de includes por escaneo de texto** (`compose/src/sandbox.rs`, `validate.rs`): no cubre `build.context`, `secrets.file`, `configs.file` ni binds, y hay TOCTOU entre escaneo y lectura de Compose. Parsear YAML real o validar el JSON resuelto; pasar el YAML validado por stdin.
@@ -50,10 +50,13 @@ un contenedor y servirse por red, en dos modos:
 - **`DOCKINNG_AUTH_MODE=single`**: sin login, todo pedido entra como admin sintético (mismo
   supuesto de confianza que hoy la app/CLI: red ya confiable). Sin esa variable, o con
   `multi`, el servidor exige sesión — **seguro por defecto**, hay que pedir `single` a propósito.
+  `single` solo arranca en loopback: con otro `DOCKINNG_SERVER_BIND` se rechaza salvo
+  `DOCKINNG_SINGLE_ALLOW_EXPOSED=1` (asumiendo que un proxy o túnel autentica delante).
 - **`multi`**: usuarios y roles (`Admin`/`Operator`/`Viewer`, nuevo enum `Role` en
   `engine-core`), persistidos en `store` (tabla `users`, esquema v3, contraseña con Argon2).
   Sesión por cookie `HttpOnly`/`Secure`/`SameSite=Strict`, en memoria del proceso (ver
-  pendiente abajo). Primer admin: `DOCKINNG_BOOTSTRAP_ADMIN_USER`/`_PASSWORD` al arrancar sin
+  pendiente abajo); caduca a las 12 h (con `Max-Age` en la cookie) o a los 30 min sin uso, y hay
+  un máximo de 5 sesiones por usuario. El login frena la fuerza bruta (ver más abajo). Primer admin: `DOCKINNG_BOOTSTRAP_ADMIN_USER`/`_PASSWORD` al arrancar sin
   usuarios.
 
 Endpoints: `/healthz`, `/api/auth/{login,logout,me}`, `/api/users` (CRUD, solo `admin`, no

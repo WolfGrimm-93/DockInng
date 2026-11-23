@@ -1,8 +1,10 @@
 //! Extractor del usuario autenticado y los endpoints `/api/auth/*`.
 
+use std::net::{IpAddr, SocketAddr};
 use std::sync::LazyLock;
+use std::time::Instant;
 
-use axum::extract::{FromRequestParts, State};
+use axum::extract::{ConnectInfo, FromRequestParts, State};
 use axum::http::StatusCode;
 use axum::http::header::SET_COOKIE;
 use axum::http::request::Parts;
@@ -14,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use crate::cookie::{clear_cookie_header, read_session_cookie, set_cookie_header};
 use crate::config::AuthMode;
 use crate::error::HttpError;
+use crate::login_limit::{MAX_PASSWORD_BYTES, MAX_USERNAME_BYTES};
 use crate::session::SessionToken;
 use crate::state::AppState;
 
@@ -76,36 +79,99 @@ pub struct AuthResponse {
     pub role: Role,
 }
 
+/// IP del cliente según la conexión TCP (no se confía en cabeceras `X-Forwarded-For`).
+/// `None` si el servidor no se sirve con `ConnectInfo` (tests en memoria).
+pub struct ClientAddr(pub Option<IpAddr>);
+
+impl FromRequestParts<AppState> for ClientAddr {
+    type Rejection = std::convert::Infallible;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        _state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        Ok(Self(
+            parts
+                .extensions
+                .get::<ConnectInfo<SocketAddr>>()
+                .map(|c| c.0.ip()),
+        ))
+    }
+}
+
 /// Hash de una contraseña que nadie tiene: se verifica contra él cuando el usuario no existe,
 /// para que la respuesta tarde lo mismo que con una contraseña incorrecta (no delata si el
 /// nombre de usuario existe por el tiempo de respuesta).
 static DUMMY_HASH: LazyLock<String> =
     LazyLock::new(|| store::password::hash_password("una-contraseña-que-nadie-usa").expect("hash señuelo"));
 
+/// Calcula el hash señuelo al arrancar: si no, el primer login de un usuario inexistente paga
+/// ese cálculo y delata por tiempo que no existe.
+pub fn warm_up() {
+    LazyLock::force(&DUMMY_HASH);
+}
+
 pub async fn login(
     State(state): State<AppState>,
+    ClientAddr(ip): ClientAddr,
     Json(req): Json<LoginRequest>,
 ) -> Result<Response, HttpError> {
-    let Some(store) = &state.store else {
+    let Some(store) = state.store.clone() else {
         return Err(HttpError::new(
             ApiErrorCode::NotImplemented,
             "modo single: no hay login, todo pedido ya es admin",
         ));
     };
-    let user = store.user_by_username(&req.username)?;
-    let verified = match &user {
-        Some(u) => store::password::verify_password(&u.password_hash, &req.password),
-        None => {
-            let _ = store::password::verify_password(&DUMMY_HASH, &req.password);
-            false
-        }
+    // Acota el trabajo por pedido ANTES de tocar nada caro.
+    if req.username.len() > MAX_USERNAME_BYTES || req.password.len() > MAX_PASSWORD_BYTES {
+        return Err(HttpError::new(
+            ApiErrorCode::InvalidInput,
+            "usuario o contraseña demasiado largos",
+        ));
+    }
+    let guard = state.login_guard.clone();
+    // Bloqueado: se responde sin ejecutar Argon2 (un bloqueo no puede costar CPU al servidor).
+    if let Err(secs) = guard.check(ip, &req.username, Instant::now()) {
+        return Err(HttpError::too_many_requests(
+            "demasiados intentos fallidos: espera antes de reintentar",
+            secs,
+        ));
+    }
+    // Argon2 son ≈19 MiB y decenas de ms: se limita cuántos corren a la vez y se rechaza (no se
+    // encola) lo que sobra.
+    let Some(permit) = guard.try_hash_slot() else {
+        return Err(HttpError::too_many_requests(
+            "el servidor está ocupado verificando credenciales: reintenta en un momento",
+            1,
+        ));
     };
-    let Some(user) = user.filter(|_| verified) else {
+    let username = req.username.clone();
+    let password = req.password;
+    // Consulta + verificación en un hilo de bloqueo: ni SQLite ni Argon2 bloquean el runtime.
+    let found = tokio::task::spawn_blocking(move || {
+        // El hueco vive mientras corre el hash, aunque el cliente cancele el pedido.
+        let _permit = permit;
+        let user = store.user_by_username(&username)?;
+        let verified = match &user {
+            Some(u) => store::password::verify_password(&u.password_hash, &password),
+            None => {
+                let _ = store::password::verify_password(&DUMMY_HASH, &password);
+                false
+            }
+        };
+        Ok::<_, store::StoreError>(user.filter(|_| verified))
+    })
+    .await
+    .map_err(|_| HttpError::new(ApiErrorCode::Internal, "la verificación falló"))??;
+    let Some(user) = found else {
+        guard.record_failure(ip, &req.username, Instant::now());
         return Err(HttpError::unauthenticated("usuario o contraseña inválidos"));
     };
+    guard.record_success(&req.username);
     let token = state
         .sessions
         .create(user.id.clone(), user.username.clone(), user.role);
+    let max_age = state.sessions.policy().absolute_ttl.as_secs();
     let mut res = Json(AuthResponse {
         username: user.username,
         role: user.role,
@@ -113,7 +179,7 @@ pub async fn login(
     .into_response();
     res.headers_mut().insert(
         SET_COOKIE,
-        set_cookie_header(token.as_str(), state.insecure_cookies)
+        set_cookie_header(token.as_str(), state.insecure_cookies, max_age)
             .parse()
             .expect("cabecera de cookie siempre válida"),
     );

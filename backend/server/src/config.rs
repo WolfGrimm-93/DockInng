@@ -20,6 +20,9 @@ pub struct Config {
     /// ninguno todavía. `None` = no crear ninguno (el servidor arranca pero nadie puede entrar
     /// hasta que se cree a mano).
     pub bootstrap_admin: Option<(String, String)>,
+    /// Permite `single` (sin login) escuchando fuera de loopback. Por defecto se rechaza: cualquiera
+    /// en la red entraría como administrador.
+    pub allow_exposed_single: bool,
     /// Cookies sin `Secure` (solo desarrollo local por HTTP, nunca en producción).
     pub insecure_cookies: bool,
 }
@@ -50,8 +53,12 @@ pub fn parse_bootstrap_admin(user: Option<String>, pass: Option<String>) -> Opti
     }
 }
 
-pub fn parse_insecure_cookies(raw: Option<&str>) -> bool {
+pub fn parse_flag(raw: Option<&str>) -> bool {
     raw == Some("1")
+}
+
+pub fn parse_insecure_cookies(raw: Option<&str>) -> bool {
+    parse_flag(raw)
 }
 
 impl Config {
@@ -63,10 +70,49 @@ impl Config {
                 std::env::var("DOCKINNG_BOOTSTRAP_ADMIN_USER").ok(),
                 std::env::var("DOCKINNG_BOOTSTRAP_ADMIN_PASSWORD").ok(),
             ),
+            allow_exposed_single: parse_flag(
+                std::env::var("DOCKINNG_SINGLE_ALLOW_EXPOSED").ok().as_deref(),
+            ),
             insecure_cookies: parse_insecure_cookies(
                 std::env::var("DOCKINNG_SERVER_INSECURE_COOKIES").ok().as_deref(),
             ),
         })
+    }
+
+    /// Rechaza combinaciones inseguras. `single` no autentica a nadie: solo es aceptable en
+    /// loopback (o con `DOCKINNG_SINGLE_ALLOW_EXPOSED=1`, asumiendo que algo delante autentica).
+    pub fn validate(&self) -> Result<(), String> {
+        if self.auth_mode == AuthMode::Single
+            && !self.bind.ip().is_loopback()
+            && !self.allow_exposed_single
+        {
+            return Err(format!(
+                "DOCKINNG_AUTH_MODE=single no autentica a nadie y escucha en {}, que no es \
+                 loopback: cualquiera en la red entraría como administrador. Usa 127.0.0.1, el \
+                 modo multi, o fija DOCKINNG_SINGLE_ALLOW_EXPOSED=1 si un proxy o túnel \
+                 autentica delante",
+                self.bind
+            ));
+        }
+        Ok(())
+    }
+
+    /// Avisos de arranque para configuraciones permitidas pero delicadas.
+    pub fn warnings(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        if self.auth_mode == AuthMode::Single && !self.bind.ip().is_loopback() {
+            out.push(format!(
+                "modo single expuesto en {}: no hay login; confía en lo que autentique delante",
+                self.bind
+            ));
+        }
+        if self.insecure_cookies && !self.bind.ip().is_loopback() {
+            out.push(
+                "DOCKINNG_SERVER_INSECURE_COOKIES=1 fuera de loopback: la cookie de sesión viaja sin TLS"
+                    .into(),
+            );
+        }
+        out
     }
 }
 
@@ -127,5 +173,44 @@ mod tests {
         assert!(!parse_insecure_cookies(None));
         assert!(!parse_insecure_cookies(Some("true")));
         assert!(parse_insecure_cookies(Some("1")));
+    }
+
+    fn cfg(mode: AuthMode, bind: &str, allow: bool, insecure: bool) -> Config {
+        Config {
+            bind: bind.parse().unwrap(),
+            auth_mode: mode,
+            bootstrap_admin: None,
+            allow_exposed_single: allow,
+            insecure_cookies: insecure,
+        }
+    }
+
+    #[test]
+    fn single_solo_se_acepta_en_loopback() {
+        assert!(cfg(AuthMode::Single, "127.0.0.1:8080", false, false).validate().is_ok());
+        assert!(cfg(AuthMode::Single, "[::1]:8080", false, false).validate().is_ok());
+    }
+
+    #[test]
+    fn single_fuera_de_loopback_se_rechaza_salvo_override_explicito() {
+        for bind in ["0.0.0.0:8080", "192.168.1.5:8080", "[::]:8080"] {
+            let e = cfg(AuthMode::Single, bind, false, false).validate().unwrap_err();
+            assert!(e.contains("DOCKINNG_SINGLE_ALLOW_EXPOSED"), "{bind}: {e}");
+            assert!(cfg(AuthMode::Single, bind, true, false).validate().is_ok(), "{bind}");
+        }
+    }
+
+    #[test]
+    fn multi_puede_escuchar_en_cualquier_interfaz() {
+        assert!(cfg(AuthMode::Multi, "0.0.0.0:8080", false, false).validate().is_ok());
+    }
+
+    #[test]
+    fn avisa_de_single_expuesto_y_de_cookies_sin_tls_fuera_de_loopback() {
+        assert!(cfg(AuthMode::Single, "127.0.0.1:1", false, true).warnings().is_empty());
+        let w = cfg(AuthMode::Single, "0.0.0.0:1", true, true).warnings();
+        assert_eq!(w.len(), 2);
+        assert!(cfg(AuthMode::Multi, "127.0.0.1:1", false, true).warnings().is_empty());
+        assert!(cfg(AuthMode::Multi, "10.0.0.1:1", false, false).warnings().is_empty());
     }
 }

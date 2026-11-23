@@ -43,6 +43,7 @@ fn state_single(engine: Arc<dyn EngineClient>) -> AppState {
         engine,
         store: None,
         sessions: Arc::new(SessionStore::new()),
+        login_guard: Arc::new(server::login_limit::LoginGuard::default()),
         auth_mode: AuthMode::Single,
         insecure_cookies: true,
     }
@@ -53,6 +54,7 @@ fn state_multi(engine: Arc<dyn EngineClient>, store: Arc<Store>) -> AppState {
         engine,
         store: Some(store),
         sessions: Arc::new(SessionStore::new()),
+        login_guard: Arc::new(server::login_limit::LoginGuard::default()),
         auth_mode: AuthMode::Multi,
         insecure_cookies: true,
     }
@@ -388,4 +390,176 @@ async fn cambiar_el_rol_cierra_las_sesiones_viejas_del_usuario() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Fuerza bruta, longitudes y caducidad de sesiones
+// ---------------------------------------------------------------------------------------------
+
+async fn login_status(state: &AppState, user: &str, pass: &str) -> axum::response::Response {
+    app(state)
+        .oneshot(json_req(
+            "POST",
+            "/api/auth/login",
+            json!({"username": user, "password": pass}),
+        ))
+        .await
+        .unwrap()
+}
+
+fn state_con_usuario(tag: &str) -> (TempDir, AppState) {
+    let t = TempDir::new(tag);
+    let store = open_store(&t.0);
+    let hash = store::password::hash_password("correcta-123").unwrap();
+    store.user_create("ana", &hash, Role::Operator).unwrap();
+    let state = state_multi(mock_engine_con_un_contenedor(), store);
+    (t, state)
+}
+
+#[tokio::test]
+async fn tras_cinco_fallos_el_login_se_bloquea_con_429_aunque_la_clave_sea_correcta() {
+    let (_t, state) = state_con_usuario("bruta");
+    for _ in 0..5 {
+        let r = login_status(&state, "ana", "mala").await;
+        assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
+    }
+    let r = login_status(&state, "ana", "correcta-123").await;
+    assert_eq!(r.status(), StatusCode::TOO_MANY_REQUESTS);
+    let retry: u64 = r.headers()["retry-after"].to_str().unwrap().parse().unwrap();
+    assert!((1..=900).contains(&retry), "{retry}");
+    assert!(r.headers().get(header::SET_COOKIE).is_none());
+}
+
+#[tokio::test]
+async fn un_usuario_inexistente_se_bloquea_igual_y_no_delata_que_no_existe() {
+    let (_t, state) = state_con_usuario("bruta-nadie");
+    for _ in 0..5 {
+        login_status(&state, "nadie", "x").await;
+    }
+    let r = login_status(&state, "nadie", "x").await;
+    assert_eq!(r.status(), StatusCode::TOO_MANY_REQUESTS);
+}
+
+#[tokio::test]
+async fn un_login_correcto_antes_del_umbral_reinicia_el_contador() {
+    let (_t, state) = state_con_usuario("bruta-reset");
+    for _ in 0..4 {
+        login_status(&state, "ana", "mala").await;
+    }
+    assert_eq!(
+        login_status(&state, "ana", "correcta-123").await.status(),
+        StatusCode::OK
+    );
+    for _ in 0..4 {
+        assert_eq!(
+            login_status(&state, "ana", "mala").await.status(),
+            StatusCode::UNAUTHORIZED
+        );
+    }
+}
+
+#[tokio::test]
+async fn usuario_o_contrasena_gigantes_se_rechazan_sin_verificar() {
+    let (_t, state) = state_con_usuario("largos");
+    let r = login_status(&state, &"a".repeat(300), "x").await;
+    assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+    let r = login_status(&state, "ana", &"p".repeat(5000)).await;
+    assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+    // No cuentan como fallos de autenticación: no bloquean a nadie.
+    assert_eq!(
+        login_status(&state, "ana", "correcta-123").await.status(),
+        StatusCode::OK
+    );
+}
+
+#[tokio::test]
+async fn la_cookie_caduca_en_el_navegador_junto_con_la_sesion() {
+    let (_t, state) = state_con_usuario("maxage");
+    let r = login_status(&state, "ana", "correcta-123").await;
+    let set = r.headers()[header::SET_COOKIE].to_str().unwrap().to_string();
+    assert!(set.contains("Max-Age=43200"), "{set}");
+}
+
+#[tokio::test]
+async fn una_sesion_inactiva_deja_de_valer() {
+    let t = TempDir::new("idle");
+    let store = open_store(&t.0);
+    let hash = store::password::hash_password("correcta-123").unwrap();
+    store.user_create("ana", &hash, Role::Operator).unwrap();
+    let mut state = state_multi(mock_engine_con_un_contenedor(), store);
+    state.sessions = Arc::new(SessionStore::with_policy(server::session::SessionPolicy {
+        idle_ttl: std::time::Duration::ZERO,
+        ..Default::default()
+    }));
+    let r = login_status(&state, "ana", "correcta-123").await;
+    let cookie = cookie_from(r.headers());
+    let r = app(&state)
+        .oneshot(with_cookie(req("GET", "/api/auth/me"), &cookie))
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn el_tope_de_sesiones_por_usuario_expulsa_la_mas_vieja() {
+    let t = TempDir::new("tope");
+    let store = open_store(&t.0);
+    let hash = store::password::hash_password("correcta-123").unwrap();
+    store.user_create("ana", &hash, Role::Operator).unwrap();
+    let mut state = state_multi(mock_engine_con_un_contenedor(), store);
+    state.sessions = Arc::new(SessionStore::with_policy(server::session::SessionPolicy {
+        max_per_user: 1,
+        ..Default::default()
+    }));
+    let c1 = cookie_from(login_status(&state, "ana", "correcta-123").await.headers());
+    let c2 = cookie_from(login_status(&state, "ana", "correcta-123").await.headers());
+    let me = |c: String| {
+        let st = state.clone();
+        async move {
+            app(&st)
+                .oneshot(with_cookie(req("GET", "/api/auth/me"), &c))
+                .await
+                .unwrap()
+                .status()
+        }
+    };
+    assert_eq!(me(c1).await, StatusCode::UNAUTHORIZED);
+    assert_eq!(me(c2).await, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn el_bloqueo_por_ip_usa_la_direccion_de_la_conexion_y_no_afecta_a_otras_ips() {
+    use axum::extract::ConnectInfo;
+    use server::login_limit::{LimitPolicy, LoginGuard};
+    let (_t, mut state) = state_con_usuario("porip");
+    state.login_guard = Arc::new(LoginGuard::new(LimitPolicy {
+        max_ip_failures: 3,
+        ..Default::default()
+    }));
+    let desde = |ip: &str, user: &str, pass: &str| {
+        let mut r = json_req(
+            "POST",
+            "/api/auth/login",
+            json!({"username": user, "password": pass}),
+        );
+        let addr: std::net::SocketAddr = format!("{ip}:4000").parse().unwrap();
+        r.extensions_mut().insert(ConnectInfo(addr));
+        r
+    };
+    // Tres fallos desde la misma IP con usuarios distintos (ninguno llega al umbral del usuario).
+    for u in ["a", "b", "c"] {
+        let r = app(&state).oneshot(desde("203.0.113.7", u, "x")).await.unwrap();
+        assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
+    }
+    let r = app(&state)
+        .oneshot(desde("203.0.113.7", "ana", "correcta-123"))
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::TOO_MANY_REQUESTS);
+    // Otra IP entra con normalidad.
+    let r = app(&state)
+        .oneshot(desde("203.0.113.8", "ana", "correcta-123"))
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
 }
