@@ -84,7 +84,7 @@ export function createTauriStore(): {
       list: () => call<RegistrySummary[]>('registry_list'),
       // El secreto viaja SOLO en esta llamada. Nunca se registra ni se devuelve.
       save: ({ server, username, secret }) => call<RegistrySummary>('registry_save', { server, username, secret }),
-      remove: (id, confirmed) => call<void>('registry_delete', { id, confirmed }),
+      remove: (id) => call<void>('registry_delete', { id }),
       // El comando devuelve `()` si las credenciales valen o un ApiError (auth_required, registry_unreachable…): se convierte en resultado.
       async test(id) {
         try { await call<void>('registry_test', { id }); return { ok: true } } catch (e) { return { ok: false, error: toApiError(e) } }

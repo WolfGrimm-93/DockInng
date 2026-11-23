@@ -280,7 +280,6 @@
     },
     "connection_delete": {
       "args": {
-        "confirmed": true,
         "id": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3e"
       },
       "result": null,
@@ -1293,7 +1292,6 @@
     },
     "registry_delete": {
       "args": {
-        "confirmed": true,
         "id": "0190a5b2-7c1e-7a3f-8b2d-4f6e9c1a2b3d"
       },
       "result": null,

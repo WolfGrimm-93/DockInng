@@ -13,7 +13,7 @@
 //                   stack_create{name,yaml,env}, stack_link{path}, stack_unlink{name}, run_stack_op{name,op,onEvent}, cancel_stack_op{subscriptionId}
 //  Ola 2:           groups_load, groups_mutate{op}, groups_import_legacy{payload}, prefs_get{key}, prefs_set{key,value},
 //                   connection_list, connection_probe_host_key{spec}, connection_trust_host_key{spec,fingerprint}, connection_test{spec}, connection_save{spec},
-//                   connection_delete{id,confirmed}, connection_select{id}, registry_list, registry_save{server,username,secret}, registry_delete{id,confirmed},
+//                   connection_delete{id}, connection_select{id}, registry_list, registry_save{server,username,secret}, registry_delete{id},
 //                   registry_test{id}, build_plan{spec}, subscribe_build{spec,ticket,onEvent}, cleanup_report{minAgeDays}, podman_detect
 //  Ola 3:           open_port_in_browser{id,port,scheme}, tray_status, busy_summary, notify_user{kind,title,body}, quit_app{confirmed},
 //                   window_set_decorations{enabled}, window_minimize, window_toggle_maximize, window_close, window_start_drag, window_start_resize{direction},
@@ -162,7 +162,7 @@ export function createTauriApi(): EngineApi {
       forgetHostKey: (spec, confirmedHost) => call<void>('connection_forget_host_key', { spec, confirmedHost }),
       test: (spec) => call<ConnTestResult>('connection_test', { spec }),
       save: async (spec, id) => normalizeProfile(await call<RawProfile>('connection_save', id ? { spec, id } : { spec })),
-      remove: (id, confirmed) => call<void>('connection_delete', { id, confirmed }),
+      remove: (id) => call<void>('connection_delete', { id }),
       async select(id) {
         // Si falla (Err), el backend deja el motor en el destino previo: `active` NO cambia.
         const status = await call<ConnectionStatus>('connection_select', { id })
