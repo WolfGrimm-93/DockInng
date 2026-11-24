@@ -218,3 +218,27 @@ describe('F-6: preferencias que no se guardan', () => {
     expect(getToasts().some((t) => t.kind === 'warn' && t.msg === 'No se pudo guardar una preferencia' && /disco lleno/.test(t.sub ?? ''))).toBe(true)
   })
 })
+
+describe('engineStore: respuestas desordenadas (M9)', () => {
+  it('una respuesta vieja que llega tarde no pisa a la más nueva', async () => {
+    await store.getState().bootstrap()
+    const base = await api.containers.list(true)
+    const viejo = base.slice(0, 2)
+    const nuevo = base.slice(0, 5)
+    const resolvers: Array<() => void> = []
+    let n = 0
+    // 1.ª llamada (vieja) se queda colgada; la 2.ª (nueva) responde ya; luego se libera la 1.ª.
+    api.containers.list = () => {
+      const mine = ++n
+      if (mine === 1) return new Promise((res) => resolvers.push(() => res(viejo)))
+      return Promise.resolve(nuevo)
+    }
+    const p1 = store.getState().refresh('containers')
+    const p2 = store.getState().refresh('containers')
+    await p2
+    expect(store.getState().containers.ids).toHaveLength(5)
+    resolvers[0]()
+    await p1
+    expect(store.getState().containers.ids).toHaveLength(5) // la vieja se descarta
+  })
+})

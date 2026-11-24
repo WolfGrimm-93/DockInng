@@ -1,0 +1,4 @@
+overrides:
+  source-map-js: ">=1.2.2"
+  # Solo pruebas (jsdom): undici >=8.12.2 exige Node >=22.19 y aquí hay 22.14; subir Node y quitar este pin.
+  undici: "8.11.0"
