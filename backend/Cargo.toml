@@ -37,7 +37,7 @@ async-trait = "0.1"
 libc = "0.2"
 base64 = "0.22"
 shlex = "2"
-rusqlite = { version = "0.37", features = ["bundled"] }
+rusqlite = { version = "0.43", features = ["bundled"] }
 # Llavero: features de plataforma EXPLÍCITAS (sin ellas keyring usa un almacén mock en silencio).
 keyring = { version = "3", default-features = false, features = ["async-secret-service", "tokio", "crypto-rust"] }
 clap = { version = "4", features = ["derive"] }
