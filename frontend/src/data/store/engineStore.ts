@@ -205,6 +205,7 @@ export function createEngineStore(api: EngineApi, opts: EngineStoreOptions = {})
   const lastFetchAt: Partial<Record<EntityKind, number>> = {}
   const opHandles = new Map<string, { cancel(): void; dispose(): void }>()
   const pullHandles = new Map<string, Unsubscribe>()
+  const fetchSeq: Partial<Record<EntityKind, number>> = {} // última petición lanzada por tipo: una respuesta vieja no pisa a una nueva
   let generation = 0 // invalida respuestas tardías tras dispose()/cambio de conexión
 
   let readPoll = false
@@ -217,6 +218,7 @@ export function createEngineStore(api: EngineApi, opts: EngineStoreOptions = {})
 
     const fetchKind = async (kind: EntityKind): Promise<void> => {
       const gen = generation
+      const seq = (fetchSeq[kind] = (fetchSeq[kind] ?? 0) + 1)
       lastFetchAt[kind] = Date.now()
       const cur = get()[kind]
       if (cur.status === 'idle') set({ [kind]: { ...cur, status: 'loading' } } as Partial<EngineStoreState>)
@@ -227,10 +229,10 @@ export function createEngineStore(api: EngineApi, opts: EngineStoreOptions = {})
         else if (kind === 'images') next = toEntity(await api.images.list(), (i) => i.reference)
         else if (kind === 'volumes') next = toEntity(await api.volumes.list(), (v) => v.name)
         else next = toEntity(await api.networks.list(), (n) => n.id)
-        if (gen !== generation) return
+        if (gen !== generation || seq !== fetchSeq[kind]) return
         set({ [kind]: next } as Partial<EngineStoreState>)
       } catch (e) {
-        if (gen !== generation) return
+        if (gen !== generation || seq !== fetchSeq[kind]) return
         set({ [kind]: { ...get()[kind], status: get()[kind].status === 'ready' ? 'ready' : 'error', error: toApiError(e) } } as Partial<EngineStoreState>)
       }
     }

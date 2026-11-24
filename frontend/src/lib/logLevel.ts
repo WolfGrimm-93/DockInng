@@ -2,6 +2,7 @@
 //   detectLogLevel(text, stream) -> 'INFO'|'WARN'|'ERROR'|'DEBUG'
 //   logLevelClass(level)         -> 'lvl-info' | ... (clases de app.css)
 import type { LogStream } from '@/data/types'
+import { safeText } from '@/lib/safeText'
 
 export type LogLevel = 'INFO' | 'WARN' | 'ERROR' | 'DEBUG'
 
@@ -33,10 +34,20 @@ export function splitLevelPrefix(text: string): { level: LogLevel | null; body: 
   return { level, body: text.slice(m[0].length) }
 }
 
+// Secuencias ANSI: CSI (colores, cursor), OSC (título/hipervínculos, terminan en BEL o ST) y escapes sueltos de dos bytes.
+// eslint-disable-next-line no-control-regex
+const ANSI = /\u001B\[[0-?]*[ -/]*[@-~]|\u001B\][^\u0007\u001B]*(?:\u0007|\u001B\\)?|\u001B[@-Z\\-_]|\u009B[0-?]*[ -/]*[@-~]/g
+
+/** Texto de log apto para pintar: sin secuencias ANSI, sin controles bidi ni de control (el valor original no se toca). */
+export function cleanLogText(s: string): string {
+  return safeText(s.replace(ANSI, ''))
+}
+
 /** Línea lista para pintar: hora local corta, nivel deducido y texto (sin prefijo de nivel). */
 export function parseLogLine(line: { stream: LogStream; timestamp: string | null; message: string }): { ts: string; level: LogLevel; body: string } {
-  const { level: explicit, body } = splitLevelPrefix(line.message)
-  const level = explicit ?? detectLogLevel(line.message, line.stream)
+  const clean = cleanLogText(line.message)
+  const { level: explicit, body } = splitLevelPrefix(clean)
+  const level = explicit ?? detectLogLevel(clean, line.stream)
   let ts = ''
   if (line.timestamp) {
     const d = new Date(line.timestamp)
